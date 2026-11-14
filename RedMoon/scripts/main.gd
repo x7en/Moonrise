@@ -1,997 +1,997 @@
 extends Node2D
-## RED MOON (Bounce Back) — Main Game Controller (Godot 4.7 / GDScript 2.0)
-##
-## DESIGN DECISIONS:
-## 1. Solid House Fix (Part A): The house has a full 96x86 StaticBody2D for the player AND a
-##    padded enemy blocker rect. Enemies attack at the house's outer edge using HOUSE_REACH and
-##    are clamped outside the house on every walk and knockback tick, so they never overlap it.
-## 2. Retry Night vs. Restart Entire Run (Part A):
-##    - Lose Screen: R or Enter retries ONLY the failed night from its dusk snapshot; N restarts
-##      the entire run from Act 1, Day 1 (both also have clickable buttons).
-##    - Pause Menu (Esc during gameplay): pauses the scene tree and offers Resume (Esc), Retry
-##      This Night (R during Night), Restart Entire Run (N), and Sound toggle (M).
-## 3. Balance & Spear Upgrade (Part B): Raised PLAYER_SPEED to 85, raised ACT1_DAY_TIME to 60s
-##    and ACT2_DAY_TIME to 100s, cut zombie counts ~30%, and spawn nights in small bursts of 2-3
-##    enemies from one side at a time with breathing pauses. Space thrusts a longer, wider Spear.
-## 4. Farmhouse Compound (Part C): Visible wooden yard fence around the house with a clear south
-##    front DOOR gap centered on HOUSE_DOOR (720, 468). Act 2 swaps the 6 slot fills for Fences.
-## 5. Richer 1440x810 World (Part D): More seeded trees, bushes, rocks, containers, cars, and 18
-##    randomized daily plank piles across 3 rings (far piles 490-680 px away, ~6-10s at 85px/s).
-## 6. Cosmetics (Part E): Shared pixel-font Theme in SpriteFactory loads res://assets/fonts/
-##    pixel_font.ttf (or KiwiSoda.ttf / dogicapixel.ttf); HUD shows a sky moon turning red on
-##    Blood Moon nights. All Image allocations use Image.create_empty for Godot 4.7 cleanliness.
-##
-## WHAT WAS CUT TO KEEP SCOPE SAFE:
-## - Cut infinite/chunked terrain; enriched the existing 1440x810 map instead.
-## - Cut guns, ammo, projectiles, weapon switching, and extra weapon sprite sheets; used one
-##   crisp procedural pixel spear bound to Space with longer/wider melee reach.
-## - Cut A* pathfinding around the house; used outer-edge clamping so enemies never clip walls.
-## - Cut multi-tab settings menus and scrolling sky parallax; kept one lightweight Esc pause
-##   menu and a clean top-center sky moon indicator.
+## Root controller for Red Moon (Godot 4.7). Wires T0-T3 cleanly across modular scripts.
 
-enum Phase { TITLE, STORY, DAY, DUSK, NIGHT, DAWN, LOST, WON }
+enum GameState { TITLE, STORY, DAY, MOONRISE, NIGHT, PAUSED, GAME_OVER, VICTORY }
 
-@export var world_seed: int = 1337
-@export var scenery_seed: int = 4242
-@export var act1_start_house_hp: int = 36
-
-var phase: Phase = Phase.TITLE
+var state: GameState = GameState.TITLE
 var act: int = 1
-var current_night: int = 1
-var story_index: int = 0
+var day: int = 1
 var phase_timer: float = 0.0
+var is_blood_moon: bool = false
+var is_dusk_warned: bool = false
 
-var bag: int = 0
-var stockpile: int = 0
-var total_planks_dropped: int = 0
-var god_mode: bool = false
-var is_paused: bool = false
-var dusk_snapshot: Dictionary = {}
+var house: Structure = null
+var fences: Array[Structure] = []
+var structures: Array = []
+var enemies: Array[Enemy] = []
+var arrows: Array[Arrow] = []
+var traps: Array[Trap] = []
+var watchtowers: Array[Watchtower] = []
+var dogs: Array[Dog] = []
 
-var _canvas_modulate: CanvasModulate = null
-var _ground: Sprite2D = null
-var _decals: Node2D = null
-var _entities: Node2D = null
-var _effects: Node2D = null
+var bag: Inventory = null
+var stockpile: Inventory = null
+var settings: SettingsStore = null
+var upgrades: Dictionary = {}
+
+var _ground_layer: Node2D = null
+var _decals_layer: Node2D = null
+var _entities_layer: Node2D = null
+var _effects: WorldEffects = null
+var _tint: CanvasModulate = null
 var _camera: Camera2D = null
-var _hud: HUD = null
-var _story_card: StoryCard = null
-var _sfx: Sfx = null
-
-var _house: Structure = null
-var _fences: Array[Structure] = []
-var _structures: Array[Structure] = []
-var _act1_yard_fills: Array[Node2D] = []
 var _player: Player = null
-var _solid_rects: Array[Rect2] = []
+var _world_builder: WorldBuilder = null
+var _hud: Hud = null
+var _story: StoryCard = null
+var _moonrise: MoonriseCutscene = null
+var _upgrade_ui: UpgradeUI = null
+var _toasts: ToastLayer = null
+var _sfx: Sfx = null
+var _smoke: SmokeRunner = null
+var _economy: EconomyController = EconomyController.new()
+var _spawner: WaveSpawner = WaveSpawner.new()
 
-var _tint_tween: Tween = null
-var _fences_standing_at_night_start: int = 0
-var _raider_warned_this_dusk: bool = false
+var _wave_queue: Array[Dictionary] = []
+var _spawn_timer: float = 0.0
+var _bounce_cd: float = 0.0
+var _hit_stop: float = 0.0
+var _shake_timer: float = 0.0
+var _shake_amp: float = 0.0
+var _selected_trap_idx: int = 1
+var _intruders_inside: int = 0
+var _intruder_dmg_accum: float = 0.0
+var _intruder_player_timer: float = 0.0
+var _night_damage_taken: bool = false
+var _night_had_intruder: bool = false
+var _kills_total: int = 0
+var _hovered_struct: Structure = null
+var _search_prop_id: int = -1
+var _search_timer: float = 0.0
+var _meteor_pending: int = 0
+var _meteor_cd: float = 0.0
+var _meteor_day_active: bool = false
+var _meteor_hit_player: bool = false
+var _pending_story_cb: Callable = Callable()
+var _day_snapshot: Dictionary = {}
+var _pre_pause_state: GameState = GameState.DAY
+var _info_return_to_title: bool = false
 
-# Small-group wave scheduler: spawns 2-3 enemies from one side, then pauses for breathing room.
-var _wave_groups: Array = []
-var _active_group_types: Array[String] = []
-var _active_group_side: int = 0
-var _next_group_timer: float = 0.0
-var _member_spawn_timer: float = 0.0
-var _group_interval: float = 6.0
 
-
-## Initializes random seeds, keyboard controls, and the full scene tree on game start.
 func _ready() -> void:
-	randomize()
-	_setup_input_map()
+	settings = SettingsStore.new()
+	settings.load_all()
+	settings.apply_display_and_audio()
+	if DisplayServer.get_name() != "headless":
+		Input.set_custom_mouse_cursor(
+			SpriteFactory.get_icon_texture("cursor"), Input.CURSOR_ARROW, Vector2(1.0, 1.0)
+		)
+	bag = Inventory.new(Config.BAG_CAPACITY)
+	stockpile = Inventory.new(-1)
 	_build_scene_tree()
-	_enter_title()
+	_connect_ui_signals()
+	_rebuild_world_and_structures(1337)
+	_hud.show_title_screen(false)
+
+	var all_args: PackedStringArray = OS.get_cmdline_args()
+	all_args.append_array(OS.get_cmdline_user_args())
+	if "--smoke" in all_args:
+		_smoke = SmokeRunner.new()
+		_smoke.start(self)
 
 
-## Handles Pause (Esc), Mute (M), and editor-only Debug keys (F1-F4).
-func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("pause", false):
-		if _is_gameplay_phase() and not is_paused:
-			get_viewport().set_input_as_handled()
-			_open_pause_menu()
-			return
-
-	if event.is_action_pressed("mute", false):
-		get_viewport().set_input_as_handled()
-		_toggle_sound_mute()
-		return
-
-	if OS.is_debug_build() and event is InputEventKey:
-		var key_ev: InputEventKey = event as InputEventKey
-		if key_ev.pressed and not key_ev.echo:
-			var code: Key = key_ev.physical_keycode
-			if code == KEY_NONE:
-				code = key_ev.keycode
-			_handle_debug_key(code)
-
-
-## Main gameplay loop: snaps camera, checks pickups/repairs, and advances the active phase.
 func _process(delta: float) -> void:
-	if _camera != null and _player != null:
-		_camera.position = _player.position.round()
-
-	if not _is_gameplay_phase() or is_paused:
-		return
-
-	_player.is_night_context = (phase == Phase.NIGHT)
-	_check_pile_pickups()
-	_check_house_dropoff()
-
-	# Act 2 allows repairing or rebuilding damaged structures during Day and Dusk.
-	if act == 2 and (phase == Phase.DAY or phase == Phase.DUSK):
-		if Input.is_action_just_pressed("repair"):
-			_try_repair_nearest()
-
-	match phase:
-		Phase.DAWN:
-			phase_timer -= delta
-			if phase_timer <= 0.0:
-				_start_day(current_night)
-		Phase.DAY:
-			phase_timer -= delta
-			if act == 2 and phase_timer <= Config.ACT2_DUSK_TIME:
-				_enter_dusk()
-			elif act == 1 and phase_timer <= 0.0:
-				_clear_piles()
-				_start_night(current_night, false)
-		Phase.DUSK:
-			phase_timer -= delta
-			if current_night >= 5 and not _raider_warned_this_dusk and phase_timer <= 5.0:
-				_raider_warned_this_dusk = true
-				_hud.show_banner("Raiders from the east!", Color(1.0, 0.62, 0.42), 3.0)
-			if phase_timer <= 0.0:
-				_clear_piles()
-				_start_night(current_night, false)
-		Phase.NIGHT:
-			_step_night(delta)
-
-	_refresh_hud()
-
-
-## Registers all keyboard actions in code so project.godot never needs manual edits.
-func _setup_input_map() -> void:
-	_bind_action(&"move_left", [KEY_LEFT, KEY_A])
-	_bind_action(&"move_right", [KEY_RIGHT, KEY_D])
-	_bind_action(&"move_up", [KEY_UP, KEY_W])
-	_bind_action(&"move_down", [KEY_DOWN, KEY_S])
-	_bind_action(&"swing", [KEY_SPACE])
-	_bind_action(&"bounce", [KEY_B])
-	_bind_action(&"repair", [KEY_E])
-	_bind_action(&"confirm", [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE, KEY_R])
-	_bind_action(&"pause", [KEY_ESCAPE])
-	_bind_action(&"mute", [KEY_M])
-
-
-func _bind_action(action: StringName, keys: Array[Key]) -> void:
-	if not InputMap.has_action(action):
-		InputMap.add_action(action)
-	InputMap.action_erase_events(action)
-	for key_code in keys:
-		var ev: InputEventKey = InputEventKey.new()
-		ev.physical_keycode = key_code
-		InputMap.action_add_event(action, ev)
-
-
-## Builds the entire game world under Main (Ground, Decals, Entities, Camera, HUD, Cards, Sfx).
-func _build_scene_tree() -> void:
-	_canvas_modulate = CanvasModulate.new()
-	_canvas_modulate.name = "CanvasModulate"
-	_canvas_modulate.color = Config.TINT_DAY
-	add_child(_canvas_modulate)
-
-	_ground = Sprite2D.new()
-	_ground.name = "Ground"
-	_ground.centered = false
-	_ground.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_ground.texture = WorldBuilder.build_ground_texture(
-		Config.WORLD_SIZE, Config.HOUSE_CENTER, world_seed
-	)
-	add_child(_ground)
-
-	_decals = Node2D.new()
-	_decals.name = "Decals"
-	add_child(_decals)
-
-	_entities = Node2D.new()
-	_entities.name = "Entities"
-	_entities.y_sort_enabled = true
-	add_child(_entities)
-
-	_effects = Node2D.new()
-	_effects.name = "Effects"
-	_effects.z_index = 20
-	add_child(_effects)
-
-	# Build the solid central farmhouse and the 6 perimeter defense fence slots.
-	_house = Structure.new()
-	_entities.add_child(_house)
-	_house.setup_house()
-	_house.destroyed.connect(_on_structure_destroyed)
-	_structures.append(_house)
-
-	_fences.clear()
-	for i in range(Config.FENCE_SLOTS.size()):
-		var fence: Structure = Structure.new()
-		_entities.add_child(fence)
-		fence.setup_fence(i, Config.FENCE_SLOTS[i] as Dictionary, _decals)
-		fence.destroyed.connect(_on_structure_destroyed)
-		_fences.append(fence)
-		_structures.append(fence)
-
-	# Build the visible farmhouse compound fence with the south front DOOR gap at HOUSE_DOOR.
-	_act1_yard_fills = WorldBuilder.build_farmhouse_yard(
-		_entities, Config.HOUSE_CENTER, Config.FENCE_SLOTS
-	)
-
-	# Scatter seeded trees, bushes, rocks, containers, cars, and wasteland props.
-	_solid_rects = WorldBuilder.populate_scenery(
-		_entities, _structures, Config.WORLD_SIZE,
-		Config.HOUSE_CENTER, Config.ACT1_RECT, scenery_seed
-	)
-
-	# Create the player inside Entities so Y-sorting works naturally with the house and fences.
-	_player = Player.new()
-	_player.swung.connect(_on_player_swung)
-	_player.bounced.connect(_on_player_bounced)
-	_player.took_damage.connect(_on_player_took_damage)
-	_entities.add_child(_player)
-
-	# Create the pixel-snapped Camera2D (smoothing off so pixels stay crisp).
-	_camera = Camera2D.new()
-	_camera.name = "Camera2D"
-	_camera.position_smoothing_enabled = false
-	_camera.enabled = true
-	add_child(_camera)
-	_set_camera_limits(Config.ACT1_RECT)
-
-	# Create HUD, StoryCard/Pause overlay, and procedural SFX pool.
-	_hud = HUD.new()
-	add_child(_hud)
-
-	_story_card = StoryCard.new()
-	_story_card.advance_requested.connect(_on_story_advance)
-	_story_card.retry_requested.connect(_on_retry_requested)
-	_story_card.restart_run_requested.connect(_on_restart_run_requested)
-	_story_card.resume_requested.connect(_close_pause_menu)
-	_story_card.mute_requested.connect(_toggle_sound_mute)
-	add_child(_story_card)
-
-	_sfx = Sfx.new()
-	_sfx.name = "Sfx"
-	_sfx.process_mode = Node.PROCESS_MODE_ALWAYS
-	add_child(_sfx)
-
-
-func _is_gameplay_phase() -> bool:
-	return phase in [Phase.DAY, Phase.DUSK, Phase.NIGHT, Phase.DAWN]
-
-
-## Opens the Pause Menu and freezes gameplay movement, timers, and animations.
-func _open_pause_menu() -> void:
-	is_paused = true
-	get_tree().paused = true
-	_sfx.play("ui_blip")
-	var can_retry_night: bool = (phase == Phase.NIGHT and not dusk_snapshot.is_empty())
-	_story_card.show_pause(can_retry_night, _sfx.muted)
-
-
-## Closes the Pause Menu and resumes gameplay cleanly.
-func _close_pause_menu() -> void:
-	if not is_paused:
-		return
-	is_paused = false
-	get_tree().paused = false
-	_story_card.hide_card()
-	_sfx.play("ui_blip")
-
-
-## Toggles sound mute from either gameplay or the Pause Menu.
-func _toggle_sound_mute() -> void:
-	if _sfx == null:
-		return
-	var is_muted: bool = _sfx.toggle_mute()
-	if is_paused:
-		_story_card.update_pause_mute_label(is_muted)
-	elif _is_gameplay_phase():
-		_hud.show_banner("Sound OFF" if is_muted else "Sound ON", Color(0.85, 0.9, 1.0), 1.5)
-
-
-## Returns cleanly to the Title screen.
-func _enter_title() -> void:
-	_ensure_unpaused()
-	phase = Phase.TITLE
-	story_index = 0
-	_clear_world_objects()
-	_set_tint(Config.TINT_DAY, true)
-	_set_camera_limits(Config.ACT1_RECT)
-	_set_act1_yard_fills_visible(true)
-	_player.controls_enabled = false
-	_player.reset_state(Config.HOUSE_DOOR, Config.ACT1_RECT, Config.BOUNCE_CD_ACT1)
-	_camera.position = _player.position.round()
-	_hud.clear_banner()
-	_hud.set_hud_visible(false)
-	_story_card.show_title()
-
-
-## Advances Title -> Story Cards 1, 2, 3 -> Act 1, Card 4 -> Act 2, and Card 5 -> Title.
-func _on_story_advance() -> void:
-	_sfx.play("ui_blip")
-	match phase:
-		Phase.TITLE:
-			phase = Phase.STORY
-			story_index = 1
-			_story_card.show_story(1)
-		Phase.STORY:
-			if story_index < 3:
-				story_index += 1
-				_story_card.show_story(story_index)
-			elif story_index == 3:
-				_start_act1()
-			elif story_index == 4:
-				_start_act2(false)
-		Phase.WON:
-			_enter_title()
-
-
-## Restarts the ENTIRE run from Act 1, Day 1 (N key or button on Lose / Pause screens).
-func _on_restart_run_requested() -> void:
-	_ensure_unpaused()
-	_sfx.play("bounce")
-	dusk_snapshot.clear()
-	_start_act1()
-
-
-## Starts a fresh Act 1 run on Day 1 with the farmhouse yard intact and the house damaged.
-func _start_act1() -> void:
-	_ensure_unpaused()
-	act = 1
-	current_night = 1
-	bag = 0
-	stockpile = 0
-	total_planks_dropped = 0
-	_clear_world_objects()
-
-	_house.set_active(true)
-	_house.set_hp(act1_start_house_hp)
-
-	# Act 1 shows decorative yard fence rails while destructible Act-2 slots stay off.
-	_set_act1_yard_fills_visible(true)
-	for fence in _fences:
-		fence.set_active(false)
-		fence.set_hp(0)
-
-	_set_camera_limits(Config.ACT1_RECT)
-	_player.reset_state(Config.HOUSE_DOOR, Config.ACT1_RECT, Config.BOUNCE_CD_ACT1)
-	_player.controls_enabled = true
-	_camera.position = _player.position.round()
-
-	_story_card.hide_card()
-	_hud.set_hud_visible(true)
-	_set_tint(Config.TINT_DAY, true)
-	_start_day(1)
-
-
-## Opens the full 1440x810 Act 2 world and activates the 6 destructible farmhouse fence slots.
-func _start_act2(from_debug: bool) -> void:
-	_ensure_unpaused()
-	act = 2
-	current_night = 4
-	bag = 0
-	stockpile = Config.ACT2_START_STOCKPILE
-	_clear_world_objects()
-
-	_house.set_active(true)
-	if from_debug:
-		_house.set_hp(60)
-	elif _house.hp <= 0:
-		_house.set_hp(30)
-
-	# Swap decorative yard fills out for the 6 destructible/repairable Fences.
-	_set_act1_yard_fills_visible(false)
-	var initial_fence_hps: Array[int] = [16, 16, 0, 16, 16, 0]
-	for i in range(_fences.size()):
-		_fences[i].set_active(true)
-		_fences[i].set_hp(initial_fence_hps[i])
-
-	_set_camera_limits(Config.WORLD_RECT)
-	_player.reset_state(Config.HOUSE_DOOR, Config.WORLD_RECT, Config.BOUNCE_CD_ACT2)
-	_player.controls_enabled = true
-	_camera.position = _player.position.round()
-
-	_story_card.hide_card()
-	_hud.set_hud_visible(true)
-	_start_dawn(4, true)
-
-
-## Runs the 3-second Act 2 morning: free dawn repair, overnight damage report, and fresh loot.
-func _start_dawn(day_num: int, is_act2_opening: bool = false) -> void:
-	phase = Phase.DAWN
-	current_night = day_num
-	phase_timer = 3.0
-	_set_tint(Config.TINT_DAY, is_act2_opening)
-
-	if is_act2_opening:
-		_house.heal(Config.DAWN_FREE_REPAIR)
-		_hud.show_banner("The road is open! Gather planks and rebuild.", Color(0.88, 0.96, 1.0), 3.0)
-	else:
-		var fell: int = maxi(0, _fences_standing_at_night_start - _count_standing_fences())
-		for struct_node in _structures:
-			if struct_node.is_standing():
-				struct_node.heal(Config.DAWN_FREE_REPAIR)
-
-		var report: String = "Nothing fell."
-		if fell == 1:
-			report = "1 fence fell."
-		elif fell > 1:
-			report = "%d fences fell." % fell
-		_hud.show_banner("Dawn. %s" % report, Color(1.0, 0.94, 0.72), 3.0)
-
-	_scatter_act2_piles()
-	_refresh_hud()
-
-
-## Starts a daytime exploration and rebuilding phase.
-func _start_day(day_num: int) -> void:
-	phase = Phase.DAY
-	current_night = day_num
-	_raider_warned_this_dusk = false
-	_set_tint(Config.TINT_DAY, day_num == 1)
-
-	if act == 1:
-		phase_timer = Config.ACT1_DAY_TIME
-		_scatter_act1_planks()
-		_hud.show_banner("Day %d. Blood Moon: night 5." % day_num, Color.WHITE, 3.0)
-	else:
-		phase_timer = Config.ACT2_DAY_TIME
-		if _get_pile_count() == 0:
-			_scatter_act2_piles()
-		var msg: String = "Day %d. Blood Moon: night 7. This time it's true." % day_num
-		_hud.show_banner(msg, Color(1.0, 0.95, 0.85), 3.0)
-
-	_refresh_hud()
-
-
-## Enters the final 15 seconds of an Act 2 day, warning the player to bring planks home.
-func _enter_dusk() -> void:
-	phase = Phase.DUSK
-	_set_tint(Config.TINT_DUSK, false)
-	_hud.show_banner("Dusk. Head home.", Color(1.0, 0.78, 0.52), 3.0)
-
-
-## Starts a night wave: drops unbanked Act-2 planks, takes a dusk snapshot, and queues groups.
-func _start_night(night_num: int, from_retry: bool) -> void:
-	phase = Phase.NIGHT
-	current_night = night_num
-	_player.bounce_bonuses = 0
-
-	if not from_retry:
-		if act == 2 and Config.LOSE_BAG_AT_DUSK and bag > 0:
-			_spawn_floating_text(
-				_player.position + Vector2(0.0, -18.0), "Lost %d planks!" % bag, Color(1.0, 0.45, 0.35)
-			)
-			bag = 0
-		_take_dusk_snapshot()
-		_fences_standing_at_night_start = _count_standing_fences()
-
-	var night_cfg: Dictionary = Config.NIGHTS.get(night_num, Config.NIGHTS[1]) as Dictionary
-	phase_timer = float(night_cfg["len"])
-	var zombies: int = int(night_cfg["zombies"])
-	var raiders: int = int(night_cfg["raiders"])
-
-	# Blood Moon hoarding penalties (gentler 1-per-3 ratio so nights 3 and 7 feel fair).
-	if night_num == 3:
-		zombies += floori(float(total_planks_dropped) / 3.0)
-	elif night_num == 7:
-		zombies += floori(float(stockpile) / 3.0)
-
-	_build_wave_groups(zombies, raiders)
-
-	var is_blood: bool = (night_num == 3 or night_num == 7)
-	_set_tint(Config.TINT_BLOOD if is_blood else Config.TINT_NIGHT, from_retry)
-
-	if is_blood:
-		_sfx.play("blood_moon", -6.0)
-		var blood_msg: String = "The Blood Moon rises early!"
-		if night_num == 7:
-			blood_msg = "Final Blood Moon! Raiders from the east!"
-		_hud.show_banner(blood_msg, Color(1.0, 0.34, 0.34), 3.5)
-	elif raiders > 0:
-		_hud.show_banner("Raiders from the east!", Color(1.0, 0.65, 0.45), 3.0)
-	else:
-		_hud.show_banner("Night %d" % night_num, Color(0.76, 0.84, 1.0), 2.5)
-
-	_refresh_hud()
-
-
-## Runs the night timer, small-group spawner, enemy movement with house blocking, and spear hits.
-func _step_night(delta: float) -> void:
-	phase_timer -= delta
-	_tick_wave_spawner(delta)
-
-	var swing_active: bool = _player.is_swing_active()
-	var swing_rect: Rect2 = _player.get_swing_rect() if swing_active else Rect2()
-	var player_hurtbox: Rect2 = _player.get_hurtbox()
-	var house_blocker: Rect2 = _house.get_enemy_blocker_rect()
-
-	for node in get_tree().get_nodes_in_group("enemies"):
-		var enemy: Enemy = node as Enemy
-		if enemy == null or not is_instance_valid(enemy):
-			continue
-
-		enemy.step(delta, _structures, house_blocker)
-		if phase != Phase.NIGHT:
+	if _smoke != null and _smoke.active:
+		_smoke.step(delta)
+		if state != GameState.DAY and state != GameState.NIGHT:
 			return
-		if not is_instance_valid(enemy) or not enemy.is_active_threat():
-			continue
-
-		var enemy_box: Rect2 = enemy.get_hurtbox()
-
-		# Resolve spear thrust hits (each enemy can only be hit once per thrust).
-		if swing_active and not _player.has_hit_enemy(enemy.get_instance_id()):
-			if swing_rect.intersects(enemy_box):
-				_player.mark_enemy_hit(enemy.get_instance_id())
-				var was_killed: bool = enemy.apply_hit(_player.position)
-				_sfx.play("hit", -7.0 if was_killed else -9.0)
-				continue
-
-		# Resolve enemy contact damage against the player.
-		if not _player.is_dying and _player.invuln_timer <= 0.0:
-			if player_hurtbox.intersects(enemy_box):
-				_player.take_contact_damage(enemy.player_dmg)
-
-	if phase == Phase.NIGHT and phase_timer <= 0.0 and _house.hp > 0:
-		_complete_night()
+	if _hit_stop > 0.0:
+		_hit_stop = maxf(0.0, _hit_stop - delta)
+		return
+	if _shake_timer > 0.0:
+		_shake_timer = maxf(0.0, _shake_timer - delta)
+	_update_camera()
+	if state == GameState.DAY or state == GameState.NIGHT:
+		_step_gameplay(delta)
 
 
-## Spawns enemies in small clusters (2-3 from one direction) with calm pauses between clusters.
-func _tick_wave_spawner(delta: float) -> void:
-	if not _active_group_types.is_empty():
-		_member_spawn_timer -= delta
-		if _member_spawn_timer <= 0.0:
-			_spawn_enemy_on_side(_active_group_types.pop_back(), _active_group_side)
-			_member_spawn_timer = Config.WAVE_MEMBER_DELAY
+func _unhandled_input(event: InputEvent) -> void:
+	if _story.active or _moonrise.active:
+		return
+	if event is InputEventKey:
+		var ke: InputEventKey = event as InputEventKey
+		if ke.pressed and not ke.echo:
+			_handle_key_press(ke)
+	elif event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event as InputEventMouseButton
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			_handle_left_click()
+
+
+func _handle_key_press(ke: InputEventKey) -> void:
+	if ke.keycode == KEY_F11 or (ke.keycode == KEY_ENTER and ke.alt_pressed):
+		_toggle_fullscreen()
+		return
+	if ke.keycode == KEY_M:
+		_sfx.toggle_mute()
+		return
+	if ke.keycode == KEY_F8:
+		_effects.show_debug_colliders = not _effects.show_debug_colliders
+		_effects.queue_redraw()
+		return
+	if ke.keycode == KEY_F7 and (state == GameState.DAY or state == GameState.NIGHT):
+		_trigger_meteor_shower(6)
+		return
+	if _upgrade_ui.is_open() or (state != GameState.DAY and state != GameState.NIGHT):
 		return
 
-	if _wave_groups.is_empty():
-		return
-
-	_next_group_timer -= delta
-	if _next_group_timer <= 0.0:
-		var group_data: Dictionary = _wave_groups.pop_back() as Dictionary
-		_active_group_types.clear()
-		for item in group_data["members"] as Array:
-			_active_group_types.append(String(item))
-		_active_group_side = int(group_data["side"])
-		_member_spawn_timer = 0.0
-		_next_group_timer = _group_interval * randf_range(0.85, 1.15)
-
-
-## Ends a survived night, dissolves remaining enemies, and moves to the next Day, Dawn, or Card.
-func _complete_night() -> void:
-	_dissolve_all_enemies()
-	_player.is_night_context = false
-	_player.recover_at_sunrise()
-
-	if current_night == 3:
-		phase = Phase.STORY
-		story_index = 4
-		_player.controls_enabled = false
-		_hud.clear_banner()
-		_hud.set_hud_visible(false)
-		_story_card.show_story(4)
-		return
-
-	if current_night == 7:
-		phase = Phase.WON
-		_player.controls_enabled = false
-		_hud.clear_banner()
-		_hud.set_hud_visible(false)
-		_story_card.show_story(5)
-		return
-
-	current_night += 1
-	if act == 1:
-		_start_day(current_night)
-	else:
-		_start_dawn(current_night, false)
-
-
-## Ends the night in defeat when the house hits 0 HP and opens the Lose screen.
-func _trigger_game_over() -> void:
-	if phase == Phase.LOST:
-		return
-	_ensure_unpaused()
-	phase = Phase.LOST
-	_clear_enemies()
-	_player.controls_enabled = false
-	_hud.clear_banner()
-	_hud.set_hud_visible(false)
-	_story_card.show_lost(current_night)
-
-
-## Restores the dusk snapshot to retry ONLY the failed night (triggered by R or Enter).
-func _on_retry_requested() -> void:
-	_ensure_unpaused()
-	_sfx.play("bounce")
-	_clear_world_objects()
-
-	if dusk_snapshot.is_empty():
-		_start_act1()
-		return
-
-	act = int(dusk_snapshot["act"])
-	current_night = int(dusk_snapshot["night"])
-	stockpile = int(dusk_snapshot["stockpile"])
-	total_planks_dropped = int(dusk_snapshot["total_planks_dropped"])
-	bag = 0
-
-	_house.set_active(true)
-	_house.set_hp(int(dusk_snapshot["house_hp"]))
-	_set_act1_yard_fills_visible(act == 1)
-
-	var saved_fences: Array = dusk_snapshot["fence_hps"] as Array
-	for i in range(_fences.size()):
-		_fences[i].set_active(act == 2)
-		_fences[i].set_hp(int(saved_fences[i]) if i < saved_fences.size() else 0)
-
-	_fences_standing_at_night_start = _count_standing_fences()
-
-	var active_rect: Rect2 = Config.ACT1_RECT if act == 1 else Config.WORLD_RECT
-	var cd_max: float = Config.BOUNCE_CD_ACT1 if act == 1 else Config.BOUNCE_CD_ACT2
-	_set_camera_limits(active_rect)
-	_player.reset_state(Config.HOUSE_DOOR, active_rect, cd_max)
-	_player.controls_enabled = true
-	_camera.position = _player.position.round()
-
-	_story_card.hide_card()
-	_hud.set_hud_visible(true)
-	_start_night(current_night, true)
-
-
-## Saves a snapshot at nightfall so Retry Night restores the exact dusk state.
-func _take_dusk_snapshot() -> void:
-	var fence_hps: Array[int] = []
-	for fence in _fences:
-		fence_hps.append(fence.hp)
-
-	dusk_snapshot = {
-		"night": current_night,
-		"act": act,
-		"house_hp": _house.hp,
-		"stockpile": stockpile,
-		"fence_hps": fence_hps,
-		"total_planks_dropped": total_planks_dropped,
-	}
-
-
-## Divides a night's enemies into small groups of 2-3 arriving from one side with pauses between.
-func _build_wave_groups(zombies: int, raiders: int) -> void:
-	_active_group_types.clear()
-	var add_brute: bool = Config.BRUTE_ENABLED and current_night >= 6
-	_wave_groups = WorldBuilder.build_wave_groups(
-		zombies, raiders, Config.WAVE_GROUP_MIN, Config.WAVE_GROUP_MAX, add_brute
-	)
-	var group_count: int = maxi(1, _wave_groups.size())
-	var total_enemies: int = zombies + raiders + (1 if add_brute else 0)
-	var stagger_total: float = float(maxi(0, total_enemies - group_count)) * Config.WAVE_MEMBER_DELAY
-	var spawn_end_target: float = maxf(phase_timer * 0.55, phase_timer - 9.0)
-	var pause_budget: float = maxf(2.0, spawn_end_target - 1.0 - stagger_total)
-	_group_interval = maxf(0.8, pause_budget / float(maxi(1, group_count - 1)))
-	_next_group_timer = 1.0
-	_member_spawn_timer = 0.0
-
-
-## Spawns one enemy just outside the farmhouse view along the chosen edge (0=N, 1=S, 2=W, 3=E).
-func _spawn_enemy_on_side(enemy_type: String, side: int) -> void:
-	var spawn_ring: Rect2 = Config.ACT1_RECT
-	if act == 2:
-		spawn_ring = Rect2(Config.HOUSE_CENTER - Vector2(270.0, 175.0), Vector2(540.0, 350.0))
-	var spawn_pos: Vector2 = WorldBuilder.pick_spawn_position(
-		spawn_ring, enemy_type, side, Config.RAIDER_SIDE, _player.position, Config.WORLD_RECT
-	)
-	var enemy: Enemy = Enemy.new()
-	_entities.add_child(enemy)
-	enemy.setup(enemy_type, spawn_pos, _structures)
-	enemy.struck_structure.connect(_on_enemy_struck_structure)
-
-
-func _scatter_act1_planks() -> void:
-	_clear_piles()
-	WorldBuilder.scatter_act1_planks(
-		_decals, Config.ACT1_RECT, Config.HOUSE_CENTER,
-		Config.ACT1_PLANKS_PER_DAY, _structures, _solid_rects
-	)
-
-
-func _scatter_act2_piles() -> void:
-	_clear_piles()
-	WorldBuilder.scatter_act2_piles(
-		_decals, Config.WORLD_RECT, Config.HOUSE_CENTER,
-		Config.PILES, _structures, _solid_rects
-	)
-
-
-## Picks up any plank pile the player walks over and adds its planks to the bag.
-func _check_pile_pickups() -> void:
-	for node in get_tree().get_nodes_in_group("piles"):
-		var pile: Pile = node as Pile
-		if pile == null or not is_instance_valid(pile):
-			continue
-		var gained: int = pile.check_pickup(_player.position)
-		if gained > 0:
-			bag += gained
-			_sfx.play("pickup")
-			_spawn_floating_text(
-				pile.position + Vector2(0.0, -10.0), "+%d" % gained, Color(1.0, 0.92, 0.55)
+	match ke.keycode:
+		KEY_ESCAPE:
+			_pre_pause_state = state
+			state = GameState.PAUSED
+			_info_return_to_title = false
+			_upgrade_ui.open_pause_menu()
+		KEY_I:
+			_pre_pause_state = state
+			state = GameState.PAUSED
+			_upgrade_ui.open_inventory(bag, stockpile, _player, upgrades)
+		KEY_SPACE:
+			_trigger_melee_or_clear_intruders()
+		KEY_F:
+			_player.try_fire_bow(enemies, bag)
+		KEY_R:
+			if _player.start_reload(bag):
+				_sfx.play("bow_reload", -10.0)
+		KEY_Q:
+			_try_shockwave()
+		KEY_E:
+			_handle_interact_press()
+		KEY_U:
+			_try_open_nearby_structure_menu()
+		KEY_1:
+			_selected_trap_idx = 1
+		KEY_2:
+			_selected_trap_idx = 2
+		KEY_3:
+			_selected_trap_idx = 3
+		KEY_T:
+			_economy.try_place_trap(
+				_selected_trap_idx, _player, bag, stockpile, traps, _entities_layer, _hud, _sfx
 			)
+		KEY_G:
+			_toggle_dogs_mode()
 
 
-## Drops off the player's bag when touching the house (heals house in Act 1, banks stock in Act 2).
-func _check_house_dropoff() -> void:
-	if bag <= 0 or not _house.footprint_rect.grow(10.0).has_point(_player.position):
+func _handle_left_click() -> void:
+	if _upgrade_ui.is_open() or (state != GameState.DAY and state != GameState.NIGHT):
 		return
+	var in_reach: bool = (
+		_hovered_struct != null
+		and _hovered_struct.distance_from_point(_player.position) <= Config.STRUCTURE_MENU_REACH
+	)
+	if in_reach:
+		_open_structure_menu(_hovered_struct)
+		return
+	_player.try_fire_bow(enemies, bag)
 
-	var dropped: int = bag
-	bag = 0
-	_sfx.play("dropoff")
 
-	if act == 1:
-		total_planks_dropped += dropped
-		var healed: int = _house.heal(dropped * Config.PLANK_HEAL)
-		var msg: String = "+%d HP" % healed if healed > 0 else "House full"
-		_spawn_floating_text(Config.HOUSE_DOOR + Vector2(0.0, -16.0), msg, Color(0.55, 1.0, 0.55))
+func _step_gameplay(delta: float) -> void:
+	var bounds: Rect2 = Config.ACT1_RECT if act == 1 else Config.WORLD_RECT
+	_player.step_player(
+		delta, _spawner.read_move_vector(), bounds, not _upgrade_ui.is_open(), bag
+	)
+	_player.set_night_lantern(state == GameState.NIGHT)
+	if _bounce_cd > 0.0:
+		_bounce_cd = maxf(0.0, _bounce_cd - delta)
+
+	_cleanup_arrays()
+	_step_hover_target()
+	if _economy.step_piles_and_deposit(
+		get_tree(), _player, house, bag, stockpile, _sfx, _effects
+	):
+		_unlock_achievement("first_plank")
+	_step_hold_search_and_tame(delta)
+	for a in arrows:
+		if is_instance_valid(a):
+			a.step_arrow(delta, enemies, bounds)
+	for t in traps:
+		if is_instance_valid(t):
+			t.step_trap(delta, enemies)
+	for wt in watchtowers:
+		if is_instance_valid(wt):
+			wt.step_tower(delta, enemies)
+	for d in dogs:
+		if is_instance_valid(d):
+			d.step_dog(delta, _player.position, enemies, bounds)
+	for e in enemies:
+		if is_instance_valid(e):
+			e.step_enemy(
+				delta, structures, watchtowers, traps, _player.position,
+				_player.inside_house, house, enemies, bounds
+			)
+	_step_intruders(delta)
+
+	if state == GameState.DAY:
+		_step_day_phase(delta)
+	elif state == GameState.NIGHT:
+		phase_timer -= delta
+		if not _wave_queue.is_empty():
+			_spawn_timer -= delta
+			if _spawn_timer <= 0.0:
+				var next_e: Dictionary = _wave_queue.pop_front() as Dictionary
+				_spawn_enemy(String(next_e["type"]), next_e["pos"] as Vector2, false)
+				_spawn_timer = float(next_e["delay"])
+		if phase_timer <= 0.0 and _wave_queue.is_empty():
+			_finish_night()
+
+	_update_lighting_and_tint()
+	_push_hud_snapshot()
+
+
+func _step_day_phase(delta: float) -> void:
+	phase_timer -= delta
+	var dusk_thresh: float = Config.ACT1_DUSK_TIME if act == 1 else Config.ACT2_DUSK_TIME
+	if not is_dusk_warned and phase_timer <= dusk_thresh:
+		is_dusk_warned = true
+		var msg: String = (
+			"Dusk: get inside and close the door!" if act == 1 else "Dusk. Head home."
+		)
+		_hud.show_message(msg, 3.0, Color(1.0, 0.72, 0.40))
+	if _meteor_day_active and _meteor_pending > 0:
+		_meteor_cd -= delta
+		if _meteor_cd <= 0.0:
+			_meteor_cd = randf_range(2.2, 4.2)
+			_meteor_pending -= 1
+			var mp: Vector2 = (_player.position + Vector2(
+				randf_range(-190.0, 190.0), randf_range(-120.0, 120.0)
+			)).clamp(Vector2(64.0, 64.0), Config.WORLD_SIZE - Vector2(64.0, 64.0))
+			_effects.schedule_meteor(mp)
+	if phase_timer <= 0.0:
+		_begin_night_sequence()
+
+
+func _begin_new_run(from_smoke: bool = false) -> void:
+	act = 1
+	day = 1
+	is_blood_moon = false
+	_kills_total = 0
+	_intruders_inside = 0
+	_day_snapshot.clear()
+	upgrades = {
+		"bigger_quiver": false, "quick_hands": false, "barbed_arrows": false,
+		"heavy_bat": false, "swift_boots": false, "quick_bounce": false,
+	}
+	bag.clear()
+	stockpile.clear()
+	stockpile.add("plank", Config.ACT1_START_STOCKPILE)
+	bag.add("arrow", 18)
+
+	_clear_dynamic_world()
+	_rebuild_world_and_structures(1337 + randi() % 1000)
+	_player.reset_for_new_game(Config.HOUSE_DOOR)
+	_player.apply_upgrade_stats(upgrades)
+	_world_builder.set_act1_fog_visible(true)
+	_apply_camera_limits()
+	_hud.show_gameplay_hud()
+
+	var play_story: bool = (not from_smoke) and ((not settings.intro_seen) or settings.play_intro)
+	if play_story:
+		state = GameState.STORY
+		_pending_story_cb = func() -> void:
+			settings.mark_intro_completed()
+			_start_day(1)
+		_story.show_cards(StoryCard.get_opening_cards(), true, false)
 	else:
-		stockpile += dropped
-		_spawn_floating_text(
-			Config.HOUSE_DOOR + Vector2(0.0, -16.0), "+%d Stock" % dropped, Color(1.0, 0.9, 0.5)
-		)
+		_start_day(1)
 
 
-## Finds the nearest damaged House or Act-2 Fence within 40 px of the player.
-func _find_nearest_repairable_structure() -> Structure:
-	var best: Structure = null
-	var best_dist: float = 40.0
-	for struct_node in _structures:
-		if not struct_node.active_in_game or struct_node.hp >= struct_node.max_hp:
-			continue
-		var dist: float = struct_node.distance_from_point(_player.position)
-		if dist <= best_dist:
-			best_dist = dist
-			best = struct_node
-	return best
+func _start_day(day_num: int) -> void:
+	day = day_num
+	state = GameState.DAY
+	is_blood_moon = false
+	is_dusk_warned = false
+	_intruders_inside = 0
+	_meteor_day_active = false
+	_meteor_pending = 0
+	_meteor_hit_player = false
+	phase_timer = Config.day_length()
+
+	if _player.inside_house:
+		_player.set_inside_house(false, Config.HOUSE_DOOR_STEP + Vector2(0.0, 10.0))
+	if house != null and house.is_standing():
+		house.toggle_door(true)
+	if day > 1:
+		if house != null and house.is_standing():
+			house.heal(Config.DAWN_FREE_REPAIR)
+		for f in fences:
+			if f.is_standing():
+				f.heal(Config.DAWN_FREE_REPAIR)
+
+	_clear_dynamic_world()
+	_spawner.spawn_day_pickups(_world_builder, _entities_layer, act, day)
+	if act == 2:
+		for wp in _spawner.pick_wanderer_positions():
+			_spawn_enemy("zombie", wp, true)
+		if day in Config.METEOR_DAYS:
+			_trigger_meteor_shower(Config.METEOR_COUNT_DAY4 if day == 4 else Config.METEOR_COUNT_DAY6)
+		_maybe_spawn_stray_dogs()
+
+	_day_snapshot = _economy.make_day_snapshot(
+		act, day, _player, bag, stockpile, upgrades, house, fences
+	)
+	var sub: String = (
+		"Gather planks & reinforce Rings 1-2. Close the door before dusk!"
+		if act == 1
+		else "Explore the valley, scavenge scrap, and fortify for Night 7!"
+	)
+	_hud.show_header_banner(
+		"DAY %d - ACT %d" % [day, act],
+		sub,
+		Color(1.0, 0.90, 0.56) if act == 1 else Color(0.62, 0.96, 0.68),
+		2.8
+	)
 
 
-## Spends stockpiled planks (1 plank = +8 HP) to repair or rebuild the closest structure.
-func _try_repair_nearest() -> void:
-	var target: Structure = _find_nearest_repairable_structure()
-	if target == null:
-		return
-	if stockpile <= 0:
-		_hud.show_banner("No planks", Color(1.0, 0.55, 0.45), 2.0)
-		_sfx.play("ui_blip")
-		return
-
-	var missing_hp: int = target.max_hp - target.hp
-	var planks_needed: int = int(ceili(float(missing_hp) / float(Config.PLANK_HEAL)))
-	var planks_spent: int = mini(stockpile, planks_needed)
-	if planks_spent <= 0:
-		return
-
-	var was_ruined: bool = (target.hp <= 0)
-	stockpile -= planks_spent
-	var healed: int = target.heal(planks_spent * Config.PLANK_HEAL)
-	var popup_pos: Vector2 = target.get_target_point() + Vector2(0.0, -14.0)
-
-	if was_ruined:
-		_sfx.play("fence_rebuilt")
-		_spawn_floating_text(popup_pos, "Rebuilt!", Color(0.55, 1.0, 0.65))
-	else:
-		_sfx.play("dropoff")
-		_spawn_floating_text(popup_pos, "+%d HP" % healed, Color(0.55, 1.0, 0.65))
-
-
-func _on_player_swung() -> void:
-	_sfx.play("swing", -9.0)
-
-
-func _on_player_took_damage(_amount: int) -> void:
-	_sfx.play("player_hit", -7.0)
-
-
-func _on_player_bounced(_was_death: bool) -> void:
-	_sfx.play("bounce", -6.0)
-	if act == 2 and bag > 0:
-		var deposited: int = bag
-		bag = 0
-		stockpile += deposited
-		_spawn_floating_text(
-			Config.HOUSE_DOOR + Vector2(0.0, -24.0), "+%d Stock" % deposited, Color(1.0, 0.9, 0.5)
-		)
-
-	if phase == Phase.NIGHT and _player.bounce_bonuses > 0:
-		var pct: int = int(
-			round(float(_player.bounce_bonuses) * Config.SWING_GROWTH_PER_BOUNCE * 100.0)
-		)
-		_spawn_floating_text(
-			Config.HOUSE_DOOR + Vector2(0.0, -14.0), "+%d%% Spear!" % pct, Color(0.45, 0.92, 1.0)
-		)
-
-
-func _on_enemy_struck_structure(_enemy: Enemy, structure: Structure, damage: int) -> void:
-	if structure == null or not is_instance_valid(structure):
-		return
-	if god_mode and structure == _house:
-		return
-	structure.take_damage(damage)
-	_sfx.play("struct_hit", -7.0)
-
-
-func _on_structure_destroyed(structure: Structure) -> void:
-	if structure == _house:
-		_trigger_game_over()
-
-
-## Pushes the current game state into the HUD every frame.
-func _refresh_hud() -> void:
-	var phase_title: String = ""
-	match phase:
-		Phase.DAWN:
-			phase_title = "Dawn %d" % current_night
-		Phase.DAY:
-			phase_title = "Day %d" % current_night
-		Phase.DUSK:
-			phase_title = "Dusk %d" % current_night
-		Phase.NIGHT:
-			phase_title = "Night %d" % current_night
-
-	var repair_prompt: String = ""
-	if act == 2 and (phase == Phase.DAY or phase == Phase.DUSK):
-		var near_struct: Structure = _find_nearest_repairable_structure()
-		if near_struct != null:
-			var missing: int = near_struct.max_hp - near_struct.hp
-			var needed: int = int(ceili(float(missing) / float(Config.PLANK_HEAL)))
-			var verb: String = "Rebuild" if near_struct.hp <= 0 else "Repair"
-			var struct_name: String = "House" if near_struct == _house else "Fence"
-			repair_prompt = "[E] %s %s (%d)" % [verb, struct_name, needed]
-
-	_hud.update_state({
-		"player_hp": _player.hp,
-		"house_hp": _house.hp,
-		"house_max_hp": _house.max_hp,
-		"phase_title": phase_title,
-		"time_left": phase_timer,
-		"is_night": phase == Phase.NIGHT,
-		"is_blood_moon": phase == Phase.NIGHT and (current_night == 3 or current_night == 7),
-		"is_dusk": phase == Phase.DUSK,
-		"act": act,
-		"bag": bag,
-		"stockpile": stockpile,
-		"bounce_cd": _player.bounce_cd_timer,
-		"bounce_cd_max": _player.bounce_cd_max,
-		"bounce_stun": _player.bounce_stun_timer,
-		"bounce_bonuses": _player.bounce_bonuses,
-		"muted": _sfx.muted,
-		"god_mode": god_mode,
-		"repair_prompt": repair_prompt,
-	})
-
-
-func _set_act1_yard_fills_visible(show_fills: bool) -> void:
-	for fill_node in _act1_yard_fills:
-		if is_instance_valid(fill_node):
-			fill_node.visible = show_fills
-
-
-func _ensure_unpaused() -> void:
-	is_paused = false
-	if get_tree().paused:
-		get_tree().paused = false
-
-
-func _set_camera_limits(rect: Rect2) -> void:
-	_camera.limit_left = int(rect.position.x)
-	_camera.limit_right = int(rect.end.x)
-	_camera.limit_top = int(rect.position.y)
-	_camera.limit_bottom = int(rect.end.y)
-
-
-func _set_tint(target_color: Color, instant: bool) -> void:
-	if _tint_tween != null and _tint_tween.is_valid():
-		_tint_tween.kill()
-	if instant:
-		_canvas_modulate.color = target_color
-		return
-	_tint_tween = create_tween()
-	_tint_tween.tween_property(_canvas_modulate, "color", target_color, 2.0)
-
-
-func _count_standing_fences() -> int:
-	var count: int = 0
-	for fence in _fences:
-		if fence.is_standing():
-			count += 1
-	return count
-
-
-func _get_pile_count() -> int:
-	return get_tree().get_nodes_in_group("piles").size()
-
-
-func _clear_world_objects() -> void:
-	_clear_enemies()
+func _begin_night_sequence() -> void:
+	# T0.3: Destroy every surviving pickup pile cleanly before night starts.
 	_clear_piles()
-	if _effects != null:
-		for child in _effects.get_children():
-			child.queue_free()
+	if OS.is_debug_build():
+		assert(get_tree().get_nodes_in_group("piles").is_empty(), "T0.3: piles leaked into night!")
+	if act == 2 and Config.LOSE_BAG_AT_DUSK_ACT2 and not _player.inside_house:
+		if bag.used_capacity() > 0:
+			bag.remove("plank", bag.count("plank"))
+			bag.remove("scrap", bag.count("scrap"))
+			_hud.show_message(
+				"Night fell outside! Unbanked bag resources lost.", 2.6, Color(1.0, 0.45, 0.40)
+			)
+	if _meteor_day_active and not _meteor_hit_player:
+		_unlock_achievement("meteor_survivor")
+
+	is_blood_moon = (day == Config.WORLD_EXPAND_NIGHT or day == 7)
+	state = GameState.MOONRISE
+	if is_blood_moon:
+		_sfx.play("blood_moon", -6.0)
+	_moonrise.start_moonrise(day, is_blood_moon, _smoke != null and _smoke.active)
+
+
+func _start_night_combat() -> void:
+	state = GameState.NIGHT
+	phase_timer = Config.night_length(day)
+	_night_damage_taken = false
+	_night_had_intruder = false
+	_spawner.clear_group_or_list(enemies)
+	_wave_queue = _spawner.build_night_wave_queue(day, act)
+	_spawn_timer = 0.8
+	var title: String = "NIGHT %d - BLOOD MOON!" % day if is_blood_moon else "NIGHT %d" % day
+	var sub: String = (
+		"Hold every ring! They are swarming from all sides!"
+		if is_blood_moon else "Defend the rings and house until dawn."
+	)
+	_hud.show_header_banner(
+		title, sub, Color(1.0, 0.34, 0.30) if is_blood_moon else Color(0.84, 0.88, 1.0), 2.5
+	)
+
+
+func _finish_night() -> void:
+	for e in enemies:
+		if is_instance_valid(e) and e.is_alive():
+			e.start_dissolve()
+	_spawner.clear_group_or_list(arrows)
+	if day == 1:
+		_unlock_achievement("first_night")
+	if not _night_damage_taken:
+		_unlock_achievement("perfect_night")
+	if _night_had_intruder:
+		_unlock_achievement("intruder_alert")
+
+	if day == Config.WORLD_EXPAND_NIGHT and act == 1:
+		_unlock_achievement("blood_moon_survivor")
+		_expand_to_act2()
+		return
+	if day >= 7:
+		_unlock_achievement("final_blood_moon")
+		if house != null and house.is_fallen:
+			_unlock_achievement("homeless_survivor")
+		state = GameState.VICTORY
+		var h_status: String = (
+			"Fallen (Homeless Victory!)" if house.is_fallen else "%d/%d HP" % [house.hp, house.max_hp]
+		)
+		var end_txt: String = (
+			"You outlasted the Final Blood Moon on Night 7!\n\n"
+			+ "Enemies Defeated: %d\nHouse Status: %s\nAchievements Unlocked: %d/%d"
+			% [_kills_total, h_status, settings.get_unlocked_count(), SettingsStore.ACHIEVEMENT_DEFS.size()]
+		)
+		_hud.show_end_screen(true, "DAWN BREAKS - YOU SURVIVED!", end_txt, false)
+		return
+	_start_day(day + 1)
+
+
+func _expand_to_act2() -> void:
+	act = 2
+	_world_builder.set_act1_fog_visible(false)
+	_apply_camera_limits()
+	stockpile.add("plank", Config.ACT2_START_STOCKPILE)
+	_unlock_achievement("world_expanded")
+	state = GameState.STORY
+	_pending_story_cb = func() -> void: _start_day(day + 1)
+	_story.show_cards(StoryCard.get_world_expanded_cards(), true, _smoke != null and _smoke.active)
+
+
+func _spawn_enemy(etype: String, pos: Vector2, is_wanderer: bool) -> Enemy:
+	var e: Enemy = Enemy.new()
+	e.setup(etype, pos, is_wanderer)
+	e.structure_damaged.connect(_on_enemy_structure_damaged)
+	e.player_damaged.connect(_on_enemy_player_damaged)
+	e.entered_house.connect(_on_enemy_entered_house)
+	e.killed.connect(func(_en: Enemy, was_bow: bool) -> void:
+		_kills_total += 1
+		if was_bow:
+			_unlock_achievement("first_bow_kill")
+	)
+	e.damaged_feedback.connect(_on_enemy_hit_feedback)
+	_entities_layer.add_child(e)
+	enemies.append(e)
+	return e
+
+
+func _maybe_spawn_stray_dogs() -> void:
+	if Dog.assets_available() and dogs.size() < Config.DOG_MAX:
+		var d: Dog = Dog.new()
+		if d.setup(Config.HOUSE_CENTER + Vector2(randf_range(-420.0, 420.0), 220.0)):
+			d.tamed.connect(func(_dog: Dog) -> void:
+				_sfx.play("dog_bark", -6.0)
+				_unlock_achievement("tamed_dog")
+				_hud.show_message(
+					"Dog tamed! Press G to toggle Follow / Guard.", 2.6, Color(0.62, 0.96, 0.68)
+				)
+			)
+			_entities_layer.add_child(d)
+			dogs.append(d)
+
+
+func _trigger_meteor_shower(count: int) -> void:
+	_meteor_day_active = true
+	_meteor_pending += count
+	_meteor_cd = 0.8
+	_hud.show_message("METEOR SHOWER! Watch the sky shadows!", 3.0, Color(1.0, 0.54, 0.28))
+
+
+func _on_meteor_impacted(pos: Vector2) -> void:
+	_sfx.play("meteor_impact", -7.0)
+	_add_shake(0.24, 3.5)
+	_world_builder.spawn_crater_decal(pos)
+	_spawner.spawn_pile(
+		_entities_layer, pos + Vector2(8.0, 4.0), randi_range(2, 3), "meteor", "scrap"
+	)
+	if not _player.inside_house and _player.position.distance_to(pos) <= Config.METEOR_RADIUS:
+		_meteor_hit_player = true
+		_player.take_damage(Config.METEOR_PLAYER_DMG)
+		_sfx.play("player_hit", -6.0)
+	for s in structures:
+		if is_instance_valid(s) and (s as Structure).is_standing():
+			if (s as Structure).distance_from_point(pos) <= Config.METEOR_RADIUS:
+				(s as Structure).take_damage(Config.METEOR_STRUCT_DMG)
+
+
+func _trigger_melee_or_clear_intruders() -> void:
+	if _player.inside_house:
+		if _intruders_inside > 0:
+			_intruders_inside -= 1
+			_kills_total += 1
+			_sfx.play("hit", -6.0)
+			_effects.spawn_floating_text(
+				Config.HOUSE_CENTER, "Intruder cleared!", Color(0.55, 0.96, 0.60)
+			)
+		return
+	if _player.try_swing():
+		_sfx.play("swing", -9.0)
+
+
+func _try_shockwave() -> void:
+	if _bounce_cd > 0.0 or _player.dead or _player.inside_house:
+		return
+	var base_cd: float = Config.BOUNCE_CD_ACT1 if act == 1 else Config.BOUNCE_CD_ACT2
+	_bounce_cd = base_cd * _player.bounce_cd_mult
+	_player.bounce_bonus_count = mini(Config.MAX_BOUNCE_BONUSES, _player.bounce_bonus_count + 1)
+	_sfx.play("bounce", -6.0)
+	_effects.spawn_ring(_player.position, 92.0, Color(0.55, 0.92, 1.0, 0.95))
+	for e in enemies:
+		if is_instance_valid(e) and e.is_alive() and e.position.distance_to(_player.position) <= 92.0:
+			e.apply_stun(Config.BOUNCE_STUN)
+			e.take_hit(1, (e.position - _player.position).normalized(), false)
+
+
+func _handle_interact_press() -> void:
+	if _player.inside_house:
+		_player.set_inside_house(false, Config.HOUSE_DOOR_STEP + Vector2(0.0, 10.0))
+		_sfx.play("door_creak", -8.0)
+		return
+	if house != null and house.is_standing():
+		var d_door: float = minf(
+			_player.position.distance_to(Config.HOUSE_DOOR_STEP),
+			_player.position.distance_to(Config.HOUSE_DOOR)
+		)
+		if d_door <= Config.DOOR_INTERACT_REACH:
+			if house.is_door_open() and _player.position.distance_to(Config.HOUSE_DOOR_STEP) <= 18.0:
+				_player.set_inside_house(true)
+				house.toggle_door(true)
+				_sfx.play("door_creak", -8.0)
+				_hud.show_message("Sheltered indoors & door closed.", 1.8, Color(0.60, 0.95, 0.65))
+			else:
+				house.toggle_door(false)
+				_sfx.play("door_creak", -8.0)
+				if house.is_door_open():
+					_hud.show_message("Door open! Press E at step to enter, or E to close.", 1.8)
+			return
+	_try_open_nearby_structure_menu()
+
+
+func _try_open_nearby_structure_menu() -> void:
+	var best: Structure = _spawner.find_nearest_structure(
+		structures, _player.position, Config.STRUCTURE_MENU_REACH
+	)
+	if best != null:
+		_open_structure_menu(best)
+
+
+func _open_structure_menu(st: Structure) -> void:
+	_pre_pause_state = state
+	state = GameState.PAUSED
+	_upgrade_ui.open_structure_menu(
+		st, bag, stockpile, act, upgrades,
+		_economy.compute_ring_stats(fences), watchtowers.size()
+	)
+
+
+func _toggle_dogs_mode() -> void:
+	for d in dogs:
+		if is_instance_valid(d) and d.mode != Dog.Mode.STRAY:
+			var msg: String = d.toggle_guard_mode(_player.position)
+			if not msg.is_empty():
+				_hud.show_message(msg, 1.6, Color(0.82, 0.96, 0.72))
+				_sfx.play("dog_bark", -10.0)
+
+
+func _step_hold_search_and_tame(delta: float) -> void:
+	if _player.inside_house or not Input.is_key_pressed(KEY_E):
+		_search_prop_id = -1
+		_search_timer = 0.0
+		return
+	for d in dogs:
+		if (
+			is_instance_valid(d)
+			and d.mode == Dog.Mode.STRAY
+			and d.position.distance_to(_player.position) <= 24.0
+		):
+			d.advance_tame(delta, true)
+			return
+	var prop: Dictionary = _world_builder.find_nearest_searchable(_player.position, 32.0)
+	if prop.is_empty():
+		_search_prop_id = -1
+		_search_timer = 0.0
+		return
+	var pid: int = int(prop["id"])
+	if _search_prop_id != pid:
+		_search_prop_id = pid
+		_search_timer = 0.0
+	_search_timer += delta
+	if _search_timer >= Config.SEARCH_HOLD_TIME:
+		_search_prop_id = -1
+		_search_timer = 0.0
+		_economy.grant_prop_loot(
+			prop, _world_builder, _player, bag, stockpile, _sfx, _effects
+		)
+
+
+func _step_hover_target() -> void:
+	var mouse_world: Vector2 = get_global_mouse_position()
+	var found: Structure = null
+	for s in structures:
+		if is_instance_valid(s) and (s as Structure).footprint_rect.grow(5.0).has_point(mouse_world):
+			found = s as Structure
+			break
+	if found != _hovered_struct:
+		if is_instance_valid(_hovered_struct):
+			_hovered_struct.set_hovered(false)
+		_hovered_struct = found
+		if is_instance_valid(_hovered_struct):
+			_hovered_struct.set_hovered(true)
+
+
+func _step_intruders(delta: float) -> void:
+	if _intruders_inside <= 0 or house == null or house.is_fallen:
+		return
+	_intruder_dmg_accum += Config.INTRUDER_HOUSE_DPS * float(_intruders_inside) * delta
+	if _intruder_dmg_accum >= 1.0:
+		var whole: int = int(_intruder_dmg_accum)
+		_intruder_dmg_accum -= float(whole)
+		house.take_damage(whole)
+		_night_damage_taken = true
+	if _player.inside_house:
+		_intruder_player_timer += delta
+		if _intruder_player_timer >= Config.INTRUDER_PLAYER_INTERVAL:
+			_intruder_player_timer = 0.0
+			if _player.take_damage(Config.INTRUDER_PLAYER_DMG):
+				_sfx.play("player_hit", -6.0)
+				_add_shake(0.16, 2.5)
+
+
+func _on_player_spear_swung(hitbox: Rect2, facing_dir: Vector2, damage: int) -> void:
+	for e in enemies:
+		if is_instance_valid(e) and e.is_alive() and hitbox.intersects(e.get_hurtbox_rect()):
+			e.take_hit(damage, facing_dir, false)
+
+
+func _on_player_bow_fired(origin: Vector2, dir: Vector2, dmg: int, pierce: int) -> void:
+	_sfx.play("bow_shoot", -8.0)
+	_spawn_arrow(origin, dir, dmg, Config.BOW_RANGE, pierce, true)
+
+
+func _on_watchtower_fire(origin: Vector2, target: Node) -> void:
+	if is_instance_valid(target):
+		var dir: Vector2 = ((target as Node2D).position + Vector2(0.0, -8.0) - origin).normalized()
+		_sfx.play("bow_shoot", -12.0)
+		_spawn_arrow(origin, dir, 1, Config.WATCHTOWER_RANGE + 20.0, 0, false)
+
+
+func _spawn_arrow(
+	origin: Vector2, dir: Vector2, dmg: int, max_range: float, pierce: int, from_player: bool
+) -> void:
+	var arr: Arrow = Arrow.new()
+	arr.setup(origin, dir, Config.ARROW_SPEED, dmg, max_range, pierce, from_player)
+	arr.hit_enemy.connect(func(e: Node, a: Arrow, fp: bool) -> void:
+		if is_instance_valid(e) and e is Enemy:
+			(e as Enemy).take_hit(a.damage, a.velocity.normalized(), fp)
+	)
+	_entities_layer.add_child(arr)
+	arrows.append(arr)
+
+
+func _on_enemy_hit_feedback(pos: Vector2, is_kill: bool) -> void:
+	_sfx.play("hit", -7.0 if is_kill else -9.0)
+	_effects.spawn_sparks(pos, Color(0.95, 0.28, 0.24, 1.0), 8 if is_kill else 5)
+	if _smoke == null or not _smoke.active:
+		_hit_stop = 0.04
+	if is_kill:
+		_add_shake(0.10, 1.8)
+
+
+func _on_enemy_structure_damaged(target: Node, damage: int, _enemy: Enemy) -> void:
+	_night_damage_taken = true
+	if target is Structure:
+		var st: Structure = target as Structure
+		st.take_damage(damage)
+		_sfx.play("struct_hit", -9.0)
+		_effects.spawn_sparks(st.target_center, Color(0.76, 0.56, 0.34, 1.0), 5)
+	elif target is Watchtower:
+		(target as Watchtower).take_damage(damage)
+		_sfx.play("struct_hit", -9.0)
+
+
+func _on_enemy_player_damaged(damage: int, _enemy: Enemy) -> void:
+	if _player.take_damage(damage):
+		_sfx.play("player_hit", -6.0)
+		_add_shake(0.18, 2.8)
+
+
+func _on_enemy_entered_house(_enemy: Enemy) -> void:
+	_intruders_inside += 1
+	_night_had_intruder = true
+	_sfx.play("door_bump", -5.0)
+	_hud.show_message("AN ENEMY ENTERED THE HOUSE! Close the door!", 2.8, Color(1.0, 0.30, 0.28))
+
+
+func _on_house_crumbled(_st: Structure) -> void:
+	_sfx.play("crumble", -4.0)
+	_add_shake(0.65, 5.0)
+	_intruders_inside = 0
+	if _player.inside_house:
+		_player.set_inside_house(false, Config.HOUSE_DOOR_STEP + Vector2(0.0, 10.0))
+	_unlock_achievement("house_fell")
+	_hud.show_header_banner(
+		"THE HOUSE HAS FALLEN!",
+		"No shelter left! Keep fighting — rebuild from the rubble when you can.",
+		Color(1.0, 0.34, 0.30),
+		3.4
+	)
+
+
+func _on_player_died() -> void:
+	state = GameState.GAME_OVER
+	var reason: String = (
+		"You fell in the ruins without shelter."
+		if (house != null and house.is_fallen)
+		else "The horde overwhelmed you on Day %d." % day
+	)
+	_hud.show_end_screen(
+		false,
+		"YOU FELL",
+		"%s\n\nEnemies Defeated: %d\nReached: Day %d (Act %d)" % [reason, _kills_total, day, act],
+		not _day_snapshot.is_empty()
+	)
+
+
+func _on_upgrade_action(action_id: String, payload: Dictionary) -> void:
+	if _economy.handle_settings_action(action_id, settings, _upgrade_ui):
+		return
+	if action_id == "restart_day":
+		_upgrade_ui.close_all()
+		_restore_day_snapshot()
+		return
+	if action_id == "main_menu":
+		_upgrade_ui.close_all()
+		_return_to_title()
+		return
+
+	var res: Dictionary = _economy.execute_action(
+		action_id, payload, bag, stockpile, house, fences,
+		_player, upgrades, act, watchtowers.size()
+	)
+	if not String(res["sfx"]).is_empty():
+		_sfx.play(String(res["sfx"]), -7.0)
+	if not String(res["message"]).is_empty():
+		_hud.show_message(String(res["message"]), 2.4, Color(0.62, 0.96, 0.68))
+	if not String(res["achievement"]).is_empty():
+		_unlock_achievement(String(res["achievement"]))
+	if bool(res["spawn_watchtower"]):
+		var off: Vector2 = (
+			Vector2(-64.0, -56.0) if watchtowers.is_empty() else Vector2(64.0, -56.0)
+		)
+		var wt: Watchtower = Watchtower.new()
+		wt.setup(Config.HOUSE_CENTER + off)
+		wt.fire_requested.connect(_on_watchtower_fire)
+		_entities_layer.add_child(wt)
+		watchtowers.append(wt)
+	var cur: Structure = _upgrade_ui.current_structure
+	if is_instance_valid(cur) and _upgrade_ui.active_panel == "structure":
+		_upgrade_ui.open_structure_menu(
+			cur, bag, stockpile, act, upgrades,
+			_economy.compute_ring_stats(fences), watchtowers.size()
+		)
+
+
+func _update_lighting_and_tint() -> void:
+	var target_tint: Color = Config.TINT_DAY
+	if state == GameState.NIGHT:
+		target_tint = Config.TINT_BLOOD if is_blood_moon else Config.TINT_NIGHT
+	elif state == GameState.DAY and is_dusk_warned:
+		target_tint = Config.TINT_DUSK
+	elif house != null and house.is_fallen:
+		target_tint = Config.TINT_HOPELESS
+	_tint.color = _tint.color.lerp(target_tint, 0.08)
+	if house != null:
+		house.update_lighting(
+			state == GameState.NIGHT,
+			state == GameState.DAY and is_dusk_warned,
+			is_blood_moon,
+			_intruders_inside
+		)
+
+
+func _push_hud_snapshot() -> void:
+	var s_prog: float = _search_timer / Config.SEARCH_HOLD_TIME if _search_prop_id >= 0 else 0.0
+	var near_st: Structure = _spawner.find_nearest_structure(structures, _player.position, 28.0)
+	_hud.update_hud(_spawner.build_hud_payload(
+		self, state == GameState.NIGHT, near_st, _hovered_struct,
+		_intruders_inside, _bounce_cd, _selected_trap_idx, _sfx.muted, s_prog
+	))
+
+
+func _unlock_achievement(ach_id: String) -> void:
+	var u_def: Dictionary = settings.unlock(ach_id)
+	if not u_def.is_empty():
+		_sfx.play("toast", -8.0)
+		_toasts.enqueue(
+			"Achievement: " + String(u_def["title"]),
+			String(u_def["desc"]),
+			String(u_def.get("icon", "trophy"))
+		)
+
+
+func _toggle_fullscreen() -> void:
+	settings.fullscreen = not settings.fullscreen
+	settings.save_settings()
+	settings.apply_display_and_audio()
+
+
+func _return_to_title() -> void:
+	state = GameState.TITLE
+	_spawner.clear_group_or_list(enemies)
+	_spawner.clear_group_or_list(arrows)
+	_hud.show_title_screen(not _day_snapshot.is_empty())
+
+
+func _restore_day_snapshot() -> void:
+	if _day_snapshot.is_empty():
+		_begin_new_run()
+		return
+	act = int(_day_snapshot["act"])
+	day = int(_day_snapshot["day"])
+	upgrades = _economy.apply_day_snapshot(
+		_day_snapshot, bag, stockpile, _player, house, fences
+	)
+	_world_builder.set_act1_fog_visible(act == 1)
+	_apply_camera_limits()
+	_hud.show_gameplay_hud()
+	_start_day(day)
+
+
+func _rebuild_world_and_structures(seed_val: int) -> void:
+	for layer_node in [_ground_layer, _decals_layer, _entities_layer]:
+		for child in layer_node.get_children():
+			if child != _player:
+				child.queue_free()
+	fences.clear()
+	structures.clear()
+	enemies.clear()
+	arrows.clear()
+	traps.clear()
+	watchtowers.clear()
+	dogs.clear()
+	_effects.clear_all()
+
+	_world_builder = WorldBuilder.new()
+	_world_builder.build_world(_ground_layer, _decals_layer, _entities_layer, seed_val)
+	house = Structure.new()
+	house.setup_house(_decals_layer)
+	house.crumbled_finished.connect(_on_house_crumbled)
+	_entities_layer.add_child(house)
+	structures.append(house)
+
+	var fence_specs: Array[Dictionary] = _world_builder.build_onion_fence_specs()
+	for i in range(fence_specs.size()):
+		var seg: Structure = Structure.new()
+		seg.setup_fence_segment(i, fence_specs[i], _decals_layer)
+		_entities_layer.add_child(seg)
+		fences.append(seg)
+		structures.append(seg)
+
+	if _player.get_parent() != _entities_layer:
+		_entities_layer.add_child(_player)
+	_effects.set_debug_refs(structures, _player, enemies)
+
+
+func _build_scene_tree() -> void:
+	_ground_layer = Node2D.new()
+	_decals_layer = Node2D.new()
+	_entities_layer = Node2D.new()
+	_entities_layer.y_sort_enabled = true
+	_effects = WorldEffects.new()
+	_effects.z_index = 15
+	_effects.meteor_impacted.connect(_on_meteor_impacted)
+	_tint = CanvasModulate.new()
+	_tint.color = Config.TINT_DAY
+	_camera = Camera2D.new()
+	_camera.enabled = true
+	_sfx = Sfx.new()
+	_hud = Hud.new()
+	_story = StoryCard.new()
+	_moonrise = MoonriseCutscene.new()
+	_upgrade_ui = UpgradeUI.new()
+	_toasts = ToastLayer.new()
+	for child_n in [
+		_ground_layer, _decals_layer, _entities_layer, _effects, _tint,
+		_camera, _sfx, _hud, _story, _moonrise, _upgrade_ui, _toasts
+	]:
+		add_child(child_n)
+	_player = Player.new()
+	_player.spear_swung.connect(_on_player_spear_swung)
+	_player.bow_fired.connect(_on_player_bow_fired)
+	_player.bow_empty_clicked.connect(func() -> void: _sfx.play("bow_empty", -8.0))
+	_player.bow_reloaded.connect(func() -> void: _sfx.play("pickup", -11.0))
+	_player.died.connect(_on_player_died)
+	_entities_layer.add_child(_player)
+
+
+func _connect_ui_signals() -> void:
+	_hud.play_requested.connect(func(cont: bool) -> void:
+		if cont and not _day_snapshot.is_empty():
+			_restore_day_snapshot()
+		else:
+			_begin_new_run(false)
+	)
+	_hud.menu_panel_requested.connect(func(kind: String) -> void:
+		_info_return_to_title = true
+		_upgrade_ui.open_info_panel(kind, settings)
+	)
+	_hud.quit_requested.connect(func() -> void: get_tree().quit(0))
+	_hud.retry_day_requested.connect(_restore_day_snapshot)
+	_hud.new_game_requested.connect(func() -> void: _begin_new_run(false))
+	_hud.return_to_menu_requested.connect(_return_to_title)
+	_story.sequence_finished.connect(func(_s: bool) -> void:
+		if _pending_story_cb.is_valid():
+			var cb: Callable = _pending_story_cb
+			_pending_story_cb = Callable()
+			cb.call()
+	)
+	_moonrise.finished.connect(_start_night_combat)
+	_upgrade_ui.action_triggered.connect(_on_upgrade_action)
+	_upgrade_ui.menu_closed.connect(func() -> void:
+		if _info_return_to_title:
+			_info_return_to_title = false
+		elif state == GameState.PAUSED:
+			state = _pre_pause_state
+	)
+
+
+func _apply_camera_limits() -> void:
+	var r: Rect2 = Config.ACT1_RECT if act == 1 else Config.WORLD_RECT
+	_camera.limit_left = int(r.position.x)
+	_camera.limit_top = int(r.position.y)
+	_camera.limit_right = int(r.end.x)
+	_camera.limit_bottom = int(r.end.y)
+
+
+func _update_camera() -> void:
+	var target: Vector2 = Config.HOUSE_CENTER if _player.inside_house else _player.position
+	if _shake_timer > 0.0 and settings.screen_shake:
+		target += Vector2(randf_range(-_shake_amp, _shake_amp), randf_range(-_shake_amp, _shake_amp))
+	_camera.position = target.round()
+
+
+func _add_shake(duration: float, amp: float) -> void:
+	if settings.screen_shake:
+		_shake_timer = maxf(_shake_timer, duration)
+		_shake_amp = maxf(_shake_amp, amp)
+
+
+func _clear_dynamic_world() -> void:
+	_clear_piles()
+	_spawner.clear_group_or_list(enemies)
+	_spawner.clear_group_or_list(arrows)
 
 
 func _clear_piles() -> void:
-	for node in get_tree().get_nodes_in_group("piles"):
-		node.queue_free()
+	for p in get_tree().get_nodes_in_group("piles"):
+		if is_instance_valid(p):
+			p.queue_free()
 
 
-func _clear_enemies() -> void:
-	_wave_groups.clear()
-	_active_group_types.clear()
-	for node in get_tree().get_nodes_in_group("enemies"):
-		node.queue_free()
+func _cleanup_arrays() -> void:
+	enemies = enemies.filter(func(e: Enemy) -> bool: return is_instance_valid(e))
+	arrows = arrows.filter(func(a: Arrow) -> bool: return is_instance_valid(a))
+	traps = traps.filter(func(t: Trap) -> bool: return is_instance_valid(t))
+	watchtowers = watchtowers.filter(func(w: Watchtower) -> bool: return is_instance_valid(w))
+	dogs = dogs.filter(func(d: Dog) -> bool: return is_instance_valid(d))
 
 
-func _dissolve_all_enemies() -> void:
-	_wave_groups.clear()
-	_active_group_types.clear()
-	for node in get_tree().get_nodes_in_group("enemies"):
-		var enemy: Enemy = node as Enemy
-		if enemy != null:
-			enemy.dissolve()
+# --- Headless --smoke hooks (T0.0) ---
+func smoke_start_run() -> void:
+	_begin_new_run(true)
 
 
-## Spawns a short rising text popup in world space using the shared retro pixel font Theme.
-func _spawn_floating_text(world_pos: Vector2, text: String, color: Color) -> void:
-	WorldBuilder.spawn_floating_text(
-		_effects, world_pos, text, color, SpriteFactory.get_game_theme(Config.PIXEL_FONT_PATH)
-	)
+func smoke_get_state() -> String:
+	return String(GameState.keys()[state])
 
 
-## Handles editor-only debug shortcuts (F1 skip phase, F2 god mode, F3 4x speed, F4 Act 2 jump).
-func _handle_debug_key(code: Key) -> void:
-	match code:
-		KEY_F1:
-			_debug_skip_phase()
-		KEY_F2:
-			god_mode = not god_mode
-			var msg: String = "DEBUG: God Mode ON" if god_mode else "DEBUG: God Mode OFF"
-			_hud.show_banner(msg, Color(1.0, 0.9, 0.4), 2.0)
-		KEY_F3:
-			Engine.time_scale = 4.0 if Engine.time_scale < 2.0 else 1.0
-			_hud.show_banner("DEBUG: Speed %.0fx" % Engine.time_scale, Color(0.65, 0.95, 1.0), 2.0)
-		KEY_F4:
-			_start_act2(true)
-			_start_day(4)
-			_hud.show_banner("DEBUG: Jumped to Act 2 Day 4", Color(0.65, 0.95, 1.0), 2.5)
+func smoke_skip_overlay() -> void:
+	if _story.active:
+		_story.show_cards([], true, true)
+	if _moonrise.active:
+		_moonrise.skip_now()
 
 
-func _debug_skip_phase() -> void:
-	_ensure_unpaused()
-	match phase:
-		Phase.TITLE, Phase.STORY, Phase.WON:
-			_on_story_advance()
-		Phase.DAWN:
-			_start_day(current_night)
-		Phase.DAY:
-			if act == 2:
-				phase_timer = Config.ACT2_DUSK_TIME
-				_enter_dusk()
-			else:
-				_clear_piles()
-				_start_night(current_night, false)
-		Phase.DUSK:
-			_clear_piles()
-			_start_night(current_night, false)
-		Phase.NIGHT:
-			_complete_night()
-		Phase.LOST:
-			_on_retry_requested()
+func smoke_fast_forward_day() -> void:
+	stockpile.add("plank", 10)
+	phase_timer = 0.01
+
+
+func smoke_defend_step(delta: float) -> void:
+	_player.hp = _player.max_hp
+	if house != null and house.hp < 50:
+		house.set_hp(house.max_hp)
+	_player.try_fire_bow(enemies, bag)
+	phase_timer -= delta * 18.0
+	if phase_timer <= 0.0:
+		_wave_queue.clear()
+		_finish_night()

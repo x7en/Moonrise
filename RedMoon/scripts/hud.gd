@@ -1,434 +1,599 @@
-class_name HUD
+class_name Hud
 extends CanvasLayer
-## Heads-up display: player hearts, house HP bar, sky moon, timer, planks, Bounce bar, banner.
+## 640x360 pixel HUD (T0.1b / T0.B / T0.2 / T1.1 / T1.2 / T1.5 / T2.3 / T3.1 / T3.3 / T3.4).
+## No persistent sky moon icon (T1.1). Main Menu reuses MoonSky live sky (T3.4).
 
-const HEART_COUNT := 5
+signal play_requested(continue_run: bool)
+signal menu_panel_requested(panel_kind: String)
+signal quit_requested()
+signal retry_day_requested()
+signal new_game_requested()
+signal return_to_menu_requested()
 
 var _root: Control = null
-var _hearts: Array[TextureRect] = []
-var _house_bar_fill: ColorRect = null
-var _house_hp_label: Label = null
-var _moon_icon: TextureRect = null
-var _phase_label: Label = null
-var _plank_icon: TextureRect = null
-var _plank_label: Label = null
-var _bounce_bar_fill: ColorRect = null
-var _bounce_status_label: Label = null
-var _prompt_label: Label = null
-var _controls_label: Label = null
+var _hud_layer: Control = null
 
-var _banner_panel: ColorRect = null
-var _banner_label: Label = null
-var _banner_tween: Tween = null
-var _moon_pulse_time: float = 0.0
-var _is_blood_moon_active: bool = false
+# Top-left status cluster
+var _hp_fill: ColorRect = null
+var _hp_lbl: Label = null
+var _house_lbl: Label = null
+var _house_icon: TextureRect = null
+var _bag_lbl: Label = null
+var _stock_lbl: Label = null
+var _bow_lbl: Label = null
 
-var _heart_full_tex: Texture2D = null
-var _heart_half_tex: Texture2D = null
-var _heart_empty_tex: Texture2D = null
-var _moon_pale_tex: Texture2D = null
-var _moon_blood_tex: Texture2D = null
+# Top-center clock & persistent objective strip (T0.2)
+var _day_lbl: Label = null
+var _timer_lbl: Label = null
+var _objective_lbl: Label = null
+
+# Top-right bounce & mute/controls strip
+var _bounce_lbl: Label = null
+var _trap_lbl: Label = null
+var _status_lbl: Label = null
+
+# Center banners, search bar, tooltip, home arrow
+var _header_panel: PanelContainer = null
+var _header_title: Label = null
+var _header_sub: Label = null
+var _header_timer: float = 0.0
+var _toast_lbl: Label = null
+var _toast_timer: float = 0.0
+var _prompt_lbl: Label = null
+var _tooltip_lbl: Label = null
+var _search_bar_bg: ColorRect = null
+var _search_bar_fill: ColorRect = null
+var _home_arrow: Label = null
+var _vignette: ColorRect = null
+
+# Main menu (T3.4) & End screen
+var _title_screen: Control = null
+var _menu_sky: MoonSky = null
+var _menu_buttons: Array[Button] = []
+var _menu_continue_btn: Button = null
+var _menu_idx: int = 0
+var _end_screen: Control = null
+var _end_title: Label = null
+var _end_body: Label = null
+var _end_retry_btn: Button = null
+var _end_buttons: Array[Button] = []
+var _end_idx: int = 0
 
 
-## Builds all HUD elements under one Root Control that shares the game's retro pixel font Theme.
 func _ready() -> void:
-	name = "HUD"
-	layer = 5
-
-	# Cache frequently updated HUD textures once at startup.
-	_heart_full_tex = SpriteFactory.tex("ui/heart_full")
-	_heart_half_tex = SpriteFactory.tex("ui/heart_half")
-	_heart_empty_tex = SpriteFactory.tex("ui/heart_empty")
-	_moon_pale_tex = SpriteFactory.get_moon_texture(20, false)
-	_moon_blood_tex = SpriteFactory.get_moon_texture(20, true)
-
+	layer = 20
 	_root = Control.new()
-	_root.name = "Root"
 	_root.position = Vector2.ZERO
 	_root.size = Config.VIEW_SIZE
+	_root.theme = SpriteFactory.get_game_theme()
 	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.theme = SpriteFactory.get_game_theme(Config.PIXEL_FONT_PATH)
 	add_child(_root)
 
-	_build_top_left()
-	_build_sky_moon()
-	_build_top_right()
-	_build_bottom_left()
-	_build_bottom_bar()
-	_build_banner()
+	_build_hud()
+	_build_title_screen()
+	_build_end_screen()
+	show_title_screen(false)
 
 
-## Gently pulses the sky moon glow during Blood Moon nights so the threat stays unmistakable.
 func _process(delta: float) -> void:
-	if not visible or _moon_icon == null:
+	if _title_screen != null and _title_screen.visible and _menu_sky != null:
+		_menu_sky.update_sky(delta)
+
+	if _header_timer > 0.0 and _header_panel != null:
+		_header_timer = maxf(0.0, _header_timer - delta)
+		_header_panel.modulate.a = clampf(_header_timer / 0.45, 0.0, 1.0)
+		if _header_timer <= 0.0:
+			_header_panel.visible = false
+
+	if _toast_timer > 0.0 and _toast_lbl != null:
+		_toast_timer = maxf(0.0, _toast_timer - delta)
+		_toast_lbl.modulate.a = clampf(_toast_timer / 0.35, 0.0, 1.0)
+		if _toast_timer <= 0.0:
+			_toast_lbl.visible = false
+
+
+func show_title_screen(has_continue: bool) -> void:
+	_title_screen.visible = true
+	_hud_layer.visible = false
+	_end_screen.visible = false
+	_menu_sky.configure_for_night(3, true, false)
+	_menu_sky.moon_progress = 0.88
+	_menu_sky.red_blend = 0.92
+	_menu_continue_btn.visible = has_continue
+	_menu_idx = 1 if has_continue else 0
+	_focus_menu_button(_menu_idx)
+
+
+func show_gameplay_hud() -> void:
+	_title_screen.visible = false
+	_end_screen.visible = false
+	_hud_layer.visible = true
+
+
+func show_end_screen(victory: bool, title_txt: String, body_txt: String, can_retry: bool) -> void:
+	_title_screen.visible = false
+	_hud_layer.visible = false
+	_end_screen.visible = true
+	_end_title.text = title_txt
+	SpriteFactory.style_label(
+		_end_title,
+		"display",
+		16,
+		Color(0.56, 0.96, 0.62) if victory else Color(1.0, 0.38, 0.34)
+	)
+	_end_body.text = body_txt
+	_end_retry_btn.visible = can_retry
+	_end_idx = 0 if can_retry else 1
+	if _end_idx < _end_buttons.size() and _end_buttons[_end_idx].visible:
+		_end_buttons[_end_idx].grab_focus()
+
+
+## T0.2: Big centered day/night header banner (e.g., "DAY 1 - ACT 1", "NIGHT 3 - BLOOD MOON!").
+func show_header_banner(
+	title_txt: String,
+	subtitle_txt: String,
+	accent: Color,
+	dur: float = 2.6
+) -> void:
+	_header_title.text = title_txt
+	SpriteFactory.style_label(_header_title, "display", 16, accent)
+	_header_sub.text = subtitle_txt
+	_header_panel.modulate.a = 1.0
+	_header_panel.visible = true
+	_header_timer = dur
+
+
+func show_message(text: String, duration: float = 2.0, col: Color = Color(1.0, 0.92, 0.68)) -> void:
+	_toast_lbl.text = text
+	SpriteFactory.style_label(_toast_lbl, "bold", 8, col)
+	_toast_lbl.modulate.a = 1.0
+	_toast_lbl.visible = true
+	_toast_timer = duration
+
+
+func update_hud(data: Dictionary) -> void:
+	var hp: int = int(data.get("hp", 50))
+	var max_hp: int = maxi(1, int(data.get("max_hp", 50)))
+	_hp_fill.size.x = floorf(78.0 * clampf(float(hp) / float(max_hp), 0.0, 1.0))
+	_hp_lbl.text = "HP %d/%d" % [hp, max_hp]
+
+	var house_fallen: bool = bool(data.get("house_fallen", false))
+	var house_hp: int = int(data.get("house_hp", 100))
+	var house_max: int = int(data.get("house_max", 100))
+	var door_open: bool = bool(data.get("door_open", false))
+	var intruders: int = int(data.get("intruders", 0))
+	if house_fallen:
+		_house_lbl.text = "HOUSE FALLEN! (No Shelter)"
+		SpriteFactory.style_label(_house_lbl, "bold", 8, Color(1.0, 0.42, 0.36))
+		_house_icon.texture = SpriteFactory.get_icon_texture("broken_house")
+		_house_icon.visible = true
+	else:
+		var door_tag: String = "OPEN" if door_open else "CLOSED"
+		_house_lbl.text = "House %d/%d  Door:%s" % [house_hp, house_max, door_tag]
+		SpriteFactory.style_label(
+			_house_lbl,
+			"bold",
+			8,
+			Color(1.0, 0.72, 0.35) if door_open else Color(0.84, 0.92, 0.86)
+		)
+		_house_icon.visible = false
+
+	_bag_lbl.text = "Bag %d/%d (P:%d S:%d)" % [
+		int(data.get("bag_used", 0)),
+		int(data.get("bag_cap", 16)),
+		int(data.get("bag_planks", 0)),
+		int(data.get("bag_scrap", 0)),
+	]
+	_stock_lbl.text = "Stock P:%d  S:%d" % [
+		int(data.get("stock_planks", 0)),
+		int(data.get("stock_scrap", 0)),
+	]
+
+	var reloading: bool = bool(data.get("reloading", false))
+	if reloading:
+		_bow_lbl.text = "Bow: Reloading... (Res %d)" % int(data.get("arrows", 0))
+		SpriteFactory.style_label(_bow_lbl, "bold", 8, Color(1.0, 0.82, 0.40))
+	else:
+		_bow_lbl.text = "Bow: %d/%d  Res:%d  [F/R]" % [
+			int(data.get("mag", 6)),
+			int(data.get("mag_max", 6)),
+			int(data.get("arrows", 0)),
+		]
+		SpriteFactory.style_label(_bow_lbl, "bold", 8, Color(0.92, 0.94, 1.0))
+
+	_day_lbl.text = String(data.get("phase_label", "DAY 1"))
+	var secs: int = maxi(0, ceili(float(data.get("time_left", 0.0))))
+	_timer_lbl.text = "%d:%02d" % [int(floorf(float(secs) / 60.0)), secs % 60]
+	_objective_lbl.text = String(data.get("objective", ""))
+
+	var b_cd: float = float(data.get("bounce_cd", 0.0))
+	_bounce_lbl.text = (
+		"[Q] Shockwave READY" if b_cd <= 0.0 else "[Q] Shockwave %.0fs" % ceilf(b_cd)
+	)
+	SpriteFactory.style_label(
+		_bounce_lbl, "bold", 8, Color(0.62, 0.94, 1.0) if b_cd <= 0.0 else Color(0.66, 0.66, 0.72)
+	)
+
+	var sel_t: int = int(data.get("selected_trap", 1))
+	_trap_lbl.text = "[1]Spk:%d [2]Snr:%d [3]Lur:%d (%d) [T]" % [
+		int(data.get("trap_spike", 0)),
+		int(data.get("trap_snare", 0)),
+		int(data.get("trap_lure", 0)),
+		sel_t,
+	]
+
+	var extras: Array[String] = []
+	if bool(data.get("inside_house", false)):
+		extras.append("INDOORS (Safe - Shoot w/ F, E Exit)")
+	if intruders > 0:
+		extras.append("INTRUDERS INSIDE: %d! [Space] Clear" % intruders)
+	if bool(data.get("muted", false)):
+		extras.append("MUTED [M]")
+	_status_lbl.text = "  |  ".join(extras)
+	_status_lbl.visible = not extras.is_empty()
+
+	var prompt_txt: String = String(data.get("prompt", ""))
+	_prompt_lbl.text = prompt_txt
+	_prompt_lbl.visible = not prompt_txt.is_empty()
+
+	var tip_txt: String = String(data.get("tooltip", ""))
+	_tooltip_lbl.text = tip_txt
+	_tooltip_lbl.visible = not tip_txt.is_empty()
+
+	var search_frac: float = float(data.get("search_progress", 0.0))
+	_search_bar_bg.visible = search_frac > 0.0
+	_search_bar_fill.size.x = floorf(84.0 * clampf(search_frac, 0.0, 1.0))
+
+	# Off-screen home arrow when far from farmhouse in Act 2 (T3.1).
+	var home_dir: Vector2 = data.get("home_arrow_dir", Vector2.ZERO) as Vector2
+	if home_dir.length_squared() > 0.01:
+		_home_arrow.visible = true
+		var edge: Vector2 = Config.VIEW_SIZE * 0.5 + home_dir.normalized() * Vector2(270.0, 130.0)
+		_home_arrow.position = Vector2(
+			clampf(edge.x - 28.0, 12.0, Config.VIEW_SIZE.x - 68.0),
+			clampf(edge.y - 8.0, 56.0, Config.VIEW_SIZE.y - 32.0)
+		)
+	else:
+		_home_arrow.visible = false
+
+	# Subtle red border danger flash on low HP or active intruders (T1.5).
+	if intruders > 0 or (hp > 0 and hp <= 15):
+		_vignette.visible = true
+		_vignette.color = Color(0.75, 0.08, 0.08, 0.16)
+	else:
+		_vignette.visible = false
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not (event is InputEventKey):
 		return
-	if _is_blood_moon_active:
-		_moon_pulse_time += delta
-		var glow: float = 0.85 + 0.15 * sin(_moon_pulse_time * 3.8)
-		_moon_icon.modulate = Color(1.0, glow, glow, 1.0)
+	var ke: InputEventKey = event as InputEventKey
+	if not ke.pressed or ke.echo:
+		return
+	if _title_screen.visible:
+		_handle_menu_nav(ke, _menu_buttons, true)
+	elif _end_screen.visible:
+		_handle_menu_nav(ke, _end_buttons, false)
 
 
-## Shows or hides the entire HUD layer (hidden on Title, Story Cards, and Lose screen).
-func set_hud_visible(is_visible: bool) -> void:
-	visible = is_visible
-
-
-## Refreshes every HUD widget from a clean dictionary snapshot passed by main.gd.
-func update_state(data: Dictionary) -> void:
-	var player_hp: int = int(data.get("player_hp", Config.PLAYER_HP))
-	var house_hp: int = int(data.get("house_hp", Config.HOUSE_HP))
-	var house_max: int = int(data.get("house_max_hp", Config.HOUSE_HP))
-	var phase_title: String = String(data.get("phase_title", "Day 1"))
-	var time_left: float = float(data.get("time_left", 0.0))
-	var is_night: bool = bool(data.get("is_night", false))
-	var is_blood: bool = bool(data.get("is_blood_moon", false))
-	var is_dusk: bool = bool(data.get("is_dusk", false))
-	var act: int = int(data.get("act", 1))
-	var bag: int = int(data.get("bag", 0))
-	var stockpile: int = int(data.get("stockpile", 0))
-	var bounce_cd: float = float(data.get("bounce_cd", 0.0))
-	var bounce_cd_max: float = maxf(0.1, float(data.get("bounce_cd_max", Config.BOUNCE_CD_ACT1)))
-	var bounce_stun: float = float(data.get("bounce_stun", 0.0))
-	var bounce_bonuses: int = int(data.get("bounce_bonuses", 0))
-	var muted: bool = bool(data.get("muted", false))
-	var god_mode: bool = bool(data.get("god_mode", false))
-	var repair_prompt: String = String(data.get("repair_prompt", ""))
-
-	_update_hearts(player_hp, bounce_stun)
-	_update_house_bar(house_hp, house_max, god_mode)
-	_update_sky_moon(is_night, is_blood, is_dusk)
-	_update_phase_and_planks(phase_title, time_left, is_blood, is_dusk, act, bag, stockpile)
-	_update_bounce_bar(bounce_cd, bounce_cd_max, bounce_stun, bounce_bonuses)
-	_update_bottom_text(act, muted, repair_prompt)
-
-
-## Displays a centered notification banner that holds briefly, then fades out smoothly.
-func show_banner(text: String, color: Color = Color.WHITE, duration: float = 3.0) -> void:
-	if _banner_tween != null and _banner_tween.is_valid():
-		_banner_tween.kill()
-
-	_banner_label.text = text
-	_banner_label.add_theme_color_override("font_color", color)
-	_banner_panel.visible = true
-	_banner_panel.modulate.a = 1.0
-
-	var hold_time: float = maxf(0.3, duration - 0.6)
-	_banner_tween = create_tween()
-	_banner_tween.tween_interval(hold_time)
-	_banner_tween.tween_property(_banner_panel, "modulate:a", 0.0, 0.6)
-	_banner_tween.tween_callback(_hide_banner)
-
-
-## Immediately clears any active banner (called when changing to Title or Story cards).
-func clear_banner() -> void:
-	if _banner_tween != null and _banner_tween.is_valid():
-		_banner_tween.kill()
-	_hide_banner()
-
-
-func _hide_banner() -> void:
-	if _banner_panel != null:
-		_banner_panel.visible = false
-		_banner_panel.modulate.a = 0.0
-
-
-## Updates the 5 player HP hearts (each full heart = 10 HP, half heart = 5 HP).
-func _update_hearts(player_hp: int, bounce_stun: float) -> void:
-	for i in range(HEART_COUNT):
-		var remaining: int = player_hp - i * 10
-		if remaining >= 10:
-			_hearts[i].texture = _heart_full_tex
-		elif remaining >= 5 or (remaining > 0 and bounce_stun > 0.0):
-			_hearts[i].texture = _heart_half_tex
-		else:
-			_hearts[i].texture = _heart_empty_tex
-
-
-## Updates the red house health bar and numeric counter.
-func _update_house_bar(house_hp: int, house_max: int, god_mode: bool) -> void:
-	var fraction: float = clampf(float(house_hp) / float(maxi(1, house_max)), 0.0, 1.0)
-	_house_bar_fill.size.x = floorf(70.0 * fraction) if house_hp > 0 else 0.0
-	if god_mode:
-		_house_hp_label.text = "%d/%d [GOD]" % [house_hp, house_max]
+func _handle_menu_nav(ke: InputEventKey, btns: Array[Button], is_title: bool) -> void:
+	var visible_btns: Array[Button] = []
+	for b in btns:
+		if b.visible:
+			visible_btns.append(b)
+	if visible_btns.is_empty():
+		return
+	var idx: int = _menu_idx if is_title else _end_idx
+	idx = clampi(idx, 0, visible_btns.size() - 1)
+	if ke.keycode in [KEY_UP, KEY_W]:
+		get_viewport().set_input_as_handled()
+		idx = (idx - 1 + visible_btns.size()) % visible_btns.size()
+	elif ke.keycode in [KEY_DOWN, KEY_S]:
+		get_viewport().set_input_as_handled()
+		idx = (idx + 1) % visible_btns.size()
+	elif ke.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE]:
+		get_viewport().set_input_as_handled()
+		visible_btns[idx].pressed.emit()
+		return
 	else:
-		_house_hp_label.text = "%d/%d" % [house_hp, house_max]
-
-
-## Updates the visible sky moon: faint by day, rising at dusk, silver at night, RED on Blood Moon.
-func _update_sky_moon(is_night: bool, is_blood: bool, is_dusk: bool) -> void:
-	var entered_blood: bool = is_blood and not _is_blood_moon_active
-	_is_blood_moon_active = is_blood
-	if is_blood:
-		_moon_icon.texture = _moon_blood_tex
-		if entered_blood:
-			_moon_pulse_time = 0.0
-			_moon_icon.modulate = Color.WHITE
-		_moon_icon.visible = true
-	elif is_night:
-		_moon_icon.texture = _moon_pale_tex
-		_moon_icon.modulate = Color(0.92, 0.96, 1.0, 1.0)
-		_moon_icon.visible = true
-	elif is_dusk:
-		_moon_icon.texture = _moon_pale_tex
-		_moon_icon.modulate = Color(1.0, 0.78, 0.56, 0.7)
-		_moon_icon.visible = true
+		return
+	if is_title:
+		_menu_idx = idx
 	else:
-		# Subtle pale daytime moon in the sky so players always know where to watch for it.
-		_moon_icon.texture = _moon_pale_tex
-		_moon_icon.modulate = Color(0.88, 0.92, 1.0, 0.25)
-		_moon_icon.visible = true
+		_end_idx = idx
+	visible_btns[idx].grab_focus()
 
 
-## Updates the top-right day/night timer and plank bag / stockpile counters.
-func _update_phase_and_planks(
-	phase_title: String,
-	time_left: float,
-	is_blood: bool,
-	is_dusk: bool,
-	act: int,
-	bag: int,
-	stockpile: int
-) -> void:
-	var total_secs: int = maxi(0, ceili(time_left))
-	var mins: int = floori(float(total_secs) / 60.0)
-	var rem_secs: int = total_secs % 60
-	_phase_label.text = "%s  %d:%02d" % [phase_title, mins, rem_secs]
-
-	if is_blood:
-		_phase_label.add_theme_color_override("font_color", Color(1.0, 0.42, 0.42))
-	elif is_dusk:
-		_phase_label.add_theme_color_override("font_color", Color(1.0, 0.82, 0.56))
-	else:
-		_phase_label.add_theme_color_override("font_color", Color.WHITE)
-
-	if act == 1:
-		_plank_label.text = "Bag: %d" % bag
-		_plank_label.add_theme_color_override("font_color", Color(1.0, 0.96, 0.85))
-	else:
-		_plank_label.text = "Bag: %d  Stock: %d" % [bag, stockpile]
-		if is_dusk and Config.LOSE_BAG_AT_DUSK and bag > 0:
-			_plank_label.add_theme_color_override("font_color", Color(1.0, 0.58, 0.36))
-		else:
-			_plank_label.add_theme_color_override("font_color", Color(1.0, 0.96, 0.85))
+func _focus_menu_button(idx: int) -> void:
+	var vis: Array[Button] = []
+	for b in _menu_buttons:
+		if b.visible:
+			vis.append(b)
+	if not vis.is_empty():
+		_menu_idx = clampi(idx, 0, vis.size() - 1)
+		vis[_menu_idx].grab_focus()
 
 
-## Updates the bottom-left Bounce Back bar (READY, HEAL countdown, or cooldown recharge).
-func _update_bounce_bar(
-	bounce_cd: float,
-	bounce_cd_max: float,
-	bounce_stun: float,
-	bounce_bonuses: int
-) -> void:
-	var bonus_tag: String = ""
-	if bounce_bonuses > 0:
-		var pct: int = int(round(float(bounce_bonuses) * Config.SWING_GROWTH_PER_BOUNCE * 100.0))
-		bonus_tag = " +%d%%" % pct
+func _build_hud() -> void:
+	_hud_layer = Control.new()
+	_hud_layer.position = Vector2.ZERO
+	_hud_layer.size = Config.VIEW_SIZE
+	_hud_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_root.add_child(_hud_layer)
 
-	if bounce_stun > 0.0:
-		var heal_frac: float = 1.0 - clampf(bounce_stun / maxf(Config.BOUNCE_STUN, 0.1), 0.0, 1.0)
-		_bounce_bar_fill.size.x = maxf(1.0, floorf(44.0 * heal_frac))
-		_bounce_bar_fill.color = Color(0.35, 0.92, 0.72, 1.0)
-		_bounce_status_label.text = "HEAL %.1fs%s" % [bounce_stun, bonus_tag]
-	elif bounce_cd > 0.0:
-		var ready_frac: float = 1.0 - clampf(bounce_cd / bounce_cd_max, 0.0, 1.0)
-		_bounce_bar_fill.size.x = floorf(44.0 * ready_frac)
-		_bounce_bar_fill.color = Color(0.45, 0.62, 0.82, 1.0)
-		_bounce_status_label.text = "%ds%s" % [ceili(bounce_cd), bonus_tag]
-	else:
-		_bounce_bar_fill.size.x = 44.0
-		_bounce_bar_fill.color = Color(0.35, 0.86, 1.0, 1.0)
-		_bounce_status_label.text = "READY%s" % bonus_tag
+	_vignette = ColorRect.new()
+	_vignette.position = Vector2.ZERO
+	_vignette.size = Config.VIEW_SIZE
+	_vignette.color = Color(0.75, 0.08, 0.08, 0.0)
+	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_vignette.visible = false
+	_hud_layer.add_child(_vignette)
 
+	# Top bar translucent backdrop (compact 44 px height on 640x360 viewport).
+	var top_bar: ColorRect = ColorRect.new()
+	top_bar.position = Vector2.ZERO
+	top_bar.size = Vector2(Config.VIEW_SIZE.x, 44.0)
+	top_bar.color = Color(0.05, 0.04, 0.09, 0.62)
+	top_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud_layer.add_child(top_bar)
 
-## Updates the contextual repair prompt and the one-line controls footer.
-func _update_bottom_text(act: int, muted: bool, repair_prompt: String) -> void:
-	_prompt_label.text = repair_prompt
-	_prompt_label.visible = not repair_prompt.is_empty()
+	# Left cluster: HP bar, House status, Bag & Stockpile, Bow ammo.
+	var hp_bg: ColorRect = ColorRect.new()
+	hp_bg.position = Vector2(8.0, 5.0)
+	hp_bg.size = Vector2(80.0, 9.0)
+	hp_bg.color = Color(0.14, 0.08, 0.12, 0.95)
+	_hud_layer.add_child(hp_bg)
 
-	var controls_text: String = "WASD/Arrows: Move  Space: Spear  B: Bounce  Esc: Pause  M: Mute"
-	if act == 2:
-		controls_text = "WASD: Move  Space: Spear  B: Bounce  E: Repair  Esc: Pause  M: Mute"
-	if muted:
-		controls_text += " [MUTE]"
-	_controls_label.text = controls_text
+	_hp_fill = ColorRect.new()
+	_hp_fill.position = Vector2(9.0, 6.0)
+	_hp_fill.size = Vector2(78.0, 7.0)
+	_hp_fill.color = Color(0.86, 0.24, 0.26, 1.0)
+	_hud_layer.add_child(_hp_fill)
 
-
-func _build_top_left() -> void:
-	_hearts.clear()
-	for i in range(HEART_COUNT):
-		var heart: TextureRect = TextureRect.new()
-		heart.texture = SpriteFactory.tex("ui/heart_full")
-		heart.position = Vector2(8.0 + float(i * 15), 6.0)
-		heart.size = Vector2(13.0, 12.0)
-		heart.stretch_mode = TextureRect.STRETCH_KEEP
-		heart.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		_root.add_child(heart)
-		_hearts.append(heart)
-
-	var house_tag: Label = _make_label(
-		"HOUSE",
-		Vector2(8.0, 21.0),
-		Vector2(44.0, 12.0),
-		8,
-		Color(0.95, 0.85, 0.85)
+	_hp_lbl = _mk_lbl(Vector2(92.0, 4.0), Vector2(84.0, 12.0), "bold", 8, Color.WHITE)
+	_house_icon = TextureRect.new()
+	_house_icon.position = Vector2(8.0, 16.0)
+	_house_icon.size = Vector2(12.0, 12.0)
+	_house_icon.visible = false
+	_hud_layer.add_child(_house_icon)
+	_house_lbl = _mk_lbl(
+		Vector2(22.0, 17.0), Vector2(190.0, 12.0), "bold", 8, Color(0.86, 0.94, 0.86)
 	)
-	_root.add_child(house_tag)
-
-	var bar_bg: ColorRect = ColorRect.new()
-	bar_bg.position = Vector2(52.0, 22.0)
-	bar_bg.size = Vector2(72.0, 8.0)
-	bar_bg.color = Color(0.11, 0.07, 0.08, 0.9)
-	_root.add_child(bar_bg)
-
-	_house_bar_fill = ColorRect.new()
-	_house_bar_fill.position = Vector2(53.0, 23.0)
-	_house_bar_fill.size = Vector2(70.0, 6.0)
-	_house_bar_fill.color = Color(0.84, 0.18, 0.2, 1.0)
-	_root.add_child(_house_bar_fill)
-
-	_house_hp_label = _make_label(
-		"100/100",
-		Vector2(128.0, 21.0),
-		Vector2(84.0, 12.0),
-		8,
-		Color.WHITE
+	_bag_lbl = _mk_lbl(Vector2(8.0, 29.0), Vector2(128.0, 12.0), "body", 8, Color(0.95, 0.86, 0.62))
+	_stock_lbl = _mk_lbl(
+		Vector2(138.0, 29.0), Vector2(110.0, 12.0), "body", 8, Color(0.80, 0.88, 0.96)
 	)
-	_root.add_child(_house_hp_label)
 
-
-## Places the visible sky moon at the top center of the screen.
-func _build_sky_moon() -> void:
-	_moon_icon = TextureRect.new()
-	_moon_icon.name = "SkyMoon"
-	_moon_icon.texture = SpriteFactory.get_moon_texture(20, false)
-	_moon_icon.position = Vector2(230.0, 5.0)
-	_moon_icon.size = Vector2(20.0, 20.0)
-	_moon_icon.stretch_mode = TextureRect.STRETCH_KEEP
-	_moon_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_root.add_child(_moon_icon)
-
-
-func _build_top_right() -> void:
-	_phase_label = _make_label(
-		"Day 1  1:00",
-		Vector2(266.0, 6.0),
-		Vector2(206.0, 12.0),
-		8,
-		Color.WHITE
+	# Center cluster: Day/Night + Clock + Persistent Objective Strip (T0.2).
+	_day_lbl = _mk_lbl(
+		Vector2(236.0, 3.0), Vector2(168.0, 14.0), "bold", 8, Color(1.0, 0.90, 0.64)
 	)
-	_phase_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_root.add_child(_phase_label)
-
-	_plank_icon = TextureRect.new()
-	_plank_icon.texture = SpriteFactory.tex("pickups_planks/pallet_2")
-	_plank_icon.position = Vector2(316.0, 19.0)
-	_plank_icon.size = Vector2(14.0, 10.0)
-	_plank_icon.stretch_mode = TextureRect.STRETCH_KEEP
-	_plank_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_root.add_child(_plank_icon)
-
-	_plank_label = _make_label(
-		"Bag: 0",
-		Vector2(332.0, 19.0),
-		Vector2(140.0, 12.0),
-		8,
-		Color(1.0, 0.96, 0.85)
+	_day_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_timer_lbl = _mk_lbl(Vector2(236.0, 14.0), Vector2(168.0, 14.0), "bold", 8, Color.WHITE)
+	_timer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_objective_lbl = _mk_lbl(
+		Vector2(170.0, 29.0), Vector2(300.0, 12.0), "body", 8, Color(0.98, 0.92, 0.72)
 	)
-	_plank_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_root.add_child(_plank_label)
+	_objective_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
-
-func _build_bottom_left() -> void:
-	var b_tag: Label = _make_label(
-		"B",
-		Vector2(8.0, 240.0),
-		Vector2(10.0, 12.0),
-		8,
-		Color(0.7, 0.94, 1.0)
+	# Right cluster: Bow, Shockwave Q, Traps, Inventory hint.
+	_bow_lbl = _mk_lbl(
+		Vector2(444.0, 4.0), Vector2(188.0, 12.0), "bold", 8, Color(0.92, 0.94, 1.0)
 	)
-	_root.add_child(b_tag)
+	_bow_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_bounce_lbl = _mk_lbl(
+		Vector2(444.0, 16.0), Vector2(188.0, 12.0), "bold", 8, Color(0.62, 0.94, 1.0)
+	)
+	_bounce_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_trap_lbl = _mk_lbl(
+		Vector2(414.0, 29.0), Vector2(218.0, 12.0), "body", 8, Color(0.86, 0.84, 0.92)
+	)
+	_trap_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+
+	# Status strip just below top bar (Indoors / Intruders / Muted).
+	_status_lbl = _mk_lbl(
+		Vector2(110.0, 48.0), Vector2(420.0, 14.0), "bold", 8, Color(1.0, 0.78, 0.42)
+	)
+	_status_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_status_lbl.visible = false
+
+	# Big Day/Night Header Banner (T0.2).
+	_header_panel = PanelContainer.new()
+	_header_panel.position = Vector2(140.0, 80.0)
+	_header_panel.size = Vector2(360.0, 56.0)
+	_header_panel.visible = false
+	_header_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var hstyle: StyleBoxFlat = StyleBoxFlat.new()
+	hstyle.bg_color = Color(0.08, 0.06, 0.12, 0.90)
+	hstyle.border_color = Color(0.86, 0.34, 0.32, 0.95)
+	hstyle.set_border_width_all(1)
+	_header_panel.add_theme_stylebox_override("panel", hstyle)
+	_hud_layer.add_child(_header_panel)
+
+	var hvbox: VBoxContainer = VBoxContainer.new()
+	hvbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	_header_panel.add_child(hvbox)
+	_header_title = Label.new()
+	_header_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	SpriteFactory.style_label(_header_title, "display", 16, Color(1.0, 0.88, 0.56))
+	hvbox.add_child(_header_title)
+	_header_sub = Label.new()
+	_header_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	SpriteFactory.style_label(_header_sub, "body", 8, Color(0.92, 0.90, 0.94))
+	hvbox.add_child(_header_sub)
+
+	# Bottom prompts, search hold bar, hover tooltip, and transient message.
+	_toast_lbl = _mk_lbl(
+		Vector2(100.0, Config.VIEW_SIZE.y - 54.0), Vector2(440.0, 14.0), "bold", 8, Color.WHITE
+	)
+	_toast_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toast_lbl.visible = false
+
+	_search_bar_bg = ColorRect.new()
+	_search_bar_bg.position = Vector2(277.0, Config.VIEW_SIZE.y - 38.0)
+	_search_bar_bg.size = Vector2(86.0, 7.0)
+	_search_bar_bg.color = Color(0.08, 0.06, 0.12, 0.92)
+	_search_bar_bg.visible = false
+	_hud_layer.add_child(_search_bar_bg)
+	_search_bar_fill = ColorRect.new()
+	_search_bar_fill.position = Vector2(1.0, 1.0)
+	_search_bar_fill.size = Vector2(0.0, 5.0)
+	_search_bar_fill.color = Color(0.96, 0.78, 0.32, 1.0)
+	_search_bar_bg.add_child(_search_bar_fill)
+
+	_prompt_lbl = _mk_lbl(
+		Vector2(80.0, Config.VIEW_SIZE.y - 26.0),
+		Vector2(480.0, 12.0),
+		"bold",
+		8,
+		Color(1.0, 0.92, 0.56)
+	)
+	_prompt_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_prompt_lbl.visible = false
+
+	_tooltip_lbl = _mk_lbl(
+		Vector2(8.0, Config.VIEW_SIZE.y - 14.0),
+		Vector2(624.0, 12.0),
+		"body",
+		8,
+		Color(0.84, 0.88, 0.94)
+	)
+	_tooltip_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_tooltip_lbl.visible = false
+
+	_home_arrow = _mk_lbl(Vector2.ZERO, Vector2(56.0, 14.0), "bold", 8, Color(1.0, 0.88, 0.40))
+	_home_arrow.text = "HOME >>"
+	_home_arrow.visible = false
+
+
+func _build_title_screen() -> void:
+	_title_screen = Control.new()
+	_title_screen.position = Vector2.ZERO
+	_title_screen.size = Config.VIEW_SIZE
+	_root.add_child(_title_screen)
+
+	_menu_sky = MoonSky.new()
+	_title_screen.add_child(_menu_sky)
+	_menu_sky.build(Config.VIEW_SIZE)
+
+	var title_lbl: Label = Label.new()
+	title_lbl.position = Vector2(0.0, 26.0)
+	title_lbl.size = Vector2(Config.VIEW_SIZE.x, 40.0)
+	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_lbl.text = "RED MOON"
+	SpriteFactory.style_label(title_lbl, "display", 32, Color(1.0, 0.34, 0.30))
+	_title_screen.add_child(title_lbl)
+
+	var sub_lbl: Label = Label.new()
+	sub_lbl.position = Vector2(0.0, 68.0)
+	sub_lbl.size = Vector2(Config.VIEW_SIZE.x, 14.0)
+	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub_lbl.text = "Gather by day. Hold the rings by night."
+	SpriteFactory.style_label(sub_lbl, "bold", 8, Color(0.95, 0.88, 0.84))
+	_title_screen.add_child(sub_lbl)
+
+	var vbox: VBoxContainer = VBoxContainer.new()
+	vbox.position = Vector2(236.0, 166.0)
+	vbox.size = Vector2(168.0, 174.0)
+	vbox.add_theme_constant_override("separation", 4)
+	_title_screen.add_child(vbox)
+
+	_menu_buttons.clear()
+	_menu_continue_btn = _mk_menu_btn(vbox, "Continue", func() -> void: play_requested.emit(true))
+	_menu_continue_btn.visible = false
+	_mk_menu_btn(vbox, "Play", func() -> void: play_requested.emit(false))
+	_mk_menu_btn(vbox, "Controls", func() -> void: menu_panel_requested.emit("controls"))
+	_mk_menu_btn(vbox, "Settings", func() -> void: menu_panel_requested.emit("settings"))
+	_mk_menu_btn(vbox, "Achievements", func() -> void: menu_panel_requested.emit("achievements"))
+	_mk_menu_btn(vbox, "Credits", func() -> void: menu_panel_requested.emit("credits"))
+	if not OS.has_feature("web"):
+		_mk_menu_btn(vbox, "Quit", func() -> void: quit_requested.emit())
+
+	var ver_lbl: Label = Label.new()
+	ver_lbl.position = Vector2(8.0, Config.VIEW_SIZE.y - 14.0)
+	ver_lbl.size = Vector2(300.0, 12.0)
+	ver_lbl.text = "Red Moon v2.0 (Godot 4.7)  |  F11 Fullscreen"
+	SpriteFactory.style_label(ver_lbl, "body", 8, Color(0.72, 0.68, 0.78))
+	_title_screen.add_child(ver_lbl)
+
+
+func _build_end_screen() -> void:
+	_end_screen = Control.new()
+	_end_screen.position = Vector2.ZERO
+	_end_screen.size = Config.VIEW_SIZE
+	_end_screen.visible = false
+	_root.add_child(_end_screen)
 
 	var bg: ColorRect = ColorRect.new()
-	bg.position = Vector2(18.0, 242.0)
-	bg.size = Vector2(46.0, 7.0)
-	bg.color = Color(0.08, 0.1, 0.14, 0.9)
-	_root.add_child(bg)
+	bg.position = Vector2.ZERO
+	bg.size = Config.VIEW_SIZE
+	bg.color = Color(0.05, 0.04, 0.08, 0.90)
+	_end_screen.add_child(bg)
 
-	_bounce_bar_fill = ColorRect.new()
-	_bounce_bar_fill.position = Vector2(19.0, 243.0)
-	_bounce_bar_fill.size = Vector2(44.0, 5.0)
-	_bounce_bar_fill.color = Color(0.35, 0.86, 1.0, 1.0)
-	_root.add_child(_bounce_bar_fill)
+	var panel: PanelContainer = PanelContainer.new()
+	panel.position = Vector2(130.0, 56.0)
+	panel.size = Vector2(380.0, 248.0)
+	var style: StyleBoxFlat = StyleBoxFlat.new()
+	style.bg_color = Color(0.09, 0.07, 0.13, 0.96)
+	style.border_color = Color(0.86, 0.34, 0.32, 1.0)
+	style.set_border_width_all(2)
+	style.content_margin_left = 14.0
+	style.content_margin_right = 14.0
+	style.content_margin_top = 12.0
+	style.content_margin_bottom = 12.0
+	panel.add_theme_stylebox_override("panel", style)
+	_end_screen.add_child(panel)
 
-	_bounce_status_label = _make_label(
-		"READY",
-		Vector2(68.0, 240.0),
-		Vector2(126.0, 12.0),
-		8,
-		Color(0.85, 0.95, 1.0)
-	)
-	_root.add_child(_bounce_status_label)
+	var vbox: VBoxContainer = VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 8)
+	panel.add_child(vbox)
 
+	_end_title = Label.new()
+	_end_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	SpriteFactory.style_label(_end_title, "display", 16, Color(1.0, 0.38, 0.34))
+	vbox.add_child(_end_title)
 
-func _build_bottom_bar() -> void:
-	_prompt_label = _make_label(
-		"",
-		Vector2(216.0, 240.0),
-		Vector2(256.0, 12.0),
-		8,
-		Color(1.0, 0.93, 0.56)
-	)
-	_prompt_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_prompt_label.visible = false
-	_root.add_child(_prompt_label)
+	_end_body = Label.new()
+	_end_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_end_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_end_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	SpriteFactory.style_label(_end_body, "body", 8, Color(0.92, 0.90, 0.94))
+	vbox.add_child(_end_body)
 
-	var ctrl_bg: ColorRect = ColorRect.new()
-	ctrl_bg.position = Vector2(0.0, 255.0)
-	ctrl_bg.size = Vector2(Config.VIEW_SIZE.x, 15.0)
-	ctrl_bg.color = Color(0.0, 0.0, 0.0, 0.52)
-	_root.add_child(ctrl_bg)
+	_end_buttons.clear()
+	_end_retry_btn = Button.new()
+	_end_retry_btn.text = "Retry Day"
+	_end_retry_btn.pressed.connect(func() -> void: retry_day_requested.emit())
+	vbox.add_child(_end_retry_btn)
+	_end_buttons.append(_end_retry_btn)
 
-	_controls_label = _make_label(
-		"",
-		Vector2(0.0, 257.0),
-		Vector2(Config.VIEW_SIZE.x, 12.0),
-		8,
-		Color(0.92, 0.92, 0.92)
-	)
-	_controls_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_root.add_child(_controls_label)
+	var b_new: Button = Button.new()
+	b_new.text = "New Run"
+	b_new.pressed.connect(func() -> void: new_game_requested.emit())
+	vbox.add_child(b_new)
+	_end_buttons.append(b_new)
 
-
-func _build_banner() -> void:
-	_banner_panel = ColorRect.new()
-	_banner_panel.position = Vector2(44.0, 36.0)
-	_banner_panel.size = Vector2(392.0, 20.0)
-	_banner_panel.color = Color(0.04, 0.03, 0.05, 0.72)
-	_banner_panel.visible = false
-	_root.add_child(_banner_panel)
-
-	_banner_label = _make_label(
-		"",
-		Vector2(4.0, 5.0),
-		Vector2(384.0, 12.0),
-		8,
-		Color.WHITE
-	)
-	_banner_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_banner_panel.add_child(_banner_label)
+	var b_menu: Button = Button.new()
+	b_menu.text = "Main Menu"
+	b_menu.pressed.connect(func() -> void: return_to_menu_requested.emit())
+	vbox.add_child(b_menu)
+	_end_buttons.append(b_menu)
 
 
-func _make_label(
-	text: String,
-	pos: Vector2,
-	sz: Vector2,
-	font_size: int,
-	color: Color
-) -> Label:
+func _mk_menu_btn(parent: VBoxContainer, label: String, cb: Callable) -> Button:
+	var btn: Button = Button.new()
+	btn.text = label
+	btn.custom_minimum_size = Vector2(0.0, 19.0)
+	btn.pressed.connect(cb)
+	parent.add_child(btn)
+	_menu_buttons.append(btn)
+	return btn
+
+
+func _mk_lbl(pos: Vector2, sz: Vector2, style: String, font_px: int, col: Color) -> Label:
 	var lbl: Label = Label.new()
-	lbl.text = text
 	lbl.position = pos
 	lbl.size = sz
-	lbl.add_theme_font_size_override("font_size", font_size)
-	lbl.add_theme_color_override("font_color", color)
+	SpriteFactory.style_label(lbl, style, font_px, col)
+	_hud_layer.add_child(lbl)
 	return lbl

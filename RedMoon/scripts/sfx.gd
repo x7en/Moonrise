@@ -3,7 +3,7 @@ extends Node
 ## Procedural 8-bit mono 22050 Hz sound effects. Works on Desktop and Web export.
 
 const SAMPLE_RATE := 22050
-const POOL_SIZE := 8
+const POOL_SIZE := 10
 
 var muted: bool = false
 
@@ -30,9 +30,7 @@ func toggle_mute() -> bool:
 
 
 func play(sound_name: String, volume_db: float = -8.0) -> void:
-	if muted:
-		return
-	if not _streams.has(sound_name) or _players.is_empty():
+	if muted or not _streams.has(sound_name) or _players.is_empty():
 		return
 	var player: AudioStreamPlayer = _players[_next_player]
 	_next_player = (_next_player + 1) % _players.size()
@@ -52,6 +50,18 @@ func _build_sounds() -> void:
 	_streams["blood_moon"] = _make_blood_moon(0.72)
 	_streams["fence_rebuilt"] = _make_notes([392.0, 523.0, 659.0, 784.0], 0.05, 0.38)
 	_streams["ui_blip"] = _make_sweep(0.06, 260.0, 200.0, 0.0, 0.28)
+	_streams["bow_shoot"] = _make_sweep(0.075, 760.0, 290.0, 0.20, 0.32)
+	_streams["bow_empty"] = _make_sweep(0.05, 180.0, 140.0, 0.10, 0.26)
+	_streams["bow_reload"] = _make_notes([294.0, 392.0, 494.0], 0.05, 0.30)
+	_streams["door_creak"] = _make_sweep(0.22, 160.0, 240.0, 0.35, 0.32)
+	_streams["door_bump"] = _make_sweep(0.09, 110.0, 70.0, 0.45, 0.40)
+	_streams["crumble"] = _make_blood_moon(0.95)
+	_streams["heartbeat"] = _make_notes([72.0, 58.0], 0.14, 0.42)
+	_streams["toast"] = _make_notes([523.0, 659.0, 784.0, 1046.0], 0.065, 0.34)
+	_streams["upgrade"] = _make_notes([440.0, 554.0, 659.0], 0.055, 0.38)
+	_streams["trap_trigger"] = _make_sweep(0.12, 540.0, 120.0, 0.50, 0.40)
+	_streams["meteor_impact"] = _make_sweep(0.38, 120.0, 36.0, 0.78, 0.52)
+	_streams["dog_bark"] = _make_notes([480.0, 620.0], 0.06, 0.34)
 
 
 func _make_wav(samples: PackedByteArray) -> AudioStreamWAV:
@@ -64,8 +74,7 @@ func _make_wav(samples: PackedByteArray) -> AudioStreamWAV:
 
 
 func _to_signed_byte(sample_val: float) -> int:
-	var clamped: int = clampi(roundi(sample_val * 127.0), -127, 127)
-	return clamped & 0xFF
+	return clampi(roundi(sample_val * 127.0), -127, 127) & 0xFF
 
 
 func _make_sweep(
@@ -78,7 +87,6 @@ func _make_sweep(
 	var count: int = maxi(1, int(duration * float(SAMPLE_RATE)))
 	var data: PackedByteArray = PackedByteArray()
 	data.resize(count)
-
 	var phase: float = 0.0
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 	rng.seed = int(freq_start * 100.0) + count
@@ -90,8 +98,7 @@ func _make_sweep(
 		var sq: float = 1.0 if sin(phase) >= 0.0 else -1.0
 		var nz: float = rng.randf_range(-1.0, 1.0)
 		var env: float = minf(1.0, t * 20.0) * (1.0 - t)
-		var val: float = (sq * (1.0 - noise_mix) + nz * noise_mix) * env * gain
-		data[i] = _to_signed_byte(val)
+		data[i] = _to_signed_byte((sq * (1.0 - noise_mix) + nz * noise_mix) * env * gain)
 
 	return _make_wav(data)
 
@@ -101,8 +108,8 @@ func _make_notes(freqs: Array, note_len: float, gain: float) -> AudioStreamWAV:
 	var total: int = note_samples * freqs.size()
 	var data: PackedByteArray = PackedByteArray()
 	data.resize(total)
-
 	var phase: float = 0.0
+
 	for n_idx in range(freqs.size()):
 		var freq: float = float(freqs[n_idx])
 		for j in range(note_samples):
@@ -119,8 +126,8 @@ func _make_bounce(duration: float) -> AudioStreamWAV:
 	var count: int = maxi(1, int(duration * float(SAMPLE_RATE)))
 	var data: PackedByteArray = PackedByteArray()
 	data.resize(count)
-
 	var phase: float = 0.0
+
 	for i in range(count):
 		var t: float = float(i) / float(count)
 		var freq: float = 240.0 + sin(t * PI) * 520.0 + sin(t * TAU * 8.0) * 35.0
@@ -136,7 +143,6 @@ func _make_blood_moon(duration: float) -> AudioStreamWAV:
 	var count: int = maxi(1, int(duration * float(SAMPLE_RATE)))
 	var data: PackedByteArray = PackedByteArray()
 	data.resize(count)
-
 	var p1: float = 0.0
 	var p2: float = 0.0
 	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -150,9 +156,8 @@ func _make_blood_moon(duration: float) -> AudioStreamWAV:
 		p2 += TAU * f2 / float(SAMPLE_RATE)
 		var s1: float = 1.0 if sin(p1) >= 0.0 else -1.0
 		var s2: float = 1.0 if sin(p2) >= 0.0 else -1.0
-		var rumble: float = rng.randf_range(-1.0, 1.0) * 0.15
+		var rumble: float = rng.randf_range(-1.0, 1.0) * 0.18
 		var env: float = minf(1.0, t * 6.0) * (1.0 - maxf(0.0, (t - 0.55) / 0.45))
-		var val: float = (s1 * 0.5 + s2 * 0.35 + rumble) * env * 0.48
-		data[i] = _to_signed_byte(val)
+		data[i] = _to_signed_byte((s1 * 0.5 + s2 * 0.35 + rumble) * env * 0.48)
 
 	return _make_wav(data)

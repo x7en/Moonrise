@@ -1,38 +1,66 @@
 class_name Pile
 extends Node2D
-## Plank pickup (single plank in Act 1; near, middle, and far piles in Act 2).
+## Collectible pickup in group "piles": planks, scrap/meteor shards, or arrow bundles.
+## Always freed when picked up or cleared at nightfall (T0.3).
 
-var planks: int = 1
+var item_type: String = "plank"
+var amount: int = 1
 var tier: String = "single"
-var pickup_radius: float = 12.0
+var pickup_radius: float = 13.0
 var collected: bool = false
 
 
-func setup(p_pos: Vector2, p_planks: int, p_tier: String) -> void:
+func setup(p_pos: Vector2, p_amount: int, p_tier: String, p_item_type: String = "plank") -> void:
 	position = p_pos.round()
-	planks = p_planks
+	amount = maxi(1, p_amount)
 	tier = p_tier
+	item_type = p_item_type
 	add_to_group("piles")
 	_build_visuals()
 
 
-func check_pickup(player_pos: Vector2) -> int:
-	if collected:
+## Attempts pickup if player is within radius and has room. Returns amount collected.
+func try_pickup(player_pos: Vector2, max_can_take: int) -> int:
+	if collected or max_can_take <= 0:
 		return 0
-	if position.distance_to(player_pos) <= pickup_radius:
+	if position.distance_to(player_pos) > pickup_radius:
+		return 0
+
+	var taken: int = mini(amount, max_can_take)
+	amount -= taken
+	if amount <= 0:
 		collected = true
 		queue_free()
-		return planks
-	return 0
+	return taken
 
 
 func _build_visuals() -> void:
-	# Subtle ground shadow so piles stand out clearly on both grass and wasteland.
-	var shadow: ColorRect = ColorRect.new()
-	shadow.position = Vector2(-7.0, 2.0)
-	shadow.size = Vector2(14.0, 4.0)
-	shadow.color = Color(0.0, 0.0, 0.0, 0.28)
+	# Consistent elliptical blob shadow (T1.4).
+	var shadow: Sprite2D = Sprite2D.new()
+	shadow.texture = SpriteFactory.get_blob_shadow(16, 6)
+	shadow.position = Vector2(0.0, 3.0)
+	shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(shadow)
+
+	if item_type == "scrap":
+		var spr: Sprite2D = Sprite2D.new()
+		spr.texture = SpriteFactory.get_icon_texture("scrap")
+		spr.centered = false
+		spr.offset = Vector2(-6.0, -9.0)
+		spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		if tier == "meteor":
+			spr.modulate = Color(1.0, 0.72, 0.45, 1.0)
+		add_child(spr)
+		return
+
+	if item_type == "arrow":
+		var spr: Sprite2D = Sprite2D.new()
+		spr.texture = SpriteFactory.get_icon_texture("arrow")
+		spr.centered = false
+		spr.offset = Vector2(-6.0, -9.0)
+		spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		add_child(spr)
+		return
 
 	if tier == "single" or tier == "near":
 		var spr: Sprite2D = Sprite2D.new()
@@ -49,7 +77,6 @@ func _build_visuals() -> void:
 		spr.offset = Vector2(-6.0, -9.0)
 		add_child(spr)
 	else:
-		# Far ring pile: pallet_1 and pallet_2 stacked to signal high value (6 planks).
 		var bottom_spr: Sprite2D = Sprite2D.new()
 		bottom_spr.texture = SpriteFactory.tex("pickups_planks/pallet_1")
 		bottom_spr.centered = false
