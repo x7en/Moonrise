@@ -359,7 +359,13 @@ func _step_attack_structure(delta: float) -> void:
 			_target_lure.take_lure_damage(struct_dmg)
 		return
 
-	if not is_instance_valid(_target_struct) or not _target_struct.is_standing():
+	var still_blocks: bool = false
+	if is_instance_valid(_target_struct):
+		if _target_struct is Structure:
+			still_blocks = (_target_struct as Structure).is_blocking()
+		elif _target_struct is Watchtower:
+			still_blocks = (_target_struct as Watchtower).is_standing()
+	if not still_blocks:
 		_target_struct = null
 		state = State.WALK_TO_TARGET
 		return
@@ -404,6 +410,7 @@ func _step_walk_to_target(
 	if house != null and house.is_standing() and house.is_door_open():
 		var dist_door: float = position.distance_to(Config.HOUSE_DOOR_STEP)
 		if dist_door <= 15.0:
+			remove_from_group("enemies")
 			entered_house.emit(self)
 			queue_free()
 			return
@@ -508,7 +515,7 @@ func _find_adjacent_blocker(
 		if not is_instance_valid(s) or not (s is Structure):
 			continue
 		var st: Structure = s as Structure
-		if not st.is_standing():
+		if not st.is_blocking():
 			continue
 		var d: float = st.distance_from_point(position)
 		var limit: float = (11.0 if st.kind == Structure.Kind.HOUSE else 12.0) + extra_reach
@@ -552,6 +559,7 @@ func _step_death_or_dissolve(delta: float) -> void:
 	if _shadow != null:
 		_shadow.modulate.a = clampf(_death_timer / 0.45, 0.0, 1.0)
 	if _death_timer <= 0.0:
+		remove_from_group("enemies")
 		queue_free()
 
 

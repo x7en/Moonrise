@@ -74,4 +74,5 @@ func _die() -> void:
 	if _dead:
 		return
 	_dead = true
+	remove_from_group("arrows")
 	queue_free()

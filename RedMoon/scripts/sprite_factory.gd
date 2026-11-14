@@ -261,113 +261,9 @@ static func get_enemy_frames(enemy_type: String) -> SpriteFrames:
 	return frames
 
 
-## T1.4: Generates a volumetric 2D-shaded house texture (top-left light, right wall shadow,
-## roof overhang line, base AO, chimney, inset windows, porch step, and level 2/3 reinforcement).
-static func get_shaded_house_texture(level: int = 1, door_open: bool = false) -> ImageTexture:
-	var cache_key: String = "house_%d_%s" % [level, "open" if door_open else "closed"]
-	if _house_cache.has(cache_key):
-		return _house_cache[cache_key] as ImageTexture
-
-	var img: Image = get_image_rgba8("structures/house")
-	var w: int = img.get_width()
-	var h: int = img.get_height()
-
-	# 1. Apply top-left directional shading, darker right wall strip, overhang shadow, and base AO.
-	for y in range(h):
-		for x in range(w):
-			var c: Color = img.get_pixel(x, y)
-			if c.a < 0.05:
-				continue
-			# Subtle top-left sunlight lift on roof/upper edge.
-			if y < 22 and x < w - 16:
-				c = c.lightened(0.08)
-			# Darker right-side wall face (8 px strip) to imply 3D depth.
-			if x >= w - 10 and y >= 24:
-				c = c.darkened(0.28)
-			elif x >= w - 14 and y >= 28:
-				c = c.darkened(0.12)
-			# Roof overhang cast shadow along facade midline.
-			if y >= 48 and y <= 52 and x >= 6 and x <= w - 8:
-				c = c.darkened(0.26)
-			# Ground ambient-occlusion band at the base of the walls.
-			if y >= h - 5:
-				c = c.darkened(0.32)
-			img.set_pixel(x, y, c)
-
-	# 2. Level 2/3 reinforced roof trim and iron corner braces.
-	var outline: Color = Color(0.16, 0.12, 0.18, 1.0)
-	if level >= 2:
-		var trim_col: Color = (
-			Color(0.54, 0.58, 0.66, 1.0) if level == 3 else Color(0.58, 0.44, 0.30, 1.0)
-		)
-		for x in range(8, w - 8):
-			img.set_pixel(x, 47, trim_col)
-			img.set_pixel(x, 48, outline)
-		for y in range(50, h - 4):
-			for bx in [7, 8, w - 9, w - 8]:
-				img.set_pixel(bx, y, trim_col)
-	if level >= 3:
-		# Extra metal shutters and steel roof rivets on Level 3 fortress home.
-		for x in range(12, w - 12, 8):
-			img.set_pixel(x, 46, Color(0.82, 0.86, 0.92, 1.0))
-
-	# 3. Pixel chimney block on upper-left roof with right-side shadow.
-	for y in range(4, 18):
-		for x in range(16, 25):
-			var col: Color = Color(0.42, 0.30, 0.28, 1.0)
-			if x == 16 or x == 24 or y == 4:
-				col = outline
-			elif x >= 22:
-				col = Color(0.26, 0.18, 0.20, 1.0)
-			elif x <= 18:
-				col = Color(0.54, 0.40, 0.36, 1.0)
-			img.set_pixel(x, y, col)
-
-	# 4. Inset window frames on left and right facade walls.
-	for wx in [20, 64]:
-		for y in range(58, 70):
-			for x in range(wx, wx + 12):
-				var is_edge: bool = (x == wx or x == wx + 11 or y == 58 or y == 69)
-				var is_bar: bool = (x == wx + 5 or y == 64)
-				if is_edge or is_bar:
-					img.set_pixel(x, y, outline)
-				elif y == 59:
-					img.set_pixel(x, y, Color(0.22, 0.20, 0.28, 1.0))
-				else:
-					img.set_pixel(x, y, Color(0.36, 0.46, 0.56, 1.0))
-
-	# 5. Front porch step, doormat, and open/closed wooden door centered at x = 48.
-	for y in range(66, h - 2):
-		for x in range(41, 55):
-			var is_frame: bool = (x == 41 or x == 54 or y == 66)
-			if is_frame:
-				img.set_pixel(x, y, outline)
-			elif door_open:
-				# Dark interior doorway with swung-in door edge.
-				var inside_col: Color = Color(0.11, 0.08, 0.12, 1.0)
-				if x <= 44:
-					inside_col = Color(0.38, 0.24, 0.15, 1.0)
-				img.set_pixel(x, y, inside_col)
-			else:
-				var plank_col: Color = (
-					Color(0.46, 0.30, 0.18, 1.0) if (x % 3 != 0) else Color(0.36, 0.22, 0.14, 1.0)
-				)
-				if x >= 51:
-					plank_col = plank_col.darkened(0.2)
-				img.set_pixel(x, y, plank_col)
-				if x == 51 and y == 78:
-					img.set_pixel(x, y, Color(0.92, 0.78, 0.34, 1.0))  # Brass handle
-	# Porch step & mat at bottom of facade.
-	for y in range(h - 3, h):
-		for x in range(39, 57):
-			var step_col: Color = (
-				Color(0.52, 0.44, 0.36, 1.0) if y == h - 3 else Color(0.32, 0.25, 0.22, 1.0)
-			)
-			img.set_pixel(x, y, step_col)
-
-	var result: ImageTexture = ImageTexture.create_from_image(img)
-	_house_cache[cache_key] = result
-	return result
+## Returns the 3/4 oblique 2D-with-3D-depth farmhouse sprite (or user custom drop-in PNG).
+static func get_shaded_house_texture(level: int = 1, door_open: bool = false) -> Texture2D:
+	return HouseArt.get_house_texture(level, door_open)
 
 
 ## Soft radial light texture for PointLight2D windows/door/lantern (GL Compatibility safe).
@@ -449,12 +345,24 @@ static func get_spear_texture() -> ImageTexture:
 	return result
 
 
-## Procedural icons & gameplay sprites matching the muted pixel palette (outline #2a1f2d).
-static func get_icon_texture(icon_id: String) -> ImageTexture:
+## Procedural icons & gameplay sprites (automatically checks custom drop-in PNGs first).
+static func get_icon_texture(icon_id: String) -> Texture2D:
 	if _icon_cache.has(icon_id):
-		return _icon_cache[icon_id] as ImageTexture
+		return _icon_cache[icon_id] as Texture2D
 
-	var result: ImageTexture = null
+	var drop_paths: Array[String] = [
+		"res://assets/traps/%s.png" % icon_id,
+		"res://assets/structures/%s.png" % icon_id,
+		"res://assets/ui/%s.png" % icon_id,
+	]
+	for dp in drop_paths:
+		if ResourceLoader.exists(dp):
+			var custom_tex: Texture2D = load(dp) as Texture2D
+			if custom_tex != null:
+				_icon_cache[icon_id] = custom_tex
+				return custom_tex
+
+	var result: Texture2D = null
 	match icon_id:
 		"arrow_proj":
 			result = _make_arrow_projectile()
@@ -544,45 +452,70 @@ static func _make_arrow_icon() -> ImageTexture:
 
 
 static func _make_trap_spike_icon() -> ImageTexture:
-	var img: Image = Image.create_empty(14, 14, false, Image.FORMAT_RGBA8)
-	var out_c: Color = Color(0.16, 0.12, 0.18, 1.0)
-	var base: Color = Color(0.46, 0.32, 0.20, 1.0)
-	var tip: Color = Color(0.86, 0.90, 0.95, 1.0)
-	for y in range(4, 11):
-		for x in range(2, 12):
-			img.set_pixel(x, y, out_c if (x == 2 or x == 11 or y == 4 or y == 10) else base)
-	for sx in [4, 7, 10]:
-		img.set_pixel(sx, 3, tip)
-		img.set_pixel(sx, 6, tip)
-		img.set_pixel(sx, 8, tip)
+	var img: Image = Image.create_empty(18, 16, false, Image.FORMAT_RGBA8)
+	var out_c: Color = Color(0.14, 0.10, 0.14, 1.0)
+	var plate: Color = Color(0.42, 0.36, 0.34, 1.0)
+	var plate_hi: Color = Color(0.58, 0.50, 0.44, 1.0)
+	var steel: Color = Color(0.90, 0.94, 0.98, 1.0)
+	var rust_tip: Color = Color(0.86, 0.28, 0.24, 1.0)
+	for y in range(6, 14):
+		for x in range(2, 16):
+			var edge: bool = (x == 2 or x == 15 or y == 6 or y == 13)
+			img.set_pixel(x, y, out_c if edge else (plate_hi if y == 7 else plate))
+	for pt in [
+		Vector2i(5, 6), Vector2i(9, 6), Vector2i(13, 6),
+		Vector2i(6, 10), Vector2i(11, 10),
+	]:
+		img.set_pixel(pt.x, pt.y - 3, rust_tip)
+		img.set_pixel(pt.x, pt.y - 2, steel)
+		img.set_pixel(pt.x - 1, pt.y - 1, out_c)
+		img.set_pixel(pt.x, pt.y - 1, steel)
+		img.set_pixel(pt.x + 1, pt.y - 1, out_c)
 	return ImageTexture.create_from_image(img)
 
 
 static func _make_trap_snare_icon() -> ImageTexture:
-	var img: Image = Image.create_empty(14, 14, false, Image.FORMAT_RGBA8)
-	var rope: Color = Color(0.76, 0.64, 0.42, 1.0)
-	var iron: Color = Color(0.54, 0.60, 0.68, 1.0)
-	for y in range(3, 11):
-		for x in range(3, 11):
-			var d: float = Vector2(float(x) - 6.5, float(y) - 6.5).length()
-			if d >= 2.6 and d <= 4.0:
-				img.set_pixel(x, y, rope if (x + y) % 2 == 0 else iron)
+	var img: Image = Image.create_empty(18, 16, false, Image.FORMAT_RGBA8)
+	var out_c: Color = Color(0.14, 0.10, 0.14, 1.0)
+	var iron_l: Color = Color(0.74, 0.80, 0.86, 1.0)
+	var iron_d: Color = Color(0.42, 0.46, 0.54, 1.0)
+	var pad: Color = Color(0.86, 0.30, 0.24, 1.0)
+	for y in range(2, 14):
+		for x in range(2, 16):
+			var nx: float = (float(x) - 8.5) / 6.0
+			var ny: float = (float(y) - 8.0) / 4.8
+			var d: float = nx * nx + ny * ny
+			if d >= 0.58 and d <= 1.05:
+				var tooth: bool = ((x + y) % 2 == 0)
+				img.set_pixel(x, y, iron_l if tooth else iron_d)
+			elif d > 1.05 and d <= 1.25:
+				img.set_pixel(x, y, out_c)
+			elif d <= 0.24:
+				img.set_pixel(x, y, pad if d <= 0.12 else out_c)
 	return ImageTexture.create_from_image(img)
 
 
 static func _make_trap_lure_icon() -> ImageTexture:
-	var img: Image = Image.create_empty(14, 18, false, Image.FORMAT_RGBA8)
-	var out_c: Color = Color(0.16, 0.12, 0.18, 1.0)
-	var post: Color = Color(0.56, 0.38, 0.22, 1.0)
-	var cloth: Color = Color(0.86, 0.24, 0.26, 1.0)
-	for y in range(4, 17):
-		img.set_pixel(6, y, post)
-		img.set_pixel(7, y, post.darkened(0.2))
-		img.set_pixel(5, y, out_c)
-		img.set_pixel(8, y, out_c)
-	for y in range(4, 9):
-		for x in range(8, 13):
-			img.set_pixel(x, y, cloth)
+	var img: Image = Image.create_empty(16, 22, false, Image.FORMAT_RGBA8)
+	var out_c: Color = Color(0.14, 0.10, 0.14, 1.0)
+	var post: Color = Color(0.60, 0.40, 0.22, 1.0)
+	var post_d: Color = Color(0.42, 0.26, 0.14, 1.0)
+	var glow: Color = Color(1.0, 0.86, 0.32, 1.0)
+	var red: Color = Color(0.92, 0.24, 0.24, 1.0)
+	for y in range(4, 20):
+		img.set_pixel(6, y, out_c)
+		img.set_pixel(7, y, post)
+		img.set_pixel(8, y, post_d)
+		img.set_pixel(9, y, out_c)
+	# Cross-arm + glowing warning beacon lantern.
+	for x in range(4, 14):
+		img.set_pixel(x, 5, out_c)
+		img.set_pixel(x, 6, post)
+		img.set_pixel(x, 7, out_c)
+	for y in range(7, 13):
+		for x in range(10, 15):
+			var edge: bool = (x == 10 or x == 14 or y == 7 or y == 12)
+			img.set_pixel(x, y, out_c if edge else (glow if y <= 10 else red))
 	return ImageTexture.create_from_image(img)
 
 

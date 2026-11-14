@@ -27,10 +27,12 @@ var _day_lbl: Label = null
 var _timer_lbl: Label = null
 var _objective_lbl: Label = null
 
-# Top-right bounce & mute/controls strip
+# Top-right bounce & quick-hints
 var _bounce_lbl: Label = null
-var _trap_lbl: Label = null
+var _hint_lbl: Label = null
 var _status_lbl: Label = null
+var _trap_slots: Array[PanelContainer] = []
+var _trap_slot_labels: Array[Label] = []
 
 # Center banners, search bar, tooltip, home arrow
 var _header_panel: PanelContainer = null
@@ -178,32 +180,32 @@ func update_hud(data: Dictionary) -> void:
 		)
 		_house_icon.visible = false
 
-	_bag_lbl.text = "Bag %d/%d (P:%d S:%d)" % [
+	_bag_lbl.text = "Bag %d/%d (P:%d S:%d) | Stock P:%d S:%d" % [
 		int(data.get("bag_used", 0)),
 		int(data.get("bag_cap", 16)),
 		int(data.get("bag_planks", 0)),
 		int(data.get("bag_scrap", 0)),
-	]
-	_stock_lbl.text = "Stock P:%d  S:%d" % [
 		int(data.get("stock_planks", 0)),
 		int(data.get("stock_scrap", 0)),
 	]
+	_stock_lbl.visible = false
 
 	var reloading: bool = bool(data.get("reloading", false))
 	if reloading:
-		_bow_lbl.text = "Bow: Reloading... (Res %d)" % int(data.get("arrows", 0))
+		_bow_lbl.text = "Bow: Reloading... (%d)" % int(data.get("arrows", 0))
 		SpriteFactory.style_label(_bow_lbl, "bold", 8, Color(1.0, 0.82, 0.40))
 	else:
-		_bow_lbl.text = "Bow: %d/%d  Res:%d  [F/R]" % [
+		_bow_lbl.text = "Bow %d/%d (%d) [F/R]" % [
 			int(data.get("mag", 6)),
 			int(data.get("mag_max", 6)),
 			int(data.get("arrows", 0)),
 		]
 		SpriteFactory.style_label(_bow_lbl, "bold", 8, Color(0.92, 0.94, 1.0))
 
-	_day_lbl.text = String(data.get("phase_label", "DAY 1"))
 	var secs: int = maxi(0, ceili(float(data.get("time_left", 0.0))))
-	_timer_lbl.text = "%d:%02d" % [int(floorf(float(secs) / 60.0)), secs % 60]
+	var clk: String = "%d:%02d" % [int(floorf(float(secs) / 60.0)), secs % 60]
+	_day_lbl.text = "%s   %s" % [String(data.get("phase_label", "DAY 1")), clk]
+	_timer_lbl.visible = false
 	_objective_lbl.text = String(data.get("objective", ""))
 
 	var b_cd: float = float(data.get("bounce_cd", 0.0))
@@ -214,13 +216,13 @@ func update_hud(data: Dictionary) -> void:
 		_bounce_lbl, "bold", 8, Color(0.62, 0.94, 1.0) if b_cd <= 0.0 else Color(0.66, 0.66, 0.72)
 	)
 
-	var sel_t: int = int(data.get("selected_trap", 1))
-	_trap_lbl.text = "[1]Spk:%d [2]Snr:%d [3]Lur:%d (%d) [T]" % [
+	_update_trap_hotbar(
+		int(data.get("selected_trap", 1)),
+		bool(data.get("trap_mode_active", false)),
 		int(data.get("trap_spike", 0)),
 		int(data.get("trap_snare", 0)),
-		int(data.get("trap_lure", 0)),
-		sel_t,
-	]
+		int(data.get("trap_lure", 0))
+	)
 
 	var extras: Array[String] = []
 	if bool(data.get("inside_house", false)):
@@ -357,45 +359,48 @@ func _build_hud() -> void:
 	_house_icon.visible = false
 	_hud_layer.add_child(_house_icon)
 	_house_lbl = _mk_lbl(
-		Vector2(22.0, 17.0), Vector2(190.0, 12.0), "bold", 8, Color(0.86, 0.94, 0.86)
+		Vector2(22.0, 17.0), Vector2(194.0, 12.0), "bold", 8, Color(0.86, 0.94, 0.86)
 	)
-	_bag_lbl = _mk_lbl(Vector2(8.0, 29.0), Vector2(128.0, 12.0), "body", 8, Color(0.95, 0.86, 0.62))
-	_stock_lbl = _mk_lbl(
-		Vector2(138.0, 29.0), Vector2(110.0, 12.0), "body", 8, Color(0.80, 0.88, 0.96)
-	)
+	_bag_lbl = _mk_lbl(Vector2(8.0, 29.0), Vector2(310.0, 12.0), "body", 8, Color(0.95, 0.86, 0.62))
+	_stock_lbl = _mk_lbl(Vector2(8.0, 29.0), Vector2(10.0, 10.0), "body", 8, Color.WHITE)
+	_stock_lbl.visible = false
 
-	# Center cluster: Day/Night + Clock + Persistent Objective Strip (T0.2).
+	# Center cluster: Day + Clock on row 1, short crisp Objective on row 2 (zero overlap!).
 	_day_lbl = _mk_lbl(
-		Vector2(236.0, 3.0), Vector2(168.0, 14.0), "bold", 8, Color(1.0, 0.90, 0.64)
+		Vector2(186.0, 4.0), Vector2(268.0, 12.0), "bold", 8, Color(1.0, 0.90, 0.64)
 	)
 	_day_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_timer_lbl = _mk_lbl(Vector2(236.0, 14.0), Vector2(168.0, 14.0), "bold", 8, Color.WHITE)
-	_timer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_timer_lbl = _mk_lbl(Vector2(236.0, 16.0), Vector2(10.0, 10.0), "bold", 8, Color.WHITE)
+	_timer_lbl.visible = false
 	_objective_lbl = _mk_lbl(
-		Vector2(170.0, 29.0), Vector2(300.0, 12.0), "body", 8, Color(0.98, 0.92, 0.72)
+		Vector2(218.0, 17.0), Vector2(216.0, 12.0), "body", 8, Color(0.98, 0.92, 0.72)
 	)
 	_objective_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
-	# Right cluster: Bow, Shockwave Q, Traps, Inventory hint.
+	# Right cluster: Bow, Shockwave Q, clean quick-key strip.
 	_bow_lbl = _mk_lbl(
-		Vector2(444.0, 4.0), Vector2(188.0, 12.0), "bold", 8, Color(0.92, 0.94, 1.0)
+		Vector2(458.0, 4.0), Vector2(174.0, 12.0), "bold", 8, Color(0.92, 0.94, 1.0)
 	)
 	_bow_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_bounce_lbl = _mk_lbl(
-		Vector2(444.0, 16.0), Vector2(188.0, 12.0), "bold", 8, Color(0.62, 0.94, 1.0)
+		Vector2(440.0, 17.0), Vector2(192.0, 12.0), "bold", 8, Color(0.62, 0.94, 1.0)
 	)
 	_bounce_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_trap_lbl = _mk_lbl(
-		Vector2(414.0, 29.0), Vector2(218.0, 12.0), "body", 8, Color(0.86, 0.84, 0.92)
+	_hint_lbl = _mk_lbl(
+		Vector2(326.0, 29.0), Vector2(306.0, 12.0), "body", 8, Color(0.80, 0.84, 0.92)
 	)
-	_trap_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_hint_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_hint_lbl.text = "[E] Door/Gate  [U] Upgrade  [I] Bag  [Esc] Pause"
 
 	# Status strip just below top bar (Indoors / Intruders / Muted).
 	_status_lbl = _mk_lbl(
-		Vector2(110.0, 48.0), Vector2(420.0, 14.0), "bold", 8, Color(1.0, 0.78, 0.42)
+		Vector2(110.0, 46.0), Vector2(420.0, 12.0), "bold", 8, Color(1.0, 0.78, 0.42)
 	)
 	_status_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status_lbl.visible = false
+
+	# Dedicated clean Bottom Trap Hotbar ([1] Spike, [2] Snare, [3] Lure).
+	_build_trap_hotbar()
 
 	# Big Day/Night Header Banner (T0.2).
 	_header_panel = PanelContainer.new()
@@ -422,15 +427,15 @@ func _build_hud() -> void:
 	SpriteFactory.style_label(_header_sub, "body", 8, Color(0.92, 0.90, 0.94))
 	hvbox.add_child(_header_sub)
 
-	# Bottom prompts, search hold bar, hover tooltip, and transient message.
+	# Bottom prompts, search hold bar, hover tooltip, and transient message (clean vertical stack).
 	_toast_lbl = _mk_lbl(
-		Vector2(100.0, Config.VIEW_SIZE.y - 54.0), Vector2(440.0, 14.0), "bold", 8, Color.WHITE
+		Vector2(90.0, Config.VIEW_SIZE.y - 64.0), Vector2(460.0, 12.0), "bold", 8, Color.WHITE
 	)
 	_toast_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast_lbl.visible = false
 
 	_search_bar_bg = ColorRect.new()
-	_search_bar_bg.position = Vector2(277.0, Config.VIEW_SIZE.y - 38.0)
+	_search_bar_bg.position = Vector2(277.0, Config.VIEW_SIZE.y - 50.0)
 	_search_bar_bg.size = Vector2(86.0, 7.0)
 	_search_bar_bg.color = Color(0.08, 0.06, 0.12, 0.92)
 	_search_bar_bg.visible = false
@@ -442,8 +447,8 @@ func _build_hud() -> void:
 	_search_bar_bg.add_child(_search_bar_fill)
 
 	_prompt_lbl = _mk_lbl(
-		Vector2(80.0, Config.VIEW_SIZE.y - 26.0),
-		Vector2(480.0, 12.0),
+		Vector2(40.0, Config.VIEW_SIZE.y - 40.0),
+		Vector2(560.0, 12.0),
 		"bold",
 		8,
 		Color(1.0, 0.92, 0.56)
@@ -452,8 +457,8 @@ func _build_hud() -> void:
 	_prompt_lbl.visible = false
 
 	_tooltip_lbl = _mk_lbl(
-		Vector2(8.0, Config.VIEW_SIZE.y - 14.0),
-		Vector2(624.0, 12.0),
+		Vector2(8.0, Config.VIEW_SIZE.y - 11.0),
+		Vector2(624.0, 10.0),
 		"body",
 		8,
 		Color(0.84, 0.88, 0.94)
@@ -578,6 +583,76 @@ func _build_end_screen() -> void:
 	b_menu.pressed.connect(func() -> void: return_to_menu_requested.emit())
 	vbox.add_child(b_menu)
 	_end_buttons.append(b_menu)
+
+
+func _build_trap_hotbar() -> void:
+	_trap_slots.clear()
+	_trap_slot_labels.clear()
+	var bar_w: float = 342.0
+	var start_x: float = floorf((Config.VIEW_SIZE.x - bar_w) * 0.5)
+	var bar_y: float = Config.VIEW_SIZE.y - 27.0
+	var icons: Array[String] = ["trap_spike", "trap_snare", "trap_lure"]
+	for i in range(3):
+		var slot: PanelContainer = PanelContainer.new()
+		slot.position = Vector2(start_x + float(i) * 116.0, bar_y)
+		slot.size = Vector2(110.0, 15.0)
+		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.add_theme_stylebox_override("panel", _make_slot_box(false))
+		var hbox: HBoxContainer = HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 3)
+		hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var ic: TextureRect = TextureRect.new()
+		ic.texture = SpriteFactory.get_icon_texture(icons[i])
+		ic.custom_minimum_size = Vector2(11.0, 11.0)
+		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		ic.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hbox.add_child(ic)
+		var lbl: Label = Label.new()
+		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		SpriteFactory.style_label(lbl, "body", 8, Color(0.92, 0.90, 0.94))
+		hbox.add_child(lbl)
+		slot.add_child(hbox)
+		_hud_layer.add_child(slot)
+		_trap_slots.append(slot)
+		_trap_slot_labels.append(lbl)
+
+
+func _update_trap_hotbar(
+	sel_idx: int, trap_mode: bool, n_spike: int, n_snare: int, n_lure: int
+) -> void:
+	var texts: Array[String] = [
+		"[1]Spike %s" % ("x%d" % n_spike if n_spike > 0 else "2P"),
+		"[2]Snare %s" % ("x%d" % n_snare if n_snare > 0 else "2P 1S"),
+		"[3]Lure %s" % ("x%d" % n_lure if n_lure > 0 else "2P"),
+	]
+	for i in range(mini(3, _trap_slots.size())):
+		var active: bool = trap_mode and (sel_idx == i + 1)
+		_trap_slots[i].add_theme_stylebox_override("panel", _make_slot_box(active))
+		_trap_slot_labels[i].text = texts[i]
+		SpriteFactory.style_label(
+			_trap_slot_labels[i],
+			"bold" if active else "body",
+			8,
+			Color(1.0, 0.92, 0.45) if active else Color(0.88, 0.88, 0.94)
+		)
+
+
+func _make_slot_box(active: bool) -> StyleBoxFlat:
+	var box: StyleBoxFlat = StyleBoxFlat.new()
+	box.bg_color = (
+		Color(0.24, 0.16, 0.12, 0.94) if active else Color(0.06, 0.05, 0.10, 0.78)
+	)
+	box.border_color = (
+		Color(1.0, 0.84, 0.34, 1.0) if active else Color(0.36, 0.32, 0.42, 0.85)
+	)
+	box.set_border_width_all(1)
+	box.content_margin_left = 4.0
+	box.content_margin_right = 4.0
+	box.content_margin_top = 1.0
+	box.content_margin_bottom = 1.0
+	return box
 
 
 func _mk_menu_btn(parent: VBoxContainer, label: String, cb: Callable) -> Button:

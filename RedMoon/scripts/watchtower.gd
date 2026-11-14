@@ -76,6 +76,7 @@ func take_damage(dmg: int) -> void:
 		_hp_holder.visible = hp > 0 and hp < max_hp
 		_hp_fill.size.x = maxf(1.0, 18.0 * (float(hp) / float(maxi(1, max_hp))))
 	if hp <= 0:
+		remove_from_group("watchtowers")
 		destroyed.emit(self)
 		queue_free()
 

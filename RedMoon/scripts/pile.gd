@@ -30,6 +30,7 @@ func try_pickup(player_pos: Vector2, max_can_take: int) -> int:
 	amount -= taken
 	if amount <= 0:
 		collected = true
+		remove_from_group("piles")
 		queue_free()
 	return taken
 

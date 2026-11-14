@@ -9,21 +9,23 @@
 - **Full Valley (`WORLD_SIZE`):** `2400 × 1350` px (`HOUSE_CENTER = (1200, 675)`).
 - **Act 1 Playable Area (`ACT1_RECT`):** `960 × 540` px centered on the farmhouse (`Rect2(720, 405, 960, 540)`). Expands to full `WORLD_RECT` after surviving `WORLD_EXPAND_NIGHT = 3`.
 - **Concentric Onion Fence Rings (`Config.FENCE_RINGS`):**
-  - Ring 1: half-extents `(92, 62)` — 14 built segments (50 HP), 28 px south gate.
-  - Ring 2: half-extents `(136, 106)` — 17 built segments (50 HP), 28 px south gate.
-  - Ring 3: half-extents `(180, 150)` — 22 unbuilt ghost foundations, buildable per segment or ring-wide.
+  - Ring 1: half-extents `(96, 68)` — built on Day 1 (50 HP per wall), solid closable `32×10` south Fence Gate (`[E]` toggles open/closed; starts closed to seal zombies out).
+  - Ring 2: half-extents `(142, 112)` — starts hidden/locked; player unlocks the entire ring + gate (`14 planks`) from the Homestead or Fence menu.
+  - Ring 3: half-extents `(188, 156)` — starts hidden/locked; player unlocks the entire ring + gate (`22 planks + 6 scrap`) once Layer 2 is built.
+  - All repairs, level upgrades (`Lv 1 → 2 → 3`), and spikes apply to **an entire fence layer at once** (no per-segment partitions).
 - **Physics Layers:**
-  - **Layer 1 (bit `1`):** Solid static obstacles (house, house door when closed, standing fence segments, watchtowers, trees, POI props, world border).
+  - **Layer 1 (bit `1`):** Solid static obstacles (3/4 house base, closed house door, standing fence walls, closed fence gates, watchtowers, trees, POI props, world border).
   - **Layer 2 (bit `2`):** Player (`CharacterBody2D`, mask `1 | 4`, disabled while sheltered inside house) and Dogs (`mask 1`).
   - **Layer 3 (bit `4`):** Enemies (`CharacterBody2D`, mask `1 | 2`; enemy-vs-enemy spacing handled via soft separation vector).
 
 ## Script Organization (`RedMoon/scripts/`)
 | File | Responsibility |
 |---|---|
-| `config.gd` | Autoload `Config` holding all world dimensions, timers, costs, enemy/weapon/trap tuning, and tints. |
+| `config.gd` | Autoload `Config` holding all world dimensions, timers, whole-ring costs, gear tiers, trap tuning, and tints. |
 | `main.gd` | Root coordinator: scene layers, game-state machine, input routing, combat/event callbacks, and `--smoke` hooks. |
-| `world_builder.gd` | Baked ground (`terrain/grass_0..3`, `wasteland_0..3`), concentric onion fence generator, 15 searchable POIs, Act 1 fog frame, and lunar crater decals. |
-| `structure.gd` | 3D-shaded House (door, lights, cast shadow, cracks/smoke/flames, 3 s crumble → rubble, rebuild) and solid Fence segments (Lv 1–3, spikes, ghost foundations). |
+| `world_builder.gd` | Baked ground (`terrain/grass_0..3`, `wasteland_0..3`), concentric onion fence + south-gate specs, 15 searchable POIs, Act 1 fog frame, and lunar crater decals. |
+| `house_art.gd` | 112×96 3/4 oblique pixel-art cottage generator (pitched roof, gable truss, chimney, glowing windows, steps, Lv 1–3 upgrades) + automatic drop-in PNG loader. |
+| `structure.gd` | 3/4 House (door, lights, cast shadow, cracks/smoke/flames, 3 s crumble → rubble, rebuild) and solid Fence walls & closable Fence Gates (`toggle_door()`, `is_blocking()`). |
 | `player.gd` | Solid `CharacterBody2D` movement, spear melee, auto-aim bow + reload + indoor window shooting, indoor shelter healing, and lantern light. |
 | `enemy.gd` | Solid `CharacterBody2D` enemy AI: chew structures, aggro/chase/leash player, open-door intruder entry, lure attraction, snare rooting, and daytime wanderers. |
 | `arrow.gd` | Straight-flying bow & watchtower projectile with pierce support. |
@@ -58,12 +60,12 @@
 | Spear Melee / Clear Intruder | `Space` | Clears intruders when sheltered inside |
 | Hunting Bow (Auto-Aim) | `F` | `Left Click` (fires from windows when indoors) |
 | Reload Bow | `R` | Auto-reloads on empty if reserve arrows exist |
-| Door / Enter-Exit / Search | `E` | Tap at house door; **Hold `E`** (1.5 s) on ruins/cars to scavenge scrap; **Hold `E`** (2 s) on stray dog |
+| Door / Fence Gate / Search | `E` | Tap at house door or fence gate to open/close; **Hold `E`** (1.5 s) on ruins/cars to scavenge scrap; **Hold `E`** (2 s) on stray dog |
 | Structure Upgrade / Repair Menu | `U` | `Left Click` on hovered House or Fence (within 80 px) |
-| Inventory & Gear | `I` | Toggle Bag / Stockpile / Workshop summary |
+| Inventory & Gear | `I` | Toggle Bag / Stockpile / Gear Tier / Traps summary |
 | Shockwave Stun | `Q` | AoE push + 5 s stun; grows spear range up to 3× |
-| Select Trap | `1` Spike / `2` Snare / `3` Lure | Highlights active trap type |
-| Place Trap | `T` | Places selected trap in front of player (max 12) |
+| Trap Placement Mode | `1` Spike / `2` Snare / `3` Lure | Toggles live ground placement ghost preview; `Right Click` or `Esc` cancels |
+| Place Trap | `Left Click` or `T` | Places selected trap at preview (uses owned trap first, or auto-crafts from Bag + Stockpile; max 12) |
 | Toggle Dog Follow / Guard | `G` | Active once dog textures exist and a dog is tamed |
 | Pause / Back / Skip Intro | `Esc` | Opens Pause menu; skips intro cards or moonrise |
 | Fullscreen Toggle | `F11` or `Alt+Enter` | Saved to `user://settings.cfg` |

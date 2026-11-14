@@ -180,7 +180,7 @@ func _load_dog_frames() -> SpriteFrames:
 				var strip_tex: Texture2D = load(full_path) as Texture2D
 				if strip_tex != null:
 					var count: int = maxi(1, int(parsed["frames"]))
-					var fw: int = maxi(1, int(strip_tex.get_width() / count))
+					var fw: int = maxi(1, int(floorf(float(strip_tex.get_width()) / float(count))))
 					var fh: int = maxi(1, strip_tex.get_height())
 					var anim_key: String = "%s_%s" % [parsed["anim"], parsed["dir"]]
 					sf.add_animation(anim_key)

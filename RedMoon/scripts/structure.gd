@@ -21,6 +21,8 @@ var active_in_game: bool = true
 
 var level: int = 1
 var is_built: bool = true
+var is_gate: bool = false
+var gate_open: bool = false
 var spiked: bool = false
 var is_fallen: bool = false  # House crumbled into rubble (NOT game over, T1.5)
 var door_state: DoorState = DoorState.CLOSED
@@ -28,6 +30,7 @@ var is_hovered: bool = false
 
 var target_center: Vector2 = Vector2.ZERO
 var footprint_rect: Rect2 = Rect2()
+var visual_rect: Rect2 = Rect2()
 var segment_length: float = 48.0
 
 var _house_sprite: Sprite2D = null
@@ -43,6 +46,10 @@ var _rubble_node: Node2D = null
 var _intruder_marks: Node2D = null
 
 var _fence_sprites: Array[Sprite2D] = []
+var _gate_closed_node: Node2D = null
+var _gate_open_node: Node2D = null
+var _gate_closed_sprites: Array[Sprite2D] = []
+var _gate_open_sprites: Array[Sprite2D] = []
 var _ghost_rect: ColorRect = null
 var _spike_bar: Node2D = null
 var _ruin_node: Node2D = null
@@ -64,7 +71,7 @@ var _crumble_timer: float = 0.0
 var _is_crumbling: bool = false
 
 
-## Sets up the central solid farmhouse with 3D shading, door, lighting, and world-space HP bar.
+## Sets up the central 3/4 solid farmhouse with door, lighting, damage stages, and HP bar.
 func setup_house(decals_layer: Node2D) -> void:
 	name = "House"
 	kind = Kind.HOUSE
@@ -75,23 +82,33 @@ func setup_house(decals_layer: Node2D) -> void:
 	slot_index = -1
 	ring = 0
 	is_built = true
+	is_gate = false
+	gate_open = false
 	is_fallen = false
 	active_in_game = true
-	target_center = Config.HOUSE_CENTER
-	footprint_rect = Rect2(Config.HOUSE_CENTER - Vector2(48.0, 45.0), Vector2(96.0, 90.0))
-	position = Config.HOUSE_CENTER + Vector2(0.0, 45.0)
+	target_center = Config.HOUSE_CENTER + Vector2(0.0, 14.0)
+	# 3/4 oblique solid base footprint (lower wall/porch box so roof overhangs naturally).
+	footprint_rect = Rect2(Config.HOUSE_CENTER - Vector2(46.0, 12.0), Vector2(92.0, 52.0))
+	visual_rect = Rect2(Config.HOUSE_CENTER - Vector2(54.0, 48.0), Vector2(108.0, 94.0))
+	position = Config.HOUSE_CENTER + Vector2(0.0, 46.0)
 	add_to_group("structures")
 	_build_house_nodes(decals_layer)
 
 
-## Sets up one solid fence segment belonging to concentric ring 1, 2, or 3 (T0.4).
+## Sets up one solid fence segment (or closable Fence Gate) for concentric rings 1-3.
 func setup_fence_segment(idx: int, seg_spec: Dictionary, decals_layer: Node2D) -> void:
-	name = "Fence_R%d_%d" % [int(seg_spec["ring"]), idx]
+	is_gate = bool(seg_spec.get("is_gate", false))
+	name = (
+		"FenceGate_R%d" % int(seg_spec["ring"])
+		if is_gate
+		else "Fence_R%d_%d" % [int(seg_spec["ring"]), idx]
+	)
 	kind = Kind.FENCE
 	ring = int(seg_spec["ring"])
 	slot_index = idx
 	is_horizontal = bool(seg_spec["horizontal"])
 	is_built = bool(seg_spec["built"])
+	gate_open = false
 	level = 1
 	spiked = false
 	max_hp = Config.FENCE_HP
@@ -101,6 +118,7 @@ func setup_fence_segment(idx: int, seg_spec: Dictionary, decals_layer: Node2D) -
 
 	var seg_rect: Rect2 = seg_spec["rect"] as Rect2
 	footprint_rect = seg_rect
+	visual_rect = seg_rect.grow(3.0)
 	target_center = seg_rect.get_center()
 	segment_length = seg_rect.size.x if is_horizontal else seg_rect.size.y
 	position = Vector2(target_center.x, seg_rect.end.y)
@@ -148,7 +166,18 @@ func is_standing() -> bool:
 	return active_in_game and is_built and hp > 0
 
 
+## True when this structure physically blocks enemies (open fence gates let entities through).
+func is_blocking() -> bool:
+	if not is_standing():
+		return false
+	if kind == Kind.FENCE and is_gate and gate_open:
+		return false
+	return true
+
+
 func is_door_open() -> bool:
+	if kind == Kind.FENCE and is_gate:
+		return gate_open
 	return door_state == DoorState.OPEN or door_state == DoorState.OPENING
 
 
@@ -198,9 +227,11 @@ func build_from_foundation() -> void:
 	if kind != Kind.FENCE or is_built:
 		return
 	is_built = true
+	gate_open = false
 	level = 1
 	max_hp = Config.FENCE_HP
 	hp = max_hp
+	visible = true
 	refresh_visuals()
 
 
@@ -230,8 +261,10 @@ func take_damage(amount: int) -> void:
 		destroyed.emit(self)
 
 
-## T1.5C: Toggles the house door between open and closed (force_close snaps shut).
+## Toggles the house door OR a built fence gate between open and closed (force_close snaps shut).
 func toggle_door(force_close: bool = false) -> bool:
+	if kind == Kind.FENCE:
+		return _toggle_fence_gate(force_close)
 	if kind != Kind.HOUSE:
 		return false
 	if force_close:
@@ -244,14 +277,22 @@ func toggle_door(force_close: bool = false) -> bool:
 		return false
 	if door_state == DoorState.CLOSED or door_state == DoorState.CLOSING:
 		door_state = DoorState.OPENING
-		_door_anim_timer = 0.3
-		_sync_door_collider()
-		refresh_visuals()
-		return true
-	door_state = DoorState.CLOSING
+	else:
+		door_state = DoorState.CLOSING
 	_door_anim_timer = 0.3
 	_sync_door_collider()
 	refresh_visuals()
+	return true
+
+
+func _toggle_fence_gate(force_close: bool) -> bool:
+	if not is_gate or not is_standing():
+		return false
+	if force_close and not gate_open:
+		return false
+	gate_open = false if force_close else not gate_open
+	refresh_visuals()
+	door_state_changed.emit(gate_open)
 	return true
 
 
@@ -306,8 +347,7 @@ func update_lighting(is_night: bool, is_dusk: bool, is_blood: bool, intruder_cou
 			_cast_shadow.color = Color(0.08, 0.06, 0.12, 0.34)
 	for i in range(_window_lights.size()):
 		var light: PointLight2D = _window_lights[i]
-		var extra_lv3: bool = (i >= 3 and level < 3)
-		light.visible = (is_night or is_dusk) and not is_fallen and not extra_lv3
+		light.visible = (is_night or is_dusk) and not is_fallen
 		if is_blood:
 			light.color = Color(1.0, 0.56, 0.34, 1.0)
 		else:
@@ -320,11 +360,14 @@ func get_tooltip_text() -> String:
 	if kind == Kind.HOUSE:
 		if is_fallen:
 			return "House Rubble - Rebuild to restore shelter"
-		return "House - %d/%d HP - Lv %d" % [hp, max_hp, level]
+		return "House (Lv %d) - %d/%d HP" % [level, hp, max_hp]
 	if not is_built:
-		return "Ring %d Foundation - Unbuilt" % ring
+		return ""
+	if is_gate:
+		var g_state: String = "OPEN" if gate_open else "CLOSED"
+		return "Ring %d Gate [%s] - %d/%d HP (Lv %d)" % [ring, g_state, hp, max_hp, level]
 	var spk: String = " [Spiked]" if spiked else ""
-	return "Fence R%d - %d/%d HP - Lv %d%s" % [ring, hp, max_hp, level, spk]
+	return "Fence Ring %d (Lv %d) - %d/%d HP%s" % [ring, level, hp, max_hp, spk]
 
 
 func to_snapshot() -> Dictionary:
@@ -333,6 +376,8 @@ func to_snapshot() -> Dictionary:
 		"max_hp": max_hp,
 		"level": level,
 		"is_built": is_built,
+		"is_gate": is_gate,
+		"gate_open": gate_open,
 		"spiked": spiked,
 		"is_fallen": is_fallen,
 		"door_open": is_door_open(),
@@ -342,6 +387,7 @@ func to_snapshot() -> Dictionary:
 func apply_snapshot(snap: Dictionary) -> void:
 	level = int(snap.get("level", 1))
 	is_built = bool(snap.get("is_built", true))
+	gate_open = bool(snap.get("gate_open", false))
 	spiked = bool(snap.get("spiked", false))
 	is_fallen = bool(snap.get("is_fallen", false))
 	_is_crumbling = false
@@ -405,29 +451,43 @@ func _refresh_house_visuals() -> void:
 
 
 func _refresh_fence_visuals() -> void:
+	# Unbuilt outer layers stay completely hidden until unlocked by the player.
+	visible = is_built
 	var standing: bool = is_built and hp > 0
+	var blocking: bool = standing and not (is_gate and gate_open)
 	if _collider != null:
-		_collider.set_deferred("disabled", not standing)
+		_collider.set_deferred("disabled", not blocking)
 
-	var tex_key: String = ""
-	if standing:
-		var use_reinf: bool = (level >= 2 or hp >= Config.FENCE_REINFORCED_MIN_HP)
-		var folder: String = "fence_reinforced" if use_reinf else "fence_wood"
+	var use_reinf: bool = (level >= 2 or hp >= Config.FENCE_REINFORCED_MIN_HP)
+	var folder: String = "fence_reinforced" if use_reinf else "fence_wood"
+	var lv_tint: Color = Color(0.76, 0.82, 0.90, 1.0) if level >= 3 else Color.WHITE
+
+	if is_gate:
+		if _gate_closed_node != null:
+			_gate_closed_node.visible = standing and not gate_open
+			for gs in _gate_closed_sprites:
+				gs.texture = SpriteFactory.tex("structures/%s/gate_horizontal" % folder)
+				gs.modulate = lv_tint
+		if _gate_open_node != null:
+			_gate_open_node.visible = standing and gate_open
+			for os in _gate_open_sprites:
+				os.texture = SpriteFactory.tex("structures/%s/gate_vertical" % folder)
+				os.modulate = lv_tint
+	else:
 		var orient: String = "horizontal" if is_horizontal else "vertical"
-		tex_key = "structures/%s/%s" % [folder, orient]
-
-	for spr in _fence_sprites:
-		spr.visible = standing
-		if standing:
-			spr.texture = SpriteFactory.tex(tex_key)
-			spr.modulate = Color(0.76, 0.82, 0.90, 1.0) if level >= 3 else Color.WHITE
+		var tex_key: String = "structures/%s/%s" % [folder, orient]
+		for spr in _fence_sprites:
+			spr.visible = standing
+			if standing:
+				spr.texture = SpriteFactory.tex(tex_key)
+				spr.modulate = lv_tint
 
 	if _ghost_rect != null:
-		_ghost_rect.visible = not is_built
+		_ghost_rect.visible = false
 	if _ruin_node != null:
 		_ruin_node.visible = is_built and hp <= 0
 	if _spike_bar != null:
-		_spike_bar.visible = standing and spiked
+		_spike_bar.visible = blocking and spiked
 
 	if _hp_bar_holder != null and _hp_bar_fill != null:
 		var show_bar: bool = standing and hp < max_hp
@@ -469,12 +529,12 @@ func _sync_door_collider() -> void:
 
 
 func _build_house_nodes(decals_layer: Node2D) -> void:
-	# Ground cast shadow pointing bottom-right (top-left light, T1.4).
+	# Soft angled ground drop-shadow reinforcing the 3/4 3D height.
 	_cast_shadow = Polygon2D.new()
 	_cast_shadow.polygon = PackedVector2Array([
-		Vector2(-44.0, 0.0), Vector2(48.0, 0.0), Vector2(68.0, 18.0), Vector2(-24.0, 18.0)
+		Vector2(-46.0, -4.0), Vector2(48.0, -4.0), Vector2(62.0, 10.0), Vector2(-34.0, 10.0)
 	])
-	_cast_shadow.color = Color(0.08, 0.06, 0.12, 0.34)
+	_cast_shadow.color = Color(0.08, 0.06, 0.12, 0.26)
 	_cast_shadow.z_index = -2
 	add_child(_cast_shadow)
 
@@ -482,16 +542,14 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_house_sprite.name = "HouseSprite"
 	_house_sprite.texture = SpriteFactory.get_shaded_house_texture(1, false)
 	_house_sprite.centered = false
-	_house_sprite.offset = Vector2(-48.0, -90.0)
+	_house_sprite.offset = Vector2(-56.0, -96.0)
 	_house_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(_house_sprite)
 
 	_damage_overlay = Sprite2D.new()
-	_damage_overlay.texture = SpriteFactory.get_tinted_silhouette(
-		"structures/house", Color(0.55, 0.0, 0.0, 1.0)
-	)
+	_damage_overlay.texture = HouseArt.get_house_silhouette(Color(0.55, 0.0, 0.0, 1.0))
 	_damage_overlay.centered = false
-	_damage_overlay.offset = Vector2(-48.0, -90.0)
+	_damage_overlay.offset = Vector2(-56.0, -96.0)
 	_damage_overlay.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_damage_overlay.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	add_child(_damage_overlay)
@@ -500,8 +558,8 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_cracks_overlay = Node2D.new()
 	_cracks_overlay.visible = false
 	for crack_pts in [
-		[Vector2(-24.0, -36.0), Vector2(-18.0, -28.0), Vector2(-21.0, -18.0)],
-		[Vector2(20.0, -40.0), Vector2(26.0, -30.0), Vector2(22.0, -22.0)],
+		[Vector2(-32.0, -34.0), Vector2(-26.0, -26.0), Vector2(-29.0, -16.0)],
+		[Vector2(22.0, -34.0), Vector2(28.0, -26.0), Vector2(24.0, -16.0)],
 	]:
 		var ln: Line2D = Line2D.new()
 		ln.width = 1.5
@@ -513,39 +571,39 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	# Window intruder silhouettes (T1.5C).
 	_intruder_marks = Node2D.new()
 	_intruder_marks.visible = false
-	for wx in [-24.0, 20.0]:
+	for wx in [-34.0, 15.0, 33.0]:
 		var sil: ColorRect = ColorRect.new()
-		sil.position = Vector2(wx, -30.0)
+		sil.position = Vector2(wx, -29.0)
 		sil.size = Vector2(6.0, 8.0)
 		sil.color = Color(0.88, 0.16, 0.16, 0.85)
 		_intruder_marks.add_child(sil)
 	add_child(_intruder_marks)
 
-	# Chimney smoke, 50% roof smoke, and 25% flames (2px pixel squares).
-	_chimney_smoke = _make_particles(Vector2(-28.0, -86.0), Color(0.75, 0.78, 0.84, 0.55), 5, 1.8)
+	# Chimney smoke aligned with the 3D stone chimney on the left roof slope.
+	_chimney_smoke = _make_particles(Vector2(-33.0, -82.0), Color(0.78, 0.80, 0.86, 0.55), 5, 1.8)
 	add_child(_chimney_smoke)
-	_damage_smoke = _make_particles(Vector2(0.0, -68.0), Color(0.28, 0.26, 0.30, 0.75), 10, 1.5)
+	_damage_smoke = _make_particles(Vector2(-6.0, -70.0), Color(0.28, 0.26, 0.30, 0.75), 10, 1.5)
 	_damage_smoke.emitting = false
 	add_child(_damage_smoke)
-	_damage_flames = _make_particles(Vector2(6.0, -56.0), Color(1.0, 0.45, 0.15, 0.90), 14, 0.7)
+	_damage_flames = _make_particles(Vector2(4.0, -56.0), Color(1.0, 0.45, 0.15, 0.90), 14, 0.7)
 	_damage_flames.emitting = false
 	add_child(_damage_flames)
 
-	# Warm 2D refuge lights at windows, door, and ambient yard (T1.4).
+	# Warm 2D refuge lights aligned to the 3 cottage windows + porch entrance.
 	_window_lights.clear()
 	var light_tex: GradientTexture2D = SpriteFactory.get_radial_light_texture(128)
 	for spec in [
-		{"pos": Vector2(-22.0, -26.0), "scale": 0.9, "energy": 0.75},
-		{"pos": Vector2(22.0, -26.0), "scale": 0.9, "energy": 0.75},
-		{"pos": Vector2(0.0, -10.0), "scale": 2.2, "energy": 0.55},
-		{"pos": Vector2(0.0, -52.0), "scale": 1.4, "energy": 0.65},
+		{"pos": Vector2(-31.0, -25.0), "scale": 0.85, "energy": 0.72},
+		{"pos": Vector2(17.0, -25.0), "scale": 0.85, "energy": 0.72},
+		{"pos": Vector2(35.0, -25.0), "scale": 0.80, "energy": 0.65},
+		{"pos": Vector2(-4.0, -12.0), "scale": 2.2, "energy": 0.52},
 	]:
 		var pl: PointLight2D = PointLight2D.new()
 		pl.texture = light_tex
 		pl.position = spec["pos"] as Vector2
 		pl.texture_scale = float(spec["scale"])
 		pl.energy = float(spec["energy"])
-		pl.color = Color(1.0, 0.74, 0.40, 1.0)
+		pl.color = Color(1.0, 0.76, 0.38, 1.0)
 		pl.shadow_enabled = true
 		pl.visible = false
 		add_child(pl)
@@ -554,21 +612,21 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_occluder = LightOccluder2D.new()
 	var occ_poly: OccluderPolygon2D = OccluderPolygon2D.new()
 	occ_poly.polygon = PackedVector2Array([
-		Vector2(-46.0, -84.0), Vector2(46.0, -84.0), Vector2(46.0, -2.0), Vector2(-46.0, -2.0)
+		Vector2(-45.0, -56.0), Vector2(45.0, -56.0), Vector2(45.0, -6.0), Vector2(-45.0, -6.0)
 	])
 	_occluder.occluder = occ_poly
 	add_child(_occluder)
 
-	# Solid house body (layer 1) + door blocker across the doorway when CLOSED.
+	# Solid 3/4 house base body (layer 1) — roof peaks above overhang naturally with Y-sort!
 	_body = StaticBody2D.new()
 	_body.name = "HouseBody"
 	_body.collision_layer = 1
 	_body.collision_mask = 0
 	_collider = CollisionShape2D.new()
 	var rect_shape: RectangleShape2D = RectangleShape2D.new()
-	rect_shape.size = Vector2(96.0, 86.0)
+	rect_shape.size = Vector2(92.0, 52.0)
 	_collider.shape = rect_shape
-	_collider.position = Vector2(0.0, -45.0)
+	_collider.position = Vector2(0.0, -32.0)
 	_body.add_child(_collider)
 	add_child(_body)
 
@@ -578,15 +636,15 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_door_body.collision_mask = 0
 	_door_collider = CollisionShape2D.new()
 	var door_shape: RectangleShape2D = RectangleShape2D.new()
-	door_shape.size = Vector2(18.0, 6.0)
+	door_shape.size = Vector2(18.0, 5.0)
 	_door_collider.shape = door_shape
-	_door_collider.position = Vector2(0.0, 1.0)
+	_door_collider.position = Vector2(-4.0, -4.0)
 	_door_body.add_child(_door_collider)
 	add_child(_door_body)
 
-	# World-space floating HP bar above the house roof (T1.5B).
+	# World-space floating HP bar above the cottage roof peak.
 	_hp_bar_holder = Node2D.new()
-	_hp_bar_holder.position = Vector2(0.0, -100.0)
+	_hp_bar_holder.position = Vector2(0.0, -102.0)
 	_hp_bar_holder.z_index = 12
 	_hp_bar_holder.visible = false
 	var bar_bg: ColorRect = ColorRect.new()
@@ -607,7 +665,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_hp_bar_holder.add_child(_hp_bar_label)
 	add_child(_hp_bar_holder)
 
-	_hover_outline = _make_hover_outline(Rect2(-48.0, -90.0, 96.0, 90.0))
+	_hover_outline = _make_hover_outline(Rect2(-50.0, -90.0, 100.0, 86.0))
 	add_child(_hover_outline)
 
 	# Walkable house rubble pile placed in Decals (hidden until house crumbles, T1.5D).
@@ -640,13 +698,15 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 
 func _build_fence_nodes(decals_layer: Node2D) -> void:
 	_fence_sprites.clear()
+	_gate_closed_sprites.clear()
+	_gate_open_sprites.clear()
 	var half_l: float = segment_length * 0.5
 	var seg_w: float = footprint_rect.size.x
 	var seg_h: float = footprint_rect.size.y
 
 	# Solid StaticBody2D on layer 1 matching exact drawn footprint (T0.4).
 	_body = StaticBody2D.new()
-	_body.name = "FenceBody"
+	_body.name = "FenceGateBody" if is_gate else "FenceBody"
 	_body.collision_layer = 1
 	_body.collision_mask = 0
 	_collider = CollisionShape2D.new()
@@ -657,8 +717,47 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 	_body.add_child(_collider)
 	add_child(_body)
 
-	# Tile wooden fence sprites cleanly across the exact segment length with zero gap/overhang.
-	if is_horizontal:
+	if is_gate:
+		# Closed Fence Gate: double wooden gate panels + framing jamb posts + brass latch bar.
+		_gate_closed_node = Node2D.new()
+		for gx in [-16.0, 0.0]:
+			var gs: Sprite2D = Sprite2D.new()
+			gs.centered = false
+			gs.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			gs.position = Vector2(gx, -15.0)
+			_gate_closed_node.add_child(gs)
+			_gate_closed_sprites.append(gs)
+		# Heavy side posts + visible gold horizontal iron latch in center so door is unmistakable.
+		for px in [-16.0, 14.0]:
+			var post: ColorRect = ColorRect.new()
+			post.position = Vector2(px, -16.0)
+			post.size = Vector2(2.0, 16.0)
+			post.color = Color(0.32, 0.20, 0.14, 1.0)
+			_gate_closed_node.add_child(post)
+		var latch_bg: ColorRect = ColorRect.new()
+		latch_bg.position = Vector2(-5.0, -9.0)
+		latch_bg.size = Vector2(10.0, 4.0)
+		latch_bg.color = Color(0.14, 0.10, 0.14, 1.0)
+		_gate_closed_node.add_child(latch_bg)
+		var latch_bar: ColorRect = ColorRect.new()
+		latch_bar.position = Vector2(-4.0, -8.0)
+		latch_bar.size = Vector2(8.0, 2.0)
+		latch_bar.color = Color(0.95, 0.78, 0.30, 1.0)
+		_gate_closed_node.add_child(latch_bar)
+		add_child(_gate_closed_node)
+
+		# Open Fence Gate: swung-open side gate leaves flanking the clear stone path.
+		_gate_open_node = Node2D.new()
+		for ox in [-16.0, 13.0]:
+			var os: Sprite2D = Sprite2D.new()
+			os.centered = false
+			os.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			os.position = Vector2(ox, -15.0)
+			_gate_open_node.add_child(os)
+			_gate_open_sprites.append(os)
+		_gate_open_node.visible = false
+		add_child(_gate_open_node)
+	elif is_horizontal:
 		var step: float = 16.0
 		var tile_count: int = maxi(1, ceili(segment_length / step))
 		for i in range(tile_count):
@@ -685,12 +784,11 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 			add_child(spr)
 			_fence_sprites.append(spr)
 
-	# Faint ghost foundation outline for unbuilt Ring-3 segments (T0.4 / T1.6C).
 	_ghost_rect = ColorRect.new()
 	_ghost_rect.position = Vector2(-seg_w * 0.5, -seg_h)
 	_ghost_rect.size = Vector2(seg_w, seg_h)
 	_ghost_rect.color = Color(0.72, 0.84, 0.92, 0.30)
-	_ghost_rect.visible = not is_built
+	_ghost_rect.visible = false
 	add_child(_ghost_rect)
 
 	# Visible metal spikes overlay when Spiked Fences upgrade is installed (T2.2).

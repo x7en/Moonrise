@@ -1,23 +1,35 @@
 class_name EconomyController
 extends RefCounted
-## Handles all House/Fence/Workshop/Trap/Watchtower purchases, ring-wide calculations,
-## and day-start snapshot serialization (T1.6 / T2.1 / T2.2 / T2.3).
+## Handles House/Whole-Ring Fence/Gear/Trap/Watchtower economy, layer unlocks,
+## validated trap placement, and day-start snapshot serialization.
 
 
 func compute_ring_stats(fences: Array[Structure]) -> Dictionary:
 	var stats: Dictionary = {}
 	for r in [1, 2, 3]:
-		stats[r] = {"unbuilt": 0, "repair_planks": 0, "lv1_count": 0}
+		stats[r] = {
+			"built": false,
+			"level": 1,
+			"spiked": false,
+			"hp": 0,
+			"max_hp": 0,
+			"repair_planks": 0,
+		}
 	for f in fences:
 		var d: Dictionary = stats[f.ring] as Dictionary
-		if not f.is_built:
-			d["unbuilt"] = int(d["unbuilt"]) + 1
-		else:
-			if f.hp < f.max_hp:
-				var need: int = maxi(1, ceili(float(f.max_hp - f.hp) / float(Config.PLANK_HEAL)))
-				d["repair_planks"] = int(d["repair_planks"]) + need
-			if f.level == 1:
-				d["lv1_count"] = int(d["lv1_count"]) + 1
+		if f.is_built:
+			d["built"] = true
+			d["level"] = maxi(int(d["level"]), f.level)
+			if f.spiked:
+				d["spiked"] = true
+			d["hp"] = int(d["hp"]) + f.hp
+			d["max_hp"] = int(d["max_hp"]) + f.max_hp
+	for r in [1, 2, 3]:
+		var d: Dictionary = stats[r] as Dictionary
+		if bool(d["built"]):
+			var missing: int = int(d["max_hp"]) - int(d["hp"])
+			if missing > 0:
+				d["repair_planks"] = clampi(ceili(float(missing) / 16.0), 1, 10)
 	return stats
 
 
@@ -39,9 +51,6 @@ func execute_action(
 	var cost: Dictionary = payload.get("cost", {}) as Dictionary
 
 	match action_id:
-		"deposit_bag":
-			bag.transfer_resources_to(stockpile)
-			res["sfx"] = "dropoff"
 		"house_rebuild":
 			var rb_cost: Dictionary = (
 				Config.COST_HOUSE_REBUILD_ACT1 if act == 1 else Config.COST_HOUSE_REBUILD
@@ -54,47 +63,42 @@ func execute_action(
 			if bag.spend(cost, stockpile):
 				house.set_hp(house.max_hp)
 				res["sfx"] = "fence_rebuilt"
+				res["message"] = "House repaired to full HP."
 		"house_upgrade":
 			if bag.spend(cost, stockpile):
 				var lv: int = int(payload["level"])
 				house.set_level(lv, true)
 				res["sfx"] = "upgrade"
+				res["message"] = "House upgraded to Level %d!" % lv
 				if lv >= 3:
 					res["achievement"] = "house_level_3"
+		"unlock_fence_layer":
+			if bag.spend(cost, stockpile):
+				var r_unlock: int = int(payload["ring"])
+				for f in fences:
+					if f.ring == r_unlock and not f.is_built:
+						f.build_from_foundation()
+				res["sfx"] = "fence_rebuilt"
+				res["message"] = "Fence Layer %d unlocked & built (with gate)!" % r_unlock
+		"upgrade_gear":
+			if bag.spend(cost, stockpile):
+				var next_tier: int = int(payload["tier"])
+				upgrades["gear_tier"] = next_tier
+				player.apply_upgrade_stats(upgrades)
+				player.mag = player.mag_max
+				res["sfx"] = "upgrade"
+				res["message"] = "Weapons & Gear upgraded to Tier %d!" % next_tier
 		"buy_arrows":
 			if bag.spend(cost, stockpile):
 				var space: int = maxi(0, player.reserve_max - bag.count("arrow"))
 				bag.add("arrow", mini(Config.BUY_ARROWS_AMOUNT, space))
 				res["sfx"] = "pickup"
-		"buy_upgrade":
-			if bag.spend(cost, stockpile):
-				upgrades[String(payload["id"])] = true
-				player.apply_upgrade_stats(upgrades)
-				res["sfx"] = "upgrade"
+				res["message"] = "+%d Arrows added to quiver." % mini(Config.BUY_ARROWS_AMOUNT, space)
 		"build_watchtower":
 			if watchtower_count < Config.WATCHTOWER_MAX and bag.spend(cost, stockpile):
 				res["spawn_watchtower"] = true
 				res["sfx"] = "upgrade"
-		"craft_trap":
-			if bag.spend(cost, stockpile):
-				bag.add(String(payload["trap_type"]), 1)
-				res["sfx"] = "pickup"
-		"fence_build_seg":
-			if bag.spend(cost, stockpile):
-				(payload["seg"] as Structure).build_from_foundation()
-				res["sfx"] = "fence_rebuilt"
-		"fence_build_ring":
-			if bag.spend(cost, stockpile):
-				var r_b: int = int(payload["ring"])
-				for f in fences:
-					if f.ring == r_b and not f.is_built:
-						f.build_from_foundation()
-				res["sfx"] = "fence_rebuilt"
-		"fence_repair_seg":
-			if bag.spend(cost, stockpile):
-				var seg_r: Structure = payload["seg"] as Structure
-				seg_r.set_hp(seg_r.max_hp)
-				res["sfx"] = "fence_rebuilt"
+				res["message"] = "Watchtower constructed!"
 		"fence_repair_ring":
 			if bag.spend(cost, stockpile):
 				var r_rep: int = int(payload["ring"])
@@ -102,28 +106,26 @@ func execute_action(
 					if f.ring == r_rep and f.is_built:
 						f.set_hp(f.max_hp)
 				res["sfx"] = "fence_rebuilt"
-		"fence_upgrade_seg":
-			if bag.spend(cost, stockpile):
-				var seg_u: Structure = payload["seg"] as Structure
-				var lv_u: int = int(payload["level"])
-				seg_u.set_level(lv_u, true)
-				res["sfx"] = "upgrade"
-				res["achievement"] = "metal_fences" if lv_u >= 3 else "fence_upgraded"
+				res["message"] = "Entire Fence Ring %d repaired!" % r_rep
 		"fence_upgrade_ring":
 			if bag.spend(cost, stockpile):
 				var r_u: int = int(payload["ring"])
 				var lv_all: int = int(payload["level"])
 				for f in fences:
-					if f.ring == r_u and f.is_built and f.level < lv_all:
+					if f.ring == r_u and f.is_built:
 						f.set_level(lv_all, true)
 				res["sfx"] = "upgrade"
-				res["achievement"] = "fence_upgraded"
-		"fence_spike_seg":
+				res["message"] = "Entire Fence Ring %d upgraded to Level %d!" % [r_u, lv_all]
+				res["achievement"] = "metal_fences" if lv_all >= 3 else "fence_upgraded"
+		"fence_spike_ring":
 			if bag.spend(cost, stockpile):
-				var seg_s: Structure = payload["seg"] as Structure
-				seg_s.spiked = true
-				seg_s.refresh_visuals()
+				var r_sp: int = int(payload["ring"])
+				for f in fences:
+					if f.ring == r_sp and f.is_built:
+						f.spiked = true
+						f.refresh_visuals()
 				res["sfx"] = "upgrade"
+				res["message"] = "Spikes installed across entire Ring %d!" % r_sp
 	return res
 
 
@@ -186,7 +188,7 @@ func step_piles_and_deposit(
 ) -> bool:
 	var picked_plank: bool = false
 	if house != null and not house.is_fallen and bag.used_capacity() > 0:
-		if house.distance_from_point(player.position) <= 22.0 or player.inside_house:
+		if house.distance_from_point(player.position) <= 24.0 or player.inside_house:
 			var moved: Dictionary = bag.transfer_resources_to(stockpile)
 			var total_m: int = int(moved["plank"]) + int(moved["scrap"])
 			if total_m > 0:
@@ -216,44 +218,128 @@ func step_piles_and_deposit(
 	return picked_plank
 
 
-## Places the selected trap in front of the player, consuming from bag or stockpile.
-func try_place_trap(
-	selected_idx: int,
+## Validates whether a trap of `t_key` can be placed at `place_pos`.
+func can_place_trap_at(
+	t_key: String,
+	place_pos: Vector2,
 	player: Player,
 	bag: Inventory,
 	stockpile: Inventory,
-	traps: Array[Trap],
-	entities_layer: Node2D,
-	hud: Hud,
-	sfx: Sfx
-) -> void:
+	traps: Array,
+	structures: Array
+) -> Dictionary:
 	if player.inside_house or player.dead:
+		return {"ok": false, "reason": "Step outside to place traps."}
+	if traps.size() >= Config.MAX_TRAPS:
+		return {"ok": false, "reason": "Max %d traps reached!" % Config.MAX_TRAPS}
+	if bag.count(t_key) <= 0:
+		var cost: Dictionary = (Config.TRAPS[t_key] as Dictionary)["cost"] as Dictionary
+		if not bag.can_afford(cost, stockpile):
+			return {"ok": false, "reason": "Need %s." % Inventory.format_cost(cost)}
+	for s in structures:
+		if not is_instance_valid(s) or not (s is Structure):
+			continue
+		var st: Structure = s as Structure
+		if st.is_standing() and st.footprint_rect.grow(3.0).has_point(place_pos):
+			return {"ok": false, "reason": "Blocked by structure."}
+	for ex in traps:
+		if is_instance_valid(ex) and ex.position.distance_to(place_pos) < Config.TRAP_MIN_SPACING:
+			return {"ok": false, "reason": "Too close to another trap."}
+	return {"ok": true, "reason": ""}
+
+
+## Places a trap at `place_pos` using bag stock first, then bag+stockpile planks/scrap.
+func try_place_trap_at(
+	t_key: String, place_pos: Vector2, main_node: Node
+) -> bool:
+	var player: Player = main_node.get("_player") as Player
+	var bag: Inventory = main_node.get("bag") as Inventory
+	var stockpile: Inventory = main_node.get("stockpile") as Inventory
+	var traps: Array = main_node.get("traps") as Array
+	var structures: Array = main_node.get("structures") as Array
+	var entities_layer: Node2D = main_node.get("_entities_layer") as Node2D
+	var hud: Hud = main_node.get("_hud") as Hud
+	var sfx: Sfx = main_node.get("_sfx") as Sfx
+	var effects: WorldEffects = main_node.get("_effects") as WorldEffects
+
+	var check: Dictionary = can_place_trap_at(
+		t_key, place_pos, player, bag, stockpile, traps, structures
+	)
+	if not bool(check["ok"]):
+		hud.show_message(String(check["reason"]), 1.6, Color(1.0, 0.55, 0.45))
+		return false
+
+	if bag.count(t_key) > 0:
+		bag.remove(t_key, 1)
+	else:
+		var cost: Dictionary = (Config.TRAPS[t_key] as Dictionary)["cost"] as Dictionary
+		if not bag.spend(cost, stockpile):
+			return false
+
+	var trap: Trap = Trap.new()
+	trap.setup(t_key, place_pos)
+	trap.triggered.connect(func(tr: Trap, en: Node) -> void:
+		sfx.play("trap_trigger", -7.0)
+		if is_instance_valid(en):
+			var ep: Vector2 = (en as Node2D).position
+			if tr.trap_type == "trap_snare":
+				effects.spawn_sparks(ep, Color(0.95, 0.85, 0.35, 1.0), 8)
+				effects.spawn_floating_text(ep, "SNARED!", Color(1.0, 0.88, 0.38))
+			else:
+				effects.spawn_sparks(ep, Color(0.96, 0.32, 0.28, 1.0), 6)
+	)
+	entities_layer.add_child(trap)
+	traps.append(trap)
+	sfx.play("fence_rebuilt", -8.0)
+	effects.spawn_sparks(place_pos, Color(0.86, 0.82, 0.64, 1.0), 5)
+	var t_label: String = String((Config.TRAPS[t_key] as Dictionary)["label"])
+	effects.spawn_floating_text(place_pos, "%s Set!" % t_label, Color(0.62, 0.96, 0.68))
+	return true
+
+
+## Computes trap placement coordinate clamped within TRAP_PLACE_RANGE around player.
+func compute_trap_place_pos(trap_mode_active: bool, main_node: Node) -> Vector2:
+	var player: Player = main_node.get("_player") as Player
+	if trap_mode_active and DisplayServer.get_name() != "headless":
+		var mw: Vector2 = (main_node as Node2D).get_global_mouse_position()
+		var delta_v: Vector2 = mw - player.position
+		if delta_v.length() > Config.TRAP_PLACE_RANGE:
+			mw = player.position + delta_v.normalized() * Config.TRAP_PLACE_RANGE
+		return mw.round()
+	return (player.position + player.facing_vec.normalized() * 16.0).round()
+
+
+## Updates the live ground ghost preview whenever Trap Placement Mode is active.
+func update_trap_preview(
+	trap_mode_active: bool, selected_idx: int, main_node: Node
+) -> void:
+	var effects: WorldEffects = main_node.get("_effects") as WorldEffects
+	var player: Player = main_node.get("_player") as Player
+	var upgrade_ui: UpgradeUI = main_node.get("_upgrade_ui") as UpgradeUI
+	if not trap_mode_active or upgrade_ui.is_open() or player.inside_house:
+		effects.set_trap_preview(false)
 		return
 	var keys: Array[String] = ["trap_spike", "trap_snare", "trap_lure"]
 	var t_key: String = keys[clampi(selected_idx - 1, 0, 2)]
-	if traps.size() >= Config.MAX_TRAPS:
-		hud.show_message("Max %d traps reached!" % Config.MAX_TRAPS, 1.8, Color(1.0, 0.55, 0.45))
-		return
-	if bag.count(t_key) <= 0:
-		var cost: Dictionary = (Config.TRAPS[t_key] as Dictionary)["cost"] as Dictionary
-		if not bag.spend(cost, stockpile):
-			hud.show_message("Need %s to place trap." % Inventory.format_cost(cost), 1.8)
-			return
-	else:
-		bag.remove(t_key, 1)
-
-	var place_pos: Vector2 = (player.position + player.facing_vec.normalized() * 14.0).round()
-	for ex in traps:
-		if is_instance_valid(ex) and ex.position.distance_to(place_pos) < Config.TRAP_MIN_SPACING:
-			hud.show_message("Too close to another trap.", 1.4)
-			bag.add(t_key, 1)
-			return
-	var trap: Trap = Trap.new()
-	trap.setup(t_key, place_pos)
-	trap.triggered.connect(func(_t: Trap, _e: Node) -> void: sfx.play("trap_trigger", -8.0))
-	entities_layer.add_child(trap)
-	traps.append(trap)
-	sfx.play("fence_rebuilt", -9.0)
+	var spec: Dictionary = Config.TRAPS[t_key] as Dictionary
+	var place_pos: Vector2 = compute_trap_place_pos(trap_mode_active, main_node)
+	var check: Dictionary = can_place_trap_at(
+		t_key,
+		place_pos,
+		player,
+		main_node.get("bag") as Inventory,
+		main_node.get("stockpile") as Inventory,
+		main_node.get("traps") as Array,
+		main_node.get("structures") as Array
+	)
+	effects.set_trap_preview(
+		true,
+		place_pos,
+		float(spec.get("radius", 13.0)),
+		float(spec.get("attract_radius", 0.0)),
+		bool(check["ok"]),
+		t_key
+	)
 
 
 ## Completes a hold-E search on a POI prop, rewarding scrap, planks, and occasional arrows.

@@ -12,12 +12,32 @@ var _meteors: Array[Dictionary] = []
 var _debug_structures: Array = []
 var _debug_player: Node2D = null
 var _debug_enemies: Array = []
+var _trap_preview: Dictionary = {"active": false}
 
 
 func set_debug_refs(structures: Array, player: Node2D, enemies: Array) -> void:
 	_debug_structures = structures
 	_debug_player = player
 	_debug_enemies = enemies
+
+
+func set_trap_preview(
+	active: bool,
+	pos: Vector2 = Vector2.ZERO,
+	trigger_r: float = 13.0,
+	extra_r: float = 0.0,
+	valid: bool = true,
+	icon_key: String = "trap_spike"
+) -> void:
+	_trap_preview = {
+		"active": active,
+		"pos": pos.round(),
+		"trigger_r": trigger_r,
+		"extra_r": extra_r,
+		"valid": valid,
+		"icon_key": icon_key,
+	}
+	queue_redraw()
 
 
 func spawn_sparks(pos: Vector2, col: Color, count: int = 6) -> void:
@@ -142,6 +162,20 @@ func _draw() -> void:
 			rock_pos + Vector2(-8.0, -18.0), rock_pos, Color(1.0, 0.52, 0.20, 0.85), 2.0
 		)
 		draw_circle(rock_pos, 3.0, Color(1.0, 0.88, 0.56, 1.0))
+
+	if bool(_trap_preview.get("active", false)):
+		var tp: Vector2 = _trap_preview["pos"] as Vector2
+		var ok: bool = bool(_trap_preview["valid"])
+		var tint: Color = Color(0.35, 0.96, 0.50, 0.72) if ok else Color(1.0, 0.28, 0.28, 0.72)
+		var extra_r: float = float(_trap_preview["extra_r"])
+		if extra_r > 0.0:
+			draw_arc(tp, extra_r, 0.0, TAU, 36, Color(tint.r, tint.g, tint.b, 0.28), 1.0)
+		draw_circle(tp, float(_trap_preview["trigger_r"]), Color(tint.r, tint.g, tint.b, 0.18))
+		draw_arc(tp, float(_trap_preview["trigger_r"]), 0.0, TAU, 20, tint, 1.0)
+		var icon_tex: Texture2D = SpriteFactory.get_icon_texture(String(_trap_preview["icon_key"]))
+		if icon_tex != null:
+			var sz: Vector2 = icon_tex.get_size()
+			draw_texture(icon_tex, tp - sz * 0.5, Color(tint.r, tint.g, tint.b, 0.85))
 
 	if show_debug_colliders:
 		_draw_debug_colliders()

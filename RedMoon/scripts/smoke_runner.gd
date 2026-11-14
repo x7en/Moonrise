@@ -83,47 +83,51 @@ func _run_static_invariants() -> void:
 func _run_onion_ring_checks() -> void:
 	var fences: Array = _main.get("fences") as Array
 	var r1_built: int = 0
-	var r2_built: int = 0
+	var r1_gate: Structure = null
+	var r2_unbuilt: int = 0
 	var r3_unbuilt: int = 0
 	for f in fences:
 		var st: Structure = f as Structure
 		if st.ring == 1 and st.is_standing():
 			r1_built += 1
-		elif st.ring == 2 and st.is_standing():
-			r2_built += 1
+			if st.is_gate:
+				r1_gate = st
+		elif st.ring == 2 and not st.is_built:
+			r2_unbuilt += 1
 		elif st.ring == 3 and not st.is_built:
 			r3_unbuilt += 1
-	if r1_built < 10 or r2_built < 12 or r3_unbuilt < 14:
+	if r1_built < 12 or r1_gate == null or r2_unbuilt < 14 or r3_unbuilt < 16:
 		errors.append(
-			"Concentric fence counts wrong: R1=%d R2=%d R3_ghost=%d"
-			% [r1_built, r2_built, r3_unbuilt]
+			"Layered fence initial state wrong: R1=%d gate=%s R2_locked=%d R3_locked=%d"
+			% [r1_built, str(r1_gate != null), r2_unbuilt, r3_unbuilt]
 		)
 
-	# Verify Ring 1 & Ring 2 are closed on North/East/West and have a 28 px South gate opening.
+	# Verify Ring 1 is 100% sealed on North/East/West AND South Gate blocks zombies when closed.
 	var hc: Vector2 = Config.HOUSE_CENTER
-	for ring_def in Config.FENCE_RINGS:
-		if not bool(ring_def["built_at_start"]):
-			continue
-		var r_idx: int = int(ring_def["ring"])
-		var he: Vector2 = ring_def["half_extents"] as Vector2
-		var north_pt: Vector2 = Vector2(hc.x, hc.y - he.y)
-		var east_pt: Vector2 = Vector2(hc.x + he.x, hc.y)
-		var west_pt: Vector2 = Vector2(hc.x - he.x, hc.y)
-		var gate_pt: Vector2 = Vector2(hc.x, hc.y + he.y)
-		if not _point_covered_by_ring(fences, r_idx, north_pt):
-			errors.append("Ring %d north wall not solid at %s" % [r_idx, str(north_pt)])
-		if not _point_covered_by_ring(fences, r_idx, east_pt):
-			errors.append("Ring %d east wall not solid at %s" % [r_idx, str(east_pt)])
-		if not _point_covered_by_ring(fences, r_idx, west_pt):
-			errors.append("Ring %d west wall not solid at %s" % [r_idx, str(west_pt)])
-		if _point_covered_by_ring(fences, r_idx, gate_pt):
-			errors.append("Ring %d south gate blocked at %s" % [r_idx, str(gate_pt)])
+	var he: Vector2 = (Config.FENCE_RINGS[0] as Dictionary)["half_extents"] as Vector2
+	for pt in [
+		Vector2(hc.x, hc.y - he.y),
+		Vector2(hc.x + he.x, hc.y),
+		Vector2(hc.x - he.x, hc.y),
+		Vector2(hc.x, hc.y + he.y),
+	]:
+		if not _point_covered_by_ring(fences, 1, pt):
+			errors.append("Ring 1 perimeter/gate not blocking at %s" % str(pt))
+
+	# Opening Ring 1 Gate lets player pass; closing it seals the path again.
+	if r1_gate != null:
+		r1_gate.toggle_door(false)
+		if _point_covered_by_ring(fences, 1, Vector2(hc.x, hc.y + he.y)):
+			errors.append("Ring 1 south gate still blocking while open")
+		r1_gate.toggle_door(true)
+		if not _point_covered_by_ring(fences, 1, Vector2(hc.x, hc.y + he.y)):
+			errors.append("Ring 1 south gate failed to re-seal when closed")
 
 
 func _point_covered_by_ring(fences: Array, ring_num: int, pt: Vector2) -> bool:
 	for f in fences:
 		var st: Structure = f as Structure
-		if st.ring == ring_num and st.is_standing() and st.footprint_rect.has_point(pt):
+		if st.ring == ring_num and st.is_blocking() and st.footprint_rect.has_point(pt):
 			return true
 	return false
 
