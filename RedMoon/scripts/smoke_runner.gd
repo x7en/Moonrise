@@ -21,7 +21,7 @@ func start(main_node: Node) -> void:
 	_phase_checked_nights.clear()
 	_ring_checks_done = false
 	_elapsed = 0.0
-	print("[SMOKE] Starting automated Red Moon verification...")
+	print("[SMOKE] Starting automated Moonrise verification...")
 	_run_static_invariants()
 	_main.call("smoke_start_run")
 

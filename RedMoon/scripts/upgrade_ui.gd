@@ -165,7 +165,7 @@ func open_info_panel(kind: String, settings: SettingsStore) -> void:
 			_add_info_row(("[X] " if done else "[ ] ") + String(d["title"]), String(d["desc"]), done)
 	elif kind == "credits":
 		_title_lbl.text = "CREDITS"
-		_subtitle_lbl.text = "Red Moon (Godot 4.7)"
+		_subtitle_lbl.text = "Moonrise (Godot 4.7)"
 		_add_info_row("World & Sprites", "TheLazyStone + Custom 3/4 Cottage")
 		_add_info_row("Moon Art", "Owner-supplied moon sprites")
 		_add_info_row("Fonts", "Pixel Operator (CC0) & KiwiSoda")

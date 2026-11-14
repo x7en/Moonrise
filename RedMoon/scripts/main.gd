@@ -1,5 +1,5 @@
 extends Node2D
-## Root controller for Red Moon (Godot 4.7). Wires T0-T3 cleanly across modular scripts.
+## Root controller for Moonrise (Godot 4.7). Wires T0-T3 cleanly across modular scripts.
 
 enum GameState { TITLE, STORY, DAY, MOONRISE, NIGHT, PAUSED, GAME_OVER, VICTORY }
 

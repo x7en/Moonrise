@@ -485,7 +485,7 @@ func _build_title_screen() -> void:
 	title_lbl.position = Vector2(0.0, 26.0)
 	title_lbl.size = Vector2(Config.VIEW_SIZE.x, 40.0)
 	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_lbl.text = "RED MOON"
+	title_lbl.text = "MOONRISE"
 	SpriteFactory.style_label(title_lbl, "display", 32, Color(1.0, 0.34, 0.30))
 	_title_screen.add_child(title_lbl)
 
@@ -517,7 +517,7 @@ func _build_title_screen() -> void:
 	var ver_lbl: Label = Label.new()
 	ver_lbl.position = Vector2(8.0, Config.VIEW_SIZE.y - 14.0)
 	ver_lbl.size = Vector2(300.0, 12.0)
-	ver_lbl.text = "Red Moon v2.0 (Godot 4.7)  |  F11 Fullscreen"
+	ver_lbl.text = "Moonrise v2.1 (Godot 4.7)  |  F11 Fullscreen"
 	SpriteFactory.style_label(ver_lbl, "body", 8, Color(0.72, 0.68, 0.78))
 	_title_screen.add_child(ver_lbl)
 
