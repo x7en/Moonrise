@@ -1,0 +1,3 @@
+Art: Post-Apocalyptic Pixel Art Asset Pack by TheLazyStone (https://thelazystone.itch.io/post-apocalyptic-pixel-art-asset-pack).
+License: free for non-commercial use; commercial use requires paying at least $2 USD. No redistribution of the assets (do not publish this folder in a public repo).
+Sprite scale: 16px grid. Frame count = number after 'Sheet' in the file name (horizontal strip).
