@@ -49,6 +49,21 @@ const ANIMATED := {
 }
 ## [w, h] per single image.
 const STATIC := {
+	"moon/lunar_04": [32, 32],
+	"moon/lunar_05": [32, 32],
+	"moon/lunar_06": [32, 32],
+	"moon/lunar_07": [32, 32],
+	"moon/lunar_08": [32, 32],
+	"moon/lunar_09": [32, 32],
+	"moon/moon_00": [32, 32],
+	"moon/moon_00_red": [32, 32],
+	"moon/moon_00_white": [32, 32],
+	"moon/moon_01": [32, 32],
+	"moon/moon_01_red": [32, 32],
+	"moon/moon_02": [32, 32],
+	"moon/moon_02_red": [32, 32],
+	"moon/moon_03": [32, 32],
+	"moon/moon_03_red": [32, 32],
 	"nature/bush_1_green": [15, 13],
 	"nature/bush_2_green": [28, 13],
 	"nature/grass_1_green": [7, 5],
