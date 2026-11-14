@@ -170,15 +170,18 @@ func update_hud(data: Dictionary) -> void:
 		_house_icon.texture = SpriteFactory.get_icon_texture("broken_house")
 		_house_icon.visible = true
 	else:
-		var door_tag: String = "OPEN" if door_open else "CLOSED"
-		_house_lbl.text = "House %d/%d  Door:%s" % [house_hp, house_max, door_tag]
+		var door_tag: String = "OPEN!" if door_open else "Shut"
+		_house_lbl.text = "House %d/%d (%s)" % [house_hp, house_max, door_tag]
 		SpriteFactory.style_label(
 			_house_lbl,
 			"bold",
 			8,
 			Color(1.0, 0.72, 0.35) if door_open else Color(0.84, 0.92, 0.86)
 		)
-		_house_icon.visible = false
+		_house_icon.texture = SpriteFactory.get_icon_texture(
+			"broken_house" if intruders > 0 else "house_icon"
+		)
+		_house_icon.visible = true
 
 	_bag_lbl.text = "Bag %d/%d (P:%d S:%d) | Stock P:%d S:%d" % [
 		int(data.get("bag_used", 0)),
@@ -356,6 +359,8 @@ func _build_hud() -> void:
 	_house_icon = TextureRect.new()
 	_house_icon.position = Vector2(8.0, 16.0)
 	_house_icon.size = Vector2(12.0, 12.0)
+	_house_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_house_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_house_icon.visible = false
 	_hud_layer.add_child(_house_icon)
 	_house_lbl = _mk_lbl(
@@ -408,11 +413,11 @@ func _build_hud() -> void:
 	_header_panel.size = Vector2(360.0, 56.0)
 	_header_panel.visible = false
 	_header_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var hstyle: StyleBoxFlat = StyleBoxFlat.new()
-	hstyle.bg_color = Color(0.08, 0.06, 0.12, 0.90)
-	hstyle.border_color = Color(0.86, 0.34, 0.32, 0.95)
-	hstyle.set_border_width_all(1)
-	_header_panel.add_theme_stylebox_override("panel", hstyle)
+	_header_panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_header_panel.add_theme_stylebox_override(
+		"panel",
+		SpriteFactory.make_panel_style("res://assets/ui/panel_dark.png", 10.0, 10.0, 6.0)
+	)
 	_hud_layer.add_child(_header_panel)
 
 	var hvbox: VBoxContainer = VBoxContainer.new()
@@ -538,15 +543,11 @@ func _build_end_screen() -> void:
 	var panel: PanelContainer = PanelContainer.new()
 	panel.position = Vector2(130.0, 56.0)
 	panel.size = Vector2(380.0, 248.0)
-	var style: StyleBoxFlat = StyleBoxFlat.new()
-	style.bg_color = Color(0.09, 0.07, 0.13, 0.96)
-	style.border_color = Color(0.86, 0.34, 0.32, 1.0)
-	style.set_border_width_all(2)
-	style.content_margin_left = 14.0
-	style.content_margin_right = 14.0
-	style.content_margin_top = 12.0
-	style.content_margin_bottom = 12.0
-	panel.add_theme_stylebox_override("panel", style)
+	panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	panel.add_theme_stylebox_override(
+		"panel",
+		SpriteFactory.make_panel_style("res://assets/ui/panel_dark.png", 10.0, 14.0, 12.0)
+	)
 	_end_screen.add_child(panel)
 
 	var vbox: VBoxContainer = VBoxContainer.new()
@@ -588,15 +589,16 @@ func _build_end_screen() -> void:
 func _build_trap_hotbar() -> void:
 	_trap_slots.clear()
 	_trap_slot_labels.clear()
-	var bar_w: float = 342.0
+	var bar_w: float = 376.0
 	var start_x: float = floorf((Config.VIEW_SIZE.x - bar_w) * 0.5)
 	var bar_y: float = Config.VIEW_SIZE.y - 27.0
 	var icons: Array[String] = ["trap_spike", "trap_snare", "trap_lure"]
 	for i in range(3):
 		var slot: PanelContainer = PanelContainer.new()
-		slot.position = Vector2(start_x + float(i) * 116.0, bar_y)
-		slot.size = Vector2(110.0, 15.0)
+		slot.position = Vector2(start_x + float(i) * 128.0, bar_y)
+		slot.size = Vector2(120.0, 15.0)
 		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		slot.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		slot.add_theme_stylebox_override("panel", _make_slot_box(false))
 		var hbox: HBoxContainer = HBoxContainer.new()
 		hbox.add_theme_constant_override("separation", 3)
@@ -639,20 +641,18 @@ func _update_trap_hotbar(
 		)
 
 
-func _make_slot_box(active: bool) -> StyleBoxFlat:
-	var box: StyleBoxFlat = StyleBoxFlat.new()
-	box.bg_color = (
-		Color(0.24, 0.16, 0.12, 0.94) if active else Color(0.06, 0.05, 0.10, 0.78)
+func _make_slot_box(active: bool) -> StyleBox:
+	var path: String = (
+		"res://assets/ui/slot_selected.png" if active else "res://assets/ui/slot_normal.png"
 	)
-	box.border_color = (
+	return SpriteFactory.make_panel_style(
+		path,
+		4.0,
+		4.0,
+		1.0,
+		Color(0.24, 0.16, 0.12, 0.94) if active else Color(0.06, 0.05, 0.10, 0.78),
 		Color(1.0, 0.84, 0.34, 1.0) if active else Color(0.36, 0.32, 0.42, 0.85)
 	)
-	box.set_border_width_all(1)
-	box.content_margin_left = 4.0
-	box.content_margin_right = 4.0
-	box.content_margin_top = 1.0
-	box.content_margin_bottom = 1.0
-	return box
 
 
 func _mk_menu_btn(parent: VBoxContainer, label: String, cb: Callable) -> Button:

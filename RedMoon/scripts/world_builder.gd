@@ -197,7 +197,7 @@ func build_act1_plank_positions(count: int, seed_val: int) -> Array[Vector2]:
 	prng.seed = seed_val
 	var positions: Array[Vector2] = []
 	var rect: Rect2 = Config.ACT1_RECT.grow(-24.0)
-	var inner_clear: Rect2 = Rect2(Config.HOUSE_CENTER - Vector2(114.0, 86.0), Vector2(228.0, 172.0))
+	var inner_clear: Rect2 = Rect2(Config.HOUSE_CENTER - Vector2(132.0, 96.0), Vector2(264.0, 192.0))
 	var tries: int = 0
 	while positions.size() < count and tries < 600:
 		tries += 1
@@ -279,9 +279,9 @@ func _build_ground(ground_layer: Node2D) -> void:
 	)
 
 	var hc: Vector2 = Config.HOUSE_CENTER
-	var yard_rect: Rect2 = Rect2(hc - Vector2(210.0, 175.0), Vector2(420.0, 350.0))
-	var road_y_top: float = hc.y + 196.0
-	var road_y_bot: float = hc.y + 244.0
+	var yard_rect: Rect2 = Rect2(hc - Vector2(226.0, 186.0), Vector2(452.0, 372.0))
+	var road_y_top: float = hc.y + 206.0
+	var road_y_bot: float = hc.y + 254.0
 	var road_x_left: float = hc.x - 18.0
 	var road_x_right: float = hc.x + 18.0
 	var tile_rect: Rect2i = Rect2i(0, 0, TILE_SIZE, TILE_SIZE)
@@ -398,7 +398,7 @@ func _build_act1_boundary_overlay(decals_layer: Node2D) -> void:
 
 func _build_nature_and_pois(decals_layer: Node2D, entities_layer: Node2D) -> void:
 	var hc: Vector2 = Config.HOUSE_CENTER
-	var safe_yard: Rect2 = Rect2(hc - Vector2(215.0, 185.0), Vector2(430.0, 370.0))
+	var safe_yard: Rect2 = Rect2(hc - Vector2(236.0, 196.0), Vector2(472.0, 392.0))
 	var used_spots: Array[Vector2] = []
 
 	# 15 curated / seeded Points of Interest (T3.1 + T2.1 searchable scrap props).

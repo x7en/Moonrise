@@ -73,10 +73,7 @@ func _ready() -> void:
 	settings = SettingsStore.new()
 	settings.load_all()
 	settings.apply_display_and_audio()
-	if DisplayServer.get_name() != "headless":
-		Input.set_custom_mouse_cursor(
-			SpriteFactory.get_icon_texture("cursor"), Input.CURSOR_ARROW, Vector2(1.0, 1.0)
-		)
+	_set_trap_mode(false)
 	bag = Inventory.new(Config.BAG_CAPACITY)
 	stockpile = Inventory.new(-1)
 	_build_scene_tree()
@@ -118,8 +115,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			_handle_left_click()
 		elif mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT and _trap_mode_active:
-			_trap_mode_active = false
-			_effects.set_trap_preview(false)
+			_set_trap_mode(false)
 
 
 func _handle_key_press(ke: InputEventKey) -> void:
@@ -142,16 +138,14 @@ func _handle_key_press(ke: InputEventKey) -> void:
 	match ke.keycode:
 		KEY_ESCAPE:
 			if _trap_mode_active:
-				_trap_mode_active = false
-				_effects.set_trap_preview(false)
+				_set_trap_mode(false)
 				return
 			_pre_pause_state = state
 			state = GameState.PAUSED
 			_info_return_to_title = false
 			_upgrade_ui.open_pause_menu()
 		KEY_I:
-			_trap_mode_active = false
-			_effects.set_trap_preview(false)
+			_set_trap_mode(false)
 			_pre_pause_state = state
 			state = GameState.PAUSED
 			_upgrade_ui.open_inventory(bag, stockpile, _player, upgrades)
@@ -167,8 +161,7 @@ func _handle_key_press(ke: InputEventKey) -> void:
 		KEY_E:
 			_handle_interact_press()
 		KEY_U:
-			_trap_mode_active = false
-			_effects.set_trap_preview(false)
+			_set_trap_mode(false)
 			_try_open_nearby_structure_menu()
 		KEY_1:
 			_toggle_trap_slot(1)
@@ -183,12 +176,19 @@ func _handle_key_press(ke: InputEventKey) -> void:
 
 
 func _toggle_trap_slot(idx: int) -> void:
-	if _trap_mode_active and _selected_trap_idx == idx:
-		_trap_mode_active = false
+	var turn_on: bool = not (_trap_mode_active and _selected_trap_idx == idx)
+	_selected_trap_idx = idx
+	_set_trap_mode(turn_on)
+
+
+func _set_trap_mode(active: bool) -> void:
+	_trap_mode_active = active
+	if not active and _effects != null:
 		_effects.set_trap_preview(false)
-	else:
-		_selected_trap_idx = idx
-		_trap_mode_active = true
+	if DisplayServer.get_name() != "headless":
+		var icon_id: String = "cursor_crosshair" if active else "cursor"
+		var hot: Vector2 = Vector2(8.0, 8.0) if active else Vector2(1.0, 1.0)
+		Input.set_custom_mouse_cursor(SpriteFactory.get_icon_texture(icon_id), Input.CURSOR_ARROW, hot)
 
 
 func _place_selected_trap() -> void:
@@ -299,7 +299,7 @@ func _begin_new_run(from_smoke: bool = false) -> void:
 	is_blood_moon = false
 	_kills_total = 0
 	_intruders_inside = 0
-	_trap_mode_active = false
+	_set_trap_mode(false)
 	_day_snapshot.clear()
 	upgrades = {"gear_tier": 1}
 	bag.clear()
@@ -774,7 +774,7 @@ func _on_upgrade_action(action_id: String, payload: Dictionary) -> void:
 		_unlock_achievement(String(res["achievement"]))
 	if bool(res["spawn_watchtower"]):
 		var off: Vector2 = (
-			Vector2(-64.0, -56.0) if watchtowers.is_empty() else Vector2(64.0, -56.0)
+			Vector2(-88.0, -54.0) if watchtowers.is_empty() else Vector2(88.0, -54.0)
 		)
 		var wt: Watchtower = Watchtower.new()
 		wt.setup(Config.HOUSE_CENTER + off)

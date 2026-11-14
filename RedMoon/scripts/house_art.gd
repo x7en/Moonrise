@@ -7,9 +7,9 @@ extends RefCounted
 ##   res://assets/structures/house_lv1.png (or house_lv2.png, house_lv3.png, house_custom.png)
 ##   res://assets/structures/house_lv1_open.png (optional open-door variant)
 
-const WIDTH := 112
-const HEIGHT := 96
-const DOOR_LOCAL_X := 52.0  # Door center X in texture space (-4 px from sprite center 56)
+const WIDTH := 160
+const HEIGHT := 120
+const DOOR_LOCAL_X := 80.0  # Door center X in texture space (centered on 160x120 cottage)
 
 static var _cache: Dictionary = {}
 

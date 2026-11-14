@@ -190,9 +190,8 @@ func update_sky(delta: float) -> void:
 		a.position.x = floorf(-x)
 		b.position.x = floorf(w - x)
 		var base_c: Color = layer["base_color"] as Color
-		var tint: Color = base_c.lerp(
-			Color(base_c.r * 1.9 + 0.10, base_c.g * 0.55, base_c.b * 0.55, base_c.a), red_blend
-		)
+		var blood_c: Color = layer["blood_color"] as Color
+		var tint: Color = base_c.lerp(blood_c, red_blend)
 		a.modulate = tint
 		b.modulate = tint
 
@@ -209,8 +208,10 @@ func _add_cloud_layer(
 	var custom_names: Array[String] = ["clouds_back.png", "clouds_mid.png", "clouds_front.png"]
 	var custom_path: String = "res://assets/sky/" + custom_names[clampi(idx, 0, 2)]
 	var cloud_tex: Texture2D = null
+	var is_custom: bool = false
 	if ResourceLoader.exists(custom_path):
 		cloud_tex = load(custom_path) as Texture2D
+		is_custom = cloud_tex != null
 	if cloud_tex == null:
 		cloud_tex = _generate_dithered_cloud_strip(strip_w, strip_h, seed_val, idx)
 
@@ -228,13 +229,23 @@ func _add_cloud_layer(
 	b.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(b)
 
+	var night_col: Color = base_col
+	var blood_col: Color = Color(
+		base_col.r * 1.9 + 0.10, base_col.g * 0.55, base_col.b * 0.55, base_col.a
+	)
+	if is_custom:
+		var shade: float = [0.46, 0.54, 0.36][clampi(idx, 0, 2)]
+		night_col = Color(shade * 0.85, shade * 0.84, shade * 1.15, 0.88)
+		blood_col = Color(shade * 1.32, shade * 0.44, shade * 0.46, 0.92)
+
 	_cloud_layers.append({
 		"a": a,
 		"b": b,
 		"speed": speed_px,
 		"width": float(strip_w),
 		"offset": float(idx * 137),
-		"base_color": base_col,
+		"base_color": night_col,
+		"blood_color": blood_col,
 	})
 
 

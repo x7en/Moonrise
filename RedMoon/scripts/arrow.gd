@@ -37,7 +37,15 @@ func setup(
 	add_to_group("arrows")
 
 	_sprite = Sprite2D.new()
-	_sprite.texture = SpriteFactory.get_icon_texture("arrow_proj")
+	var arrow_path: String = (
+		"res://assets/weapons/arrow_pierce.png"
+		if pierce > 0
+		else "res://assets/weapons/arrow_wood.png"
+	)
+	if ResourceLoader.exists(arrow_path):
+		_sprite.texture = load(arrow_path) as Texture2D
+	else:
+		_sprite.texture = SpriteFactory.get_icon_texture("arrow_proj")
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(_sprite)
 

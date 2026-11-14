@@ -489,15 +489,11 @@ func _build_shell() -> void:
 	_panel = PanelContainer.new()
 	_set_panel_size(388.0, 224.0)
 	_panel.theme = SpriteFactory.get_game_theme()
-	var style: StyleBoxFlat = StyleBoxFlat.new()
-	style.bg_color = Color(0.09, 0.07, 0.13, 0.96)
-	style.border_color = Color(0.84, 0.36, 0.34, 1.0)
-	style.set_border_width_all(2)
-	style.content_margin_left = 10.0
-	style.content_margin_right = 10.0
-	style.content_margin_top = 8.0
-	style.content_margin_bottom = 8.0
-	_panel.add_theme_stylebox_override("panel", style)
+	_panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_panel.add_theme_stylebox_override(
+		"panel",
+		SpriteFactory.make_panel_style("res://assets/ui/panel_dark.png", 10.0, 12.0, 10.0)
+	)
 	add_child(_panel)
 
 	var vbox: VBoxContainer = VBoxContainer.new()

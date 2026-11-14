@@ -19,24 +19,12 @@ var _attack_cd: float = 0.0
 var _facing: String = "down"
 
 
-## Checks res://assets/animals/ for real dog idle & run sprite strips before enabling T3.2a.
+## Checks res://assets/animals/ for real dog idle & run sprite strips (export-safe).
 static func assets_available() -> bool:
-	var dir: DirAccess = DirAccess.open("res://assets/animals")
-	if dir == null:
-		return false
-	var has_idle: bool = false
-	var has_run: bool = false
-	dir.list_dir_begin()
-	var fname: String = dir.get_next()
-	while not fname.is_empty():
-		if not dir.current_is_dir() and fname.ends_with(".png"):
-			if fname.begins_with("dog_idle_"):
-				has_idle = true
-			elif fname.begins_with("dog_run_"):
-				has_run = true
-		fname = dir.get_next()
-	dir.list_dir_end()
-	return has_idle and has_run
+	return (
+		ResourceLoader.exists("res://assets/animals/dog_idle_right.png")
+		and ResourceLoader.exists("res://assets/animals/dog_run_right.png")
+	)
 
 
 func setup(spawn_pos: Vector2) -> bool:
@@ -68,7 +56,8 @@ func setup(spawn_pos: Vector2) -> bool:
 	_sprite.centered = false
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_sprite.sprite_frames = _load_dog_frames()
-	_sprite.offset = Vector2(-8.0, -16.0)
+	_sprite.scale = Vector2(0.5, 0.5)
+	_sprite.offset = Vector2(-24.0, -40.0)
 	_sprite.play(&"idle_down")
 	add_child(_sprite)
 	return true
@@ -167,40 +156,24 @@ func _load_dog_frames() -> SpriteFrames:
 	var sf: SpriteFrames = SpriteFrames.new()
 	if sf.has_animation(&"default"):
 		sf.remove_animation(&"default")
-	var dir: DirAccess = DirAccess.open("res://assets/animals")
-	if dir == null:
-		return sf
-	dir.list_dir_begin()
-	var fname: String = dir.get_next()
-	while not fname.is_empty():
-		if not dir.current_is_dir() and fname.ends_with(".png") and fname.begins_with("dog_"):
-			var parsed: Dictionary = _parse_strip_name(fname)
-			if not parsed.is_empty():
-				var full_path: String = "res://assets/animals/" + fname
-				var strip_tex: Texture2D = load(full_path) as Texture2D
-				if strip_tex != null:
-					var count: int = maxi(1, int(parsed["frames"]))
-					var fw: int = maxi(1, int(floorf(float(strip_tex.get_width()) / float(count))))
-					var fh: int = maxi(1, strip_tex.get_height())
-					var anim_key: String = "%s_%s" % [parsed["anim"], parsed["dir"]]
-					sf.add_animation(anim_key)
-					sf.set_animation_speed(anim_key, 8.0)
-					sf.set_animation_loop(anim_key, true)
-					for i in range(count):
-						var at: AtlasTexture = AtlasTexture.new()
-						at.atlas = strip_tex
-						at.region = Rect2(float(i * fw), 0.0, float(fw), float(fh))
-						sf.add_frame(anim_key, at)
-		fname = dir.get_next()
-	dir.list_dir_end()
+	for anim_name in ["idle", "run"]:
+		for dir_name in ["down", "up", "left", "right"]:
+			var full_path: String = "res://assets/animals/dog_%s_%s.png" % [anim_name, dir_name]
+			if not ResourceLoader.exists(full_path):
+				continue
+			var strip_tex: Texture2D = load(full_path) as Texture2D
+			if strip_tex == null:
+				continue
+			var fh: int = maxi(1, strip_tex.get_height())
+			var count: int = maxi(1, roundi(float(strip_tex.get_width()) / float(maxi(1, fh))))
+			var fw: int = maxi(1, int(floorf(float(strip_tex.get_width()) / float(count))))
+			var anim_key: String = "%s_%s" % [anim_name, dir_name]
+			sf.add_animation(anim_key)
+			sf.set_animation_speed(anim_key, 9.0 if anim_name == "run" else 6.0)
+			sf.set_animation_loop(anim_key, true)
+			for i in range(count):
+				var at: AtlasTexture = AtlasTexture.new()
+				at.atlas = strip_tex
+				at.region = Rect2(float(i * fw), 0.0, float(fw), float(fh))
+				sf.add_frame(anim_key, at)
 	return sf
-
-
-func _parse_strip_name(fname: String) -> Dictionary:
-	var stem: String = fname.trim_suffix(".png")
-	var parts: PackedStringArray = stem.split("-Sheet")
-	var frames_n: int = int(parts[1]) if parts.size() >= 2 else 1
-	var head: PackedStringArray = parts[0].split("_")
-	if head.size() < 3:
-		return {}
-	return {"anim": head[1], "dir": head[2], "frames": frames_n}

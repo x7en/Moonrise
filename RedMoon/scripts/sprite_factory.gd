@@ -345,13 +345,69 @@ static func get_spear_texture() -> ImageTexture:
 	return result
 
 
+## Builds a crisp 9-slice pixel-art panel StyleBoxTexture (with StyleBoxFlat fallback).
+static func make_panel_style(
+	tex_path: String,
+	slice_margin: float = 8.0,
+	pad_h: float = 10.0,
+	pad_v: float = 8.0,
+	fallback_bg: Color = Color(0.09, 0.07, 0.13, 0.96),
+	fallback_border: Color = Color(0.84, 0.36, 0.34, 1.0)
+) -> StyleBox:
+	if ResourceLoader.exists(tex_path):
+		var t: Texture2D = load(tex_path) as Texture2D
+		if t != null:
+			var sb: StyleBoxTexture = StyleBoxTexture.new()
+			sb.texture = t
+			sb.texture_margin_left = slice_margin
+			sb.texture_margin_right = slice_margin
+			sb.texture_margin_top = slice_margin
+			sb.texture_margin_bottom = slice_margin
+			sb.content_margin_left = pad_h
+			sb.content_margin_right = pad_h
+			sb.content_margin_top = pad_v
+			sb.content_margin_bottom = pad_v
+			sb.axis_stretch_horizontal = StyleBoxTexture.AXIS_STRETCH_MODE_TILE
+			sb.axis_stretch_vertical = StyleBoxTexture.AXIS_STRETCH_MODE_TILE
+			return sb
+	var flat: StyleBoxFlat = StyleBoxFlat.new()
+	flat.bg_color = fallback_bg
+	flat.border_color = fallback_border
+	flat.set_border_width_all(1)
+	flat.content_margin_left = pad_h
+	flat.content_margin_right = pad_h
+	flat.content_margin_top = pad_v
+	flat.content_margin_bottom = pad_v
+	return flat
+
+
 ## Procedural icons & gameplay sprites (automatically checks custom drop-in PNGs first).
 static func get_icon_texture(icon_id: String) -> Texture2D:
 	if _icon_cache.has(icon_id):
 		return _icon_cache[icon_id] as Texture2D
 
+	var explicit_map: Dictionary = {
+		"cursor": "res://assets/ui/cursor_pointer.png",
+		"cursor_crosshair": "res://assets/ui/cursor_crosshair.png",
+		"broken_house": "res://assets/ui/icon_danger.png",
+		"trophy": "res://assets/ui/icon_trophy.png",
+		"bow": "res://assets/weapons/bow_icon.png",
+		"heart": "res://assets/ui/icon_heart.png",
+		"house_icon": "res://assets/ui/icon_house.png",
+		"bag_icon": "res://assets/ui/icon_bag.png",
+		"shock_icon": "res://assets/ui/icon_shock.png",
+	}
+	if explicit_map.has(icon_id):
+		var ep: String = String(explicit_map[icon_id])
+		if ResourceLoader.exists(ep):
+			var et: Texture2D = load(ep) as Texture2D
+			if et != null:
+				_icon_cache[icon_id] = et
+				return et
+
 	var drop_paths: Array[String] = [
 		"res://assets/traps/%s.png" % icon_id,
+		"res://assets/weapons/%s.png" % icon_id,
 		"res://assets/structures/%s.png" % icon_id,
 		"res://assets/ui/%s.png" % icon_id,
 	]
