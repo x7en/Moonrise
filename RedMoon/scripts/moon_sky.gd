@@ -16,7 +16,7 @@ var _stars: Array[Dictionary] = []
 var _moon_holder: Control = null
 var _moon_base: TextureRect = null
 var _moon_red: TextureRect = null
-var _moon_glow: ColorRect = null
+var _moon_glow: TextureRect = null
 var _cloud_layers: Array[Dictionary] = []
 var _silhouette: Control = null
 var _time: float = 0.0
@@ -76,10 +76,12 @@ func build(view_size: Vector2 = Config.VIEW_SIZE) -> void:
 	_moon_holder.size = Vector2(128.0, 128.0)
 	add_child(_moon_holder)
 
-	_moon_glow = ColorRect.new()
-	_moon_glow.position = Vector2(-14.0, -14.0)
-	_moon_glow.size = Vector2(156.0, 156.0)
-	_moon_glow.color = Color(0.86, 0.88, 1.0, 0.08)
+	_moon_glow = TextureRect.new()
+	_moon_glow.position = Vector2(-24.0, -24.0)
+	_moon_glow.size = Vector2(176.0, 176.0)
+	_moon_glow.texture = SpriteFactory.get_radial_light_texture(128)
+	_moon_glow.stretch_mode = TextureRect.STRETCH_SCALE
+	_moon_glow.modulate = Color(0.86, 0.88, 1.0, 0.14)
 	_moon_holder.add_child(_moon_glow)
 
 	_moon_base = TextureRect.new()
@@ -124,16 +126,26 @@ func configure_for_night(
 	)
 	var red_key: String = "moon/moon_%02d_red" % _moon_phase_idx
 	if _moon_base != null:
-		_moon_base.texture = SpriteFactory.tex(base_key)
+		_moon_base.texture = _load_custom_sky_tex("res://assets/sky/moon_full.png", base_key)
 	if _moon_red != null:
-		_moon_red.texture = SpriteFactory.tex(red_key)
+		_moon_red.texture = _load_custom_sky_tex("res://assets/sky/moon_blood.png", red_key)
 	red_blend = 1.0 if (is_blood and not start_white_turn_red) else 0.0
 
 
 func set_red_moon_frame(frame_idx: int) -> void:
 	var idx: int = clampi(frame_idx, 0, 3)
 	if _moon_red != null:
-		_moon_red.texture = SpriteFactory.tex("moon/moon_%02d_red" % idx)
+		_moon_red.texture = _load_custom_sky_tex(
+			"res://assets/sky/moon_blood.png", "moon/moon_%02d_red" % idx
+		)
+
+
+func _load_custom_sky_tex(custom_path: String, fallback_key: String) -> Texture2D:
+	if ResourceLoader.exists(custom_path):
+		var loaded: Texture2D = load(custom_path) as Texture2D
+		if loaded != null:
+			return loaded
+	return SpriteFactory.tex(fallback_key)
 
 
 func update_sky(delta: float) -> void:
@@ -164,8 +176,8 @@ func update_sky(delta: float) -> void:
 	if _moon_red != null:
 		_moon_red.modulate.a = clampf(red_blend, 0.0, 1.0)
 	if _moon_glow != null:
-		_moon_glow.color = Color(0.86, 0.88, 1.0, 0.08).lerp(
-			Color(0.98, 0.22, 0.22, 0.18), red_blend
+		_moon_glow.modulate = Color(0.86, 0.88, 1.0, 0.14).lerp(
+			Color(0.98, 0.22, 0.22, 0.30), red_blend
 		)
 
 	# Scroll parallax pixel clouds seamlessly across the viewport.
@@ -194,7 +206,13 @@ func _add_cloud_layer(
 ) -> void:
 	var strip_w: int = int(_view_size.x)
 	var strip_h: int = 86
-	var cloud_tex: ImageTexture = _generate_dithered_cloud_strip(strip_w, strip_h, seed_val, idx)
+	var custom_names: Array[String] = ["clouds_back.png", "clouds_mid.png", "clouds_front.png"]
+	var custom_path: String = "res://assets/sky/" + custom_names[clampi(idx, 0, 2)]
+	var cloud_tex: Texture2D = null
+	if ResourceLoader.exists(custom_path):
+		cloud_tex = load(custom_path) as Texture2D
+	if cloud_tex == null:
+		cloud_tex = _generate_dithered_cloud_strip(strip_w, strip_h, seed_val, idx)
 
 	var a: TextureRect = TextureRect.new()
 	a.texture = cloud_tex
@@ -268,6 +286,15 @@ func _generate_dithered_cloud_strip(w: int, h: int, seed_val: int, layer_idx: in
 
 
 func _build_horizon_silhouette() -> void:
+	if ResourceLoader.exists("res://assets/sky/horizon_silhouette.png"):
+		var custom_sil: TextureRect = TextureRect.new()
+		custom_sil.texture = load("res://assets/sky/horizon_silhouette.png") as Texture2D
+		custom_sil.position = Vector2.ZERO
+		custom_sil.size = Vector2(_view_size.x, 68.0)
+		custom_sil.stretch_mode = TextureRect.STRETCH_SCALE
+		custom_sil.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_silhouette.add_child(custom_sil)
+		return
 	var dark: Color = Color(0.04, 0.03, 0.06, 1.0)
 	var ground: ColorRect = ColorRect.new()
 	ground.position = Vector2(0.0, 42.0)

@@ -35,9 +35,22 @@ func build_onion_fence_specs() -> Array[Dictionary]:
 
 		# North wall spans full [left_x - half_t, right_x + half_t] so corners are 100% solid.
 		_append_h_run(specs, ring_num, built, left_x - half_t, right_x + half_t, top_y)
-		# South-West wing and South-East wing leave an exact 28 px south gate gap.
+		# South-West wing and South-East wing flank the 28 px south Fence Gate opening.
 		_append_h_run(specs, ring_num, built, left_x - half_t, gate_x - gate_half, bottom_y)
 		_append_h_run(specs, ring_num, built, gate_x + gate_half, right_x + half_t, bottom_y)
+		# Closable Fence Gate (door) sealing the south opening with 2 px side overlap (0 leak).
+		specs.append({
+			"ring": ring_num,
+			"horizontal": true,
+			"built": built,
+			"is_gate": true,
+			"rect": Rect2(
+				gate_x - gate_half - 2.0,
+				bottom_y - half_t,
+				Config.FENCE_GATE_WIDTH + 4.0,
+				FENCE_THICKNESS
+			),
+		})
 		# West and East walls overlap the corner squares so zero diagonal gap exists.
 		_append_v_run(specs, ring_num, built, left_x, top_y - half_t, bottom_y + half_t)
 		_append_v_run(specs, ring_num, built, right_x, top_y - half_t, bottom_y + half_t)
@@ -65,6 +78,7 @@ func _append_h_run(
 			"ring": ring_num,
 			"horizontal": true,
 			"built": built,
+			"is_gate": false,
 			"rect": Rect2(a, y_center - FENCE_THICKNESS * 0.5, b - a, FENCE_THICKNESS),
 		})
 
@@ -89,6 +103,7 @@ func _append_v_run(
 			"ring": ring_num,
 			"horizontal": false,
 			"built": built,
+			"is_gate": false,
 			"rect": Rect2(x_center - FENCE_THICKNESS * 0.5, a, FENCE_THICKNESS, b - a),
 		})
 
@@ -156,13 +171,33 @@ func mark_prop_searched(prop_id: int) -> void:
 			return
 
 
-## Generates Act 1 plank spawns inside ACT1_RECT, outside Ring 2 and clear of the house/fences.
+## Builds the house and all onion-ring fence Structure nodes into entities_layer.
+func spawn_homestead_structures(
+	decals_layer: Node2D, entities_layer: Node2D, on_crumbled: Callable
+) -> Dictionary:
+	var h: Structure = Structure.new()
+	h.setup_house(decals_layer)
+	h.crumbled_finished.connect(on_crumbled)
+	entities_layer.add_child(h)
+	var fence_list: Array[Structure] = []
+	var all_list: Array[Structure] = [h]
+	var specs: Array[Dictionary] = build_onion_fence_specs()
+	for i in range(specs.size()):
+		var seg: Structure = Structure.new()
+		seg.setup_fence_segment(i, specs[i], decals_layer)
+		entities_layer.add_child(seg)
+		fence_list.append(seg)
+		all_list.append(seg)
+	return {"house": h, "fences": fence_list, "structures": all_list}
+
+
+## Generates Act 1 plank spawns inside ACT1_RECT, outside Ring 1 and clear of the house/fences.
 func build_act1_plank_positions(count: int, seed_val: int) -> Array[Vector2]:
 	var prng: RandomNumberGenerator = RandomNumberGenerator.new()
 	prng.seed = seed_val
 	var positions: Array[Vector2] = []
 	var rect: Rect2 = Config.ACT1_RECT.grow(-24.0)
-	var inner_clear: Rect2 = Rect2(Config.HOUSE_CENTER - Vector2(150.0, 118.0), Vector2(300.0, 236.0))
+	var inner_clear: Rect2 = Rect2(Config.HOUSE_CENTER - Vector2(114.0, 86.0), Vector2(228.0, 172.0))
 	var tries: int = 0
 	while positions.size() < count and tries < 600:
 		tries += 1
@@ -244,11 +279,11 @@ func _build_ground(ground_layer: Node2D) -> void:
 	)
 
 	var hc: Vector2 = Config.HOUSE_CENTER
-	var yard_rect: Rect2 = Rect2(hc - Vector2(184.0, 154.0), Vector2(368.0, 308.0))
-	var road_y_top: float = hc.y + 188.0
-	var road_y_bot: float = hc.y + 236.0
-	var road_x_left: float = hc.x - 24.0
-	var road_x_right: float = hc.x + 24.0
+	var yard_rect: Rect2 = Rect2(hc - Vector2(210.0, 175.0), Vector2(420.0, 350.0))
+	var road_y_top: float = hc.y + 196.0
+	var road_y_bot: float = hc.y + 244.0
+	var road_x_left: float = hc.x - 18.0
+	var road_x_right: float = hc.x + 18.0
 	var tile_rect: Rect2i = Rect2i(0, 0, TILE_SIZE, TILE_SIZE)
 
 	for ty in range(rows):
@@ -259,17 +294,11 @@ func _build_ground(ground_layer: Node2D) -> void:
 			var src_img: Image = grass_imgs[rng.randi() % grass_imgs.size()]
 			var on_main_road: bool = (wy >= road_y_top and wy <= road_y_bot)
 			var on_driveway: bool = (
-				wx >= road_x_left and wx <= road_x_right and wy >= hc.y + 56.0 and wy <= road_y_bot
+				wx >= road_x_left and wx <= road_x_right and wy >= hc.y + 160.0 and wy <= road_y_bot
 			)
 			if on_main_road or on_driveway:
 				src_img = road_img
-			elif yard_rect.has_point(pt):
-				src_img = (
-					waste_imgs[rng.randi() % waste_imgs.size()]
-					if rng.randf() < 0.72
-					else grass_imgs[rng.randi() % grass_imgs.size()]
-				)
-			elif rng.randf() < 0.14:
+			elif not yard_rect.has_point(pt) and rng.randf() < 0.16:
 				src_img = waste_imgs[rng.randi() % waste_imgs.size()]
 
 			world_img.blit_rect(src_img, tile_rect, Vector2i(tx * TILE_SIZE, ty * TILE_SIZE))
@@ -293,14 +322,36 @@ func _make_asphalt_tile(base_img: Image) -> Image:
 
 
 func _build_homestead_paths(decals_layer: Node2D) -> void:
-	# Pure flat stone stepping pads at the south gate line (zero fake wood, T0.3).
+	# Stepping stones leading from the cottage porch steps through the south gates to the road.
 	var hc: Vector2 = Config.HOUSE_CENTER
-	for gy in [hc.y + 62.0, hc.y + 106.0, hc.y + 150.0]:
-		var pad: ColorRect = ColorRect.new()
-		pad.position = Vector2(hc.x - 14.0, gy - 5.0)
-		pad.size = Vector2(28.0, 10.0)
-		pad.color = Color(0.46, 0.42, 0.36, 0.55)
-		decals_layer.add_child(pad)
+	var stones: Array = [
+		[Vector2(-5.0, 49.0), Vector2(6.0, 4.0)],
+		[Vector2(2.0, 53.0), Vector2(5.0, 4.0)],
+		[Vector2(-3.0, 58.0), Vector2(6.0, 4.0)],
+		[Vector2(2.0, 64.0), Vector2(5.0, 4.0)],
+		[Vector2(-4.0, 74.0), Vector2(6.0, 4.0)],
+		[Vector2(2.0, 81.0), Vector2(5.0, 4.0)],
+		[Vector2(-3.0, 90.0), Vector2(6.0, 4.0)],
+		[Vector2(2.0, 98.0), Vector2(5.0, 4.0)],
+		[Vector2(-4.0, 118.0), Vector2(6.0, 4.0)],
+		[Vector2(2.0, 128.0), Vector2(6.0, 4.0)],
+		[Vector2(-3.0, 140.0), Vector2(6.0, 4.0)],
+		[Vector2(2.0, 162.0), Vector2(6.0, 4.0)],
+		[Vector2(-3.0, 174.0), Vector2(6.0, 4.0)],
+	]
+	for st in stones:
+		var off: Vector2 = st[0] as Vector2
+		var sz: Vector2 = st[1] as Vector2
+		var border: ColorRect = ColorRect.new()
+		border.position = (hc + off - Vector2(1.0, 1.0)).round()
+		border.size = sz + Vector2(2.0, 2.0)
+		border.color = Color(0.16, 0.14, 0.18, 0.78)
+		decals_layer.add_child(border)
+		var fill: ColorRect = ColorRect.new()
+		fill.position = (hc + off).round()
+		fill.size = sz
+		fill.color = Color(0.60, 0.63, 0.70, 0.92)
+		decals_layer.add_child(fill)
 
 
 func _build_world_border_walls(entities_layer: Node2D) -> void:

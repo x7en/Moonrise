@@ -1,5 +1,5 @@
 extends Node2D
-## Root controller for Red Moon (Godot 4.7). Wires T0-T3 cleanly across modular scripts.
+## Root controller for Moonrise (Godot 4.7). Wires T0-T3 cleanly across modular scripts.
 
 enum GameState { TITLE, STORY, DAY, MOONRISE, NIGHT, PAUSED, GAME_OVER, VICTORY }
 
@@ -49,6 +49,7 @@ var _hit_stop: float = 0.0
 var _shake_timer: float = 0.0
 var _shake_amp: float = 0.0
 var _selected_trap_idx: int = 1
+var _trap_mode_active: bool = false
 var _intruders_inside: int = 0
 var _intruder_dmg_accum: float = 0.0
 var _intruder_player_timer: float = 0.0
@@ -116,6 +117,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		var mb: InputEventMouseButton = event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			_handle_left_click()
+		elif mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT and _trap_mode_active:
+			_trap_mode_active = false
+			_effects.set_trap_preview(false)
 
 
 func _handle_key_press(ke: InputEventKey) -> void:
@@ -137,11 +141,17 @@ func _handle_key_press(ke: InputEventKey) -> void:
 
 	match ke.keycode:
 		KEY_ESCAPE:
+			if _trap_mode_active:
+				_trap_mode_active = false
+				_effects.set_trap_preview(false)
+				return
 			_pre_pause_state = state
 			state = GameState.PAUSED
 			_info_return_to_title = false
 			_upgrade_ui.open_pause_menu()
 		KEY_I:
+			_trap_mode_active = false
+			_effects.set_trap_preview(false)
 			_pre_pause_state = state
 			state = GameState.PAUSED
 			_upgrade_ui.open_inventory(bag, stockpile, _player, upgrades)
@@ -157,26 +167,46 @@ func _handle_key_press(ke: InputEventKey) -> void:
 		KEY_E:
 			_handle_interact_press()
 		KEY_U:
+			_trap_mode_active = false
+			_effects.set_trap_preview(false)
 			_try_open_nearby_structure_menu()
 		KEY_1:
-			_selected_trap_idx = 1
+			_toggle_trap_slot(1)
 		KEY_2:
-			_selected_trap_idx = 2
+			_toggle_trap_slot(2)
 		KEY_3:
-			_selected_trap_idx = 3
+			_toggle_trap_slot(3)
 		KEY_T:
-			_economy.try_place_trap(
-				_selected_trap_idx, _player, bag, stockpile, traps, _entities_layer, _hud, _sfx
-			)
+			_place_selected_trap()
 		KEY_G:
 			_toggle_dogs_mode()
+
+
+func _toggle_trap_slot(idx: int) -> void:
+	if _trap_mode_active and _selected_trap_idx == idx:
+		_trap_mode_active = false
+		_effects.set_trap_preview(false)
+	else:
+		_selected_trap_idx = idx
+		_trap_mode_active = true
+
+
+func _place_selected_trap() -> void:
+	var keys: Array[String] = ["trap_spike", "trap_snare", "trap_lure"]
+	var t_key: String = keys[clampi(_selected_trap_idx - 1, 0, 2)]
+	var pos: Vector2 = _economy.compute_trap_place_pos(_trap_mode_active, self)
+	_economy.try_place_trap_at(t_key, pos, self)
 
 
 func _handle_left_click() -> void:
 	if _upgrade_ui.is_open() or (state != GameState.DAY and state != GameState.NIGHT):
 		return
+	if _trap_mode_active:
+		_place_selected_trap()
+		return
 	var in_reach: bool = (
 		_hovered_struct != null
+		and _hovered_struct.is_built
 		and _hovered_struct.distance_from_point(_player.position) <= Config.STRUCTURE_MENU_REACH
 	)
 	if in_reach:
@@ -194,8 +224,9 @@ func _step_gameplay(delta: float) -> void:
 	if _bounce_cd > 0.0:
 		_bounce_cd = maxf(0.0, _bounce_cd - delta)
 
-	_cleanup_arrays()
+	_spawner.prune_invalid_arrays([enemies, arrows, traps, watchtowers, dogs])
 	_step_hover_target()
+	_economy.update_trap_preview(_trap_mode_active, _selected_trap_idx, self)
 	if _economy.step_piles_and_deposit(
 		get_tree(), _player, house, bag, stockpile, _sfx, _effects
 	):
@@ -244,7 +275,9 @@ func _step_day_phase(delta: float) -> void:
 	if not is_dusk_warned and phase_timer <= dusk_thresh:
 		is_dusk_warned = true
 		var msg: String = (
-			"Dusk: get inside and close the door!" if act == 1 else "Dusk. Head home."
+			"Dusk: close your fence gate [E] & get inside!"
+			if _spawner.has_open_fence_gate(fences)
+			else ("Dusk: get inside and close the door!" if act == 1 else "Dusk. Head home.")
 		)
 		_hud.show_message(msg, 3.0, Color(1.0, 0.72, 0.40))
 	if _meteor_day_active and _meteor_pending > 0:
@@ -266,15 +299,14 @@ func _begin_new_run(from_smoke: bool = false) -> void:
 	is_blood_moon = false
 	_kills_total = 0
 	_intruders_inside = 0
+	_trap_mode_active = false
 	_day_snapshot.clear()
-	upgrades = {
-		"bigger_quiver": false, "quick_hands": false, "barbed_arrows": false,
-		"heavy_bat": false, "swift_boots": false, "quick_bounce": false,
-	}
+	upgrades = {"gear_tier": 1}
 	bag.clear()
 	stockpile.clear()
 	stockpile.add("plank", Config.ACT1_START_STOCKPILE)
 	bag.add("arrow", 18)
+	bag.add("trap_spike", Config.START_SPIKE_TRAPS)
 
 	_clear_dynamic_world()
 	_rebuild_world_and_structures(1337 + randi() % 1000)
@@ -307,7 +339,7 @@ func _start_day(day_num: int) -> void:
 	phase_timer = Config.day_length()
 
 	if _player.inside_house:
-		_player.set_inside_house(false, Config.HOUSE_DOOR_STEP + Vector2(0.0, 10.0))
+		_player.set_inside_house(false, Config.HOUSE_DOOR)
 	if house != null and house.is_standing():
 		house.toggle_door(true)
 	if day > 1:
@@ -330,21 +362,16 @@ func _start_day(day_num: int) -> void:
 		act, day, _player, bag, stockpile, upgrades, house, fences
 	)
 	var sub: String = (
-		"Gather planks & reinforce Rings 1-2. Close the door before dusk!"
-		if act == 1
-		else "Explore the valley, scavenge scrap, and fortify for Night 7!"
+		"Gather planks, set traps [1-3], & close your fence gate [E] before dusk!"
+		if act == 1 else "Explore the valley, scavenge scrap, and unlock outer fence layers!"
 	)
-	_hud.show_header_banner(
-		"DAY %d - ACT %d" % [day, act],
-		sub,
-		Color(1.0, 0.90, 0.56) if act == 1 else Color(0.62, 0.96, 0.68),
-		2.8
-	)
+	var col: Color = Color(1.0, 0.90, 0.56) if act == 1 else Color(0.62, 0.96, 0.68)
+	_hud.show_header_banner("DAY %d - ACT %d" % [day, act], sub, col, 2.8)
 
 
 func _begin_night_sequence() -> void:
 	# T0.3: Destroy every surviving pickup pile cleanly before night starts.
-	_clear_piles()
+	_spawner.clear_piles_in_tree(get_tree())
 	if OS.is_debug_build():
 		assert(get_tree().get_nodes_in_group("piles").is_empty(), "T0.3: piles leaked into night!")
 	if act == 2 and Config.LOSE_BAG_AT_DUSK_ACT2 and not _player.inside_house:
@@ -513,7 +540,7 @@ func _try_shockwave() -> void:
 
 func _handle_interact_press() -> void:
 	if _player.inside_house:
-		_player.set_inside_house(false, Config.HOUSE_DOOR_STEP + Vector2(0.0, 10.0))
+		_player.set_inside_house(false, Config.HOUSE_DOOR)
 		_sfx.play("door_creak", -8.0)
 		return
 	if house != null and house.is_standing():
@@ -533,6 +560,18 @@ func _handle_interact_press() -> void:
 				if house.is_door_open():
 					_hud.show_message("Door open! Press E at step to enter, or E to close.", 1.8)
 			return
+	var near_gate: Structure = _spawner.find_nearest_gate(fences, _player.position, 28.0)
+	if near_gate != null and near_gate.is_standing():
+		near_gate.toggle_door(false)
+		_sfx.play("door_creak", -8.0)
+		var g_msg: String = (
+			"Layer %d Gate OPEN (close before night!)" % near_gate.ring
+			if near_gate.gate_open else "Layer %d Gate CLOSED (blocks zombies!)" % near_gate.ring
+		)
+		_hud.show_message(
+			g_msg, 2.0, Color(1.0, 0.78, 0.40) if near_gate.gate_open else Color(0.60, 0.95, 0.65)
+		)
+		return
 	_try_open_nearby_structure_menu()
 
 
@@ -548,8 +587,7 @@ func _open_structure_menu(st: Structure) -> void:
 	_pre_pause_state = state
 	state = GameState.PAUSED
 	_upgrade_ui.open_structure_menu(
-		st, bag, stockpile, act, upgrades,
-		_economy.compute_ring_stats(fences), watchtowers.size()
+		st, bag, stockpile, act, upgrades, _economy.compute_ring_stats(fences), watchtowers.size()
 	)
 
 
@@ -568,11 +606,9 @@ func _step_hold_search_and_tame(delta: float) -> void:
 		_search_timer = 0.0
 		return
 	for d in dogs:
-		if (
-			is_instance_valid(d)
-			and d.mode == Dog.Mode.STRAY
-			and d.position.distance_to(_player.position) <= 24.0
-		):
+		if not is_instance_valid(d) or d.mode != Dog.Mode.STRAY:
+			continue
+		if d.position.distance_to(_player.position) <= 24.0:
 			d.advance_tame(delta, true)
 			return
 	var prop: Dictionary = _world_builder.find_nearest_searchable(_player.position, 32.0)
@@ -588,18 +624,17 @@ func _step_hold_search_and_tame(delta: float) -> void:
 	if _search_timer >= Config.SEARCH_HOLD_TIME:
 		_search_prop_id = -1
 		_search_timer = 0.0
-		_economy.grant_prop_loot(
-			prop, _world_builder, _player, bag, stockpile, _sfx, _effects
-		)
+		_economy.grant_prop_loot(prop, _world_builder, _player, bag, stockpile, _sfx, _effects)
 
 
 func _step_hover_target() -> void:
 	var mouse_world: Vector2 = get_global_mouse_position()
 	var found: Structure = null
 	for s in structures:
-		if is_instance_valid(s) and (s as Structure).footprint_rect.grow(5.0).has_point(mouse_world):
-			found = s as Structure
-			break
+		if is_instance_valid(s) and (s as Structure).is_built:
+			if (s as Structure).visual_rect.has_point(mouse_world):
+				found = s as Structure
+				break
 	if found != _hovered_struct:
 		if is_instance_valid(_hovered_struct):
 			_hovered_struct.set_hovered(false)
@@ -696,13 +731,11 @@ func _on_house_crumbled(_st: Structure) -> void:
 	_add_shake(0.65, 5.0)
 	_intruders_inside = 0
 	if _player.inside_house:
-		_player.set_inside_house(false, Config.HOUSE_DOOR_STEP + Vector2(0.0, 10.0))
+		_player.set_inside_house(false, Config.HOUSE_DOOR)
 	_unlock_achievement("house_fell")
 	_hud.show_header_banner(
 		"THE HOUSE HAS FALLEN!",
-		"No shelter left! Keep fighting — rebuild from the rubble when you can.",
-		Color(1.0, 0.34, 0.30),
-		3.4
+		"No shelter left! Rebuild from the rubble when you can.", Color(1.0, 0.34, 0.30), 3.4
 	)
 
 
@@ -710,15 +743,12 @@ func _on_player_died() -> void:
 	state = GameState.GAME_OVER
 	var reason: String = (
 		"You fell in the ruins without shelter."
-		if (house != null and house.is_fallen)
-		else "The horde overwhelmed you on Day %d." % day
+		if (house != null and house.is_fallen) else "The horde overwhelmed you on Day %d." % day
 	)
-	_hud.show_end_screen(
-		false,
-		"YOU FELL",
-		"%s\n\nEnemies Defeated: %d\nReached: Day %d (Act %d)" % [reason, _kills_total, day, act],
-		not _day_snapshot.is_empty()
-	)
+	var body: String = "%s\n\nEnemies Defeated: %d\nReached: Day %d (Act %d)" % [
+		reason, _kills_total, day, act
+	]
+	_hud.show_end_screen(false, "YOU FELL", body, not _day_snapshot.is_empty())
 
 
 func _on_upgrade_action(action_id: String, payload: Dictionary) -> void:
@@ -734,8 +764,7 @@ func _on_upgrade_action(action_id: String, payload: Dictionary) -> void:
 		return
 
 	var res: Dictionary = _economy.execute_action(
-		action_id, payload, bag, stockpile, house, fences,
-		_player, upgrades, act, watchtowers.size()
+		action_id, payload, bag, stockpile, house, fences, _player, upgrades, act, watchtowers.size()
 	)
 	if not String(res["sfx"]).is_empty():
 		_sfx.play(String(res["sfx"]), -7.0)
@@ -754,10 +783,8 @@ func _on_upgrade_action(action_id: String, payload: Dictionary) -> void:
 		watchtowers.append(wt)
 	var cur: Structure = _upgrade_ui.current_structure
 	if is_instance_valid(cur) and _upgrade_ui.active_panel == "structure":
-		_upgrade_ui.open_structure_menu(
-			cur, bag, stockpile, act, upgrades,
-			_economy.compute_ring_stats(fences), watchtowers.size()
-		)
+		var rs: Dictionary = _economy.compute_ring_stats(fences)
+		_upgrade_ui.open_structure_menu(cur, bag, stockpile, act, upgrades, rs, watchtowers.size())
 
 
 func _update_lighting_and_tint() -> void:
@@ -831,31 +858,19 @@ func _rebuild_world_and_structures(seed_val: int) -> void:
 		for child in layer_node.get_children():
 			if child != _player:
 				child.queue_free()
-	fences.clear()
-	structures.clear()
-	enemies.clear()
-	arrows.clear()
-	traps.clear()
-	watchtowers.clear()
-	dogs.clear()
+	for arr in [fences, structures, enemies, arrows, traps, watchtowers, dogs]:
+		(arr as Array).clear()
 	_effects.clear_all()
-
 	_world_builder = WorldBuilder.new()
 	_world_builder.build_world(_ground_layer, _decals_layer, _entities_layer, seed_val)
-	house = Structure.new()
-	house.setup_house(_decals_layer)
-	house.crumbled_finished.connect(_on_house_crumbled)
-	_entities_layer.add_child(house)
-	structures.append(house)
-
-	var fence_specs: Array[Dictionary] = _world_builder.build_onion_fence_specs()
-	for i in range(fence_specs.size()):
-		var seg: Structure = Structure.new()
-		seg.setup_fence_segment(i, fence_specs[i], _decals_layer)
-		_entities_layer.add_child(seg)
-		fences.append(seg)
-		structures.append(seg)
-
+	var built: Dictionary = _world_builder.spawn_homestead_structures(
+		_decals_layer, _entities_layer, _on_house_crumbled
+	)
+	house = built["house"] as Structure
+	for s in built["fences"] as Array:
+		fences.append(s as Structure)
+	for s in built["structures"] as Array:
+		structures.append(s as Structure)
 	if _player.get_parent() != _entities_layer:
 		_entities_layer.add_child(_player)
 	_effects.set_debug_refs(structures, _player, enemies)
@@ -946,23 +961,9 @@ func _add_shake(duration: float, amp: float) -> void:
 
 
 func _clear_dynamic_world() -> void:
-	_clear_piles()
+	_spawner.clear_piles_in_tree(get_tree())
 	_spawner.clear_group_or_list(enemies)
 	_spawner.clear_group_or_list(arrows)
-
-
-func _clear_piles() -> void:
-	for p in get_tree().get_nodes_in_group("piles"):
-		if is_instance_valid(p):
-			p.queue_free()
-
-
-func _cleanup_arrays() -> void:
-	enemies = enemies.filter(func(e: Enemy) -> bool: return is_instance_valid(e))
-	arrows = arrows.filter(func(a: Arrow) -> bool: return is_instance_valid(a))
-	traps = traps.filter(func(t: Trap) -> bool: return is_instance_valid(t))
-	watchtowers = watchtowers.filter(func(w: Watchtower) -> bool: return is_instance_valid(w))
-	dogs = dogs.filter(func(d: Dog) -> bool: return is_instance_valid(d))
 
 
 # --- Headless --smoke hooks (T0.0) ---

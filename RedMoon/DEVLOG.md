@@ -1,15 +1,33 @@
-# Red Moon — Development Log (v2.0 Overnight Fix & Feature Build)
+# Red Moon — Development Log (v2.1 Playtest Fix, 3/4 Cottage & Defense Redesign)
 
-**Target Engine:** Godot 4.7 (GDScript 2.0, `GL Compatibility` renderer, Web-export safe — zero threads, zero GDExtension, zero external paths outside `res://` / `user://`).
+**Target Engine:** Godot 4.7.2.stable (GDScript 2.0, `GL Compatibility` renderer, Web-export safe — zero threads, zero GDExtension, zero external paths outside `res://` / `user://`).
+
+## v2.1 Playtest Bug Fixes & Gameplay Redesign
+- **Godot 4.7.2 Runtime Bugs Eliminated:**
+  - *Night-start pile assertion crash (`T0.3: piles leaked into night!`)*: Fixed deferred `queue_free()` group-membership race by calling `remove_from_group("piles")` and detaching from parent before `queue_free()` in `pile.gd` and `wave_spawner.gd::clear_piles_in_tree()`. Applied the same `remove_from_group()` hygiene to `arrow.gd`, `enemy.gd`, `trap.gd`, and `watchtower.gd`.
+  - *`_cleanup_arrays()` typed-array `.filter()` errors*: Replaced `Array[T].filter(func(x: T) ...)` with in-place backward pruning (`wave_spawner.gd::prune_invalid_arrays()`), eliminating freed-object parameter conversion errors and `Array -> Array[T]` assignment errors.
+  - *Integer division reload warning*: Fixed `dog.gd:183` (`float(strip_tex.get_width()) / float(count)`).
+  - *HUD text collisions*: Re-laid out `hud.gd` into 3 non-overlapping top-bar rows and a clean vertically stacked bottom area (`Toast` → `Search Bar` → `Context Prompt` → `3-Slot Trap Hotbar` → `Tooltip`).
+- **2D 3/4 Oblique Farmhouse (`house_art.gd`, `structure.gd`, `sprite_factory.gd`):**
+  - Replaced the flat grey bunker house with a custom `112×96` 3/4 RPG pixel-art cottage (terraced terracotta gable roof + dark timber truss, brick chimney with drifting smoke, cream plaster timber-framed front facade, glowing warm yellow windows, arched wooden door + stone entrance steps, cast drop shadow, and Lv 2–3 fortification upgrades).
+  - Wired automatic drop-in custom PNG loading (`res://assets/structures/house_lv1.png`..`house_lv3.png`, `house_custom.png`, and `*_open.png` variants).
+- **Player-Unlocked Whole-Ring Fencing & Closable Fence Gates (`config.gd`, `world_builder.gd`, `structure.gd`, `enemy.gd`, `economy_controller.gd`, `upgrade_ui.gd`):**
+  - Only **Layer 1** (`96×68` half-extents) starts built on Day 1. **Layer 2** (`142×112`) and **Layer 3** (`188×156`) start hidden/locked until the player unlocks each whole ring (`14 planks` for Layer 2; `22 planks + 6 scrap` for Layer 3).
+  - Every fence ring has a solid, closable **`32×10` South Fence Gate** (`[E]` toggles open/closed; starts closed so Ring 1 completely seals off zombies — verified by 1 px BFS flood-fill). Open gates allow player and enemy passage and trigger a dusk reminder; closed gates physically block zombies (`Structure.is_blocking()`), forcing them to chew through.
+  - Removed all per-segment partition actions — fences are now repaired, upgraded (`Lv 1 → Lv 2 → Lv 3`), and spiked strictly **as a whole ring**.
+- **Decluttered Upgrade Menus (`upgrade_ui.gd`, `economy_controller.gd`, `player.gd`):**
+  - Cut the old 12+ item Homestead/Workshop clutter down to 5–6 concise options by consolidating 6 micro-upgrades into a single **Gear Tier (`Tier 1 → 2 → 3`)** upgrade track, and cut Fence Layer menus to 3–4 whole-ring actions.
+- **Intuitive Zombie Trap Placement (`hud.gd`, `world_effects.gd`, `trap.gd`, `economy_controller.gd`, `main.gd`):**
+  - Player starts with `2 Spike Traps` on Day 1 so trapping works immediately.
+  - Added a dedicated bottom **3-Slot Trap Hotbar** (`[1] Spike | [2] Snare | [3] Lure`), live green/red ground **Trap Placement Ghost Preview** (showing trigger radius & Lure attract ring), left-click or `[T]` placement (using owned traps first or auto-crafting from Bag + Stockpile), and right-click / `[Esc]` cancel.
+- **Sky & Drop-In Custom Art Hooks (`moon_sky.gd`, `sprite_factory.gd`):**
+  - Replaced the square moon glow `ColorRect` with a smooth circular radial light texture and wired automatic drop-in PNG loading for `assets/sky/{moon_full,moon_blood,clouds_back,clouds_mid,clouds_front,horizon_silhouette}.png` and `assets/traps/*.png`.
+- **Verification (27/27 GDScript files):** `gdparse` (0 errors), `gdlint` (0 errors, every file ≤ 1000 lines), cross-script paren-aware method & signal arity audit (0 errors), UI action handler coverage audit (100% handled), Ring 1 closed-gate seal vs open-gate passability 1 px BFS flood-fill (PASS), and 640×360 HUD non-overlap check (PASS).
+
+---
 
 > **Environment Note (Headless Godot Binary):**
-> No `godot` binary was installed in the build sandbox, and outbound downloads redirecting to `objects.githubusercontent.com` are blocked by the sandbox network policy. Every file was instead verified rigorously with:
-> - `gdparse` (26/26 GDScript files parsed cleanly)
-> - `gdlint` (0 errors across all 26 scripts, every file <= 1000 lines)
-> - Custom Godot 4.7 static semantic audit (verified zero `Config.*` accesses inside `static func`, zero 4.3→4.7 breaking APIs, zero deprecated `Image.create(`, zero integer-division warnings, 100% `res://` path resolution across all 102 static PNGs, 44 animated strips, and 3 fonts)
-> - Cross-class signal arity & method-signature audit (0 mismatches)
-> - Automated 2 px grid flood-fill & passability simulation over all 3 concentric onion fence rings (40,829 cells tested: 0 wall/corner leaks, 100% 28 px south-gate passability)
-> - Wave spawn-rate & chew-timing verification across Nights 1–7.
+> No `godot` binary was installed in the build sandbox, and outbound downloads redirecting to `objects.githubusercontent.com` are blocked by the sandbox network policy.
 >
 > **To run the built-in automated smoke suite locally:**
 > ```bash
@@ -19,7 +37,7 @@
 
 ---
 
-## Completed Tiers & Tasks
+## Previous v2.0 Completed Tiers & Tasks
 
 ### Tier 0 — Foundations & Critical Fixes
 - **T0.A (`sprite_data.gd`, `assets/moon/`, `assets/fonts/`, `assets/animals/`):** Installed `RedMoon_Assets_v2.zip` into `RedMoon/` and registered all 15 `32x32` moon/lunar PNGs (`moon/moon_00..03`, `moon/moon_00_white`, `moon/moon_00_red..03_red`, `moon/lunar_04..09`) in `SpriteData.STATIC`.

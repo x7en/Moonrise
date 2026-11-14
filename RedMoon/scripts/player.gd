@@ -125,7 +125,7 @@ func reset_for_new_game(spawn_pos: Vector2) -> void:
 
 
 func set_inside_house(
-	is_in: bool, exit_pos: Vector2 = Config.HOUSE_DOOR_STEP + Vector2(0.0, 10.0)
+	is_in: bool, exit_pos: Vector2 = Config.HOUSE_DOOR
 ) -> void:
 	inside_house = is_in
 	if is_in:
@@ -284,13 +284,35 @@ func take_damage(amount: int) -> bool:
 
 
 func apply_upgrade_stats(upgrades: Dictionary) -> void:
-	melee_damage = 2 if bool(upgrades.get("heavy_bat", false)) else 1
-	speed_mult = 1.15 if bool(upgrades.get("swift_boots", false)) else 1.0
-	bounce_cd_mult = 0.70 if bool(upgrades.get("quick_bounce", false)) else 1.0
-	mag_max = 12 if bool(upgrades.get("bigger_quiver", false)) else Config.BOW_MAG
-	reserve_max = 50 if bool(upgrades.get("bigger_quiver", false)) else Config.BOW_RESERVE_MAX
-	bow_reload_time = 1.4 if bool(upgrades.get("quick_hands", false)) else Config.BOW_RELOAD
-	bow_pierce = 1 if bool(upgrades.get("barbed_arrows", false)) else 0
+	var tier: int = clampi(int(upgrades.get("gear_tier", 1)), 1, 3)
+	if tier >= 3:
+		melee_damage = 2
+		speed_mult = 1.18
+		bounce_cd_mult = 0.65
+		mag_max = 12
+		reserve_max = 60
+		bow_reload_time = 1.3
+		bow_damage = 2
+		bow_pierce = 1
+	elif tier == 2:
+		melee_damage = 2
+		speed_mult = 1.12
+		bounce_cd_mult = 0.85
+		mag_max = 10
+		reserve_max = 45
+		bow_reload_time = 1.6
+		bow_damage = 1
+		bow_pierce = 1
+	else:
+		melee_damage = 1
+		speed_mult = 1.0
+		bounce_cd_mult = 1.0
+		mag_max = Config.BOW_MAG
+		reserve_max = Config.BOW_RESERVE_MAX
+		bow_reload_time = Config.BOW_RELOAD
+		bow_damage = Config.BOW_DAMAGE
+		bow_pierce = 0
+	mag = mini(mag, mag_max)
 
 
 func _apply_visibility_and_collision() -> void:

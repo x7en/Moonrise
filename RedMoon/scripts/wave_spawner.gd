@@ -59,52 +59,59 @@ func build_objective_text(
 	is_blood_moon: bool,
 	act: int,
 	day: int,
-	total_planks: int
+	_total_planks: int
 ) -> String:
 	if is_night:
-		return (
-			"BLOOD MOON! Hold the rings until dawn!"
-			if is_blood_moon
-			else "Hold out until dawn! [Space] Spear  [F] Bow  [Q] Shockwave"
-		)
+		return "BLOOD MOON! Hold!" if is_blood_moon else "Hold out until dawn!"
 	if act == 1:
-		var left: int = maxi(1, 5 - day)
-		return "Planks: %d | Blood Moon in %d night%s | Fortify rings" % [
-			total_planks, left, "" if left == 1 else "s"
-		]
+		var left: int = maxi(0, Config.WORLD_EXPAND_NIGHT - day)
+		if left == 0:
+			return "Blood Moon TONIGHT!"
+		return "Blood Moon in %d night%s" % [left, "" if left == 1 else "s"]
 	var left2: int = maxi(0, 7 - day)
-	return (
-		"FINAL BLOOD MOON TONIGHT! Fortify & stock arrows!"
-		if left2 == 0
-		else "Blood Moon in %d nights | Search POIs for scrap" % left2
-	)
+	if left2 == 0:
+		return "FINAL BLOOD MOON!"
+	return "Final Blood Moon: %d nights" % left2
 
 
 func build_context_prompt(
 	player: Player,
 	house: Structure,
 	world_builder: WorldBuilder,
-	nearest_struct: Structure
+	nearest_struct: Structure,
+	nearest_gate: Structure,
+	trap_mode_active: bool,
+	selected_trap_idx: int
 ) -> String:
-	if player.inside_house:
-		return "[E] Step Outside  |  [F] Shoot Bow from Window  |  [U] House Workshop"
-	if house != null and house.is_standing():
-		var d_door: float = minf(
-			player.position.distance_to(Config.HOUSE_DOOR_STEP),
-			player.position.distance_to(Config.HOUSE_DOOR)
+	var out: String = ""
+	if trap_mode_active:
+		var keys: Array[String] = ["trap_spike", "trap_snare", "trap_lure"]
+		var tk: String = keys[clampi(selected_trap_idx - 1, 0, 2)]
+		var lbl: String = String((Config.TRAPS[tk] as Dictionary)["label"])
+		out = "PLACING %s: [Click / T] Set Trap   |   [Right-Click / Esc] Cancel" % lbl.to_upper()
+	elif player.inside_house:
+		out = "[E] Step Outside   |   [F] Shoot Bow   |   [U] House Menu"
+	elif house != null and house.is_standing() and minf(
+		player.position.distance_to(Config.HOUSE_DOOR_STEP),
+		player.position.distance_to(Config.HOUSE_DOOR)
+	) <= Config.DOOR_INTERACT_REACH:
+		out = (
+			"[E] Enter House / Close Door   |   [U] House Menu"
+			if house.is_door_open()
+			else "[E] Open House Door   |   [U] House Menu"
 		)
-		if d_door <= Config.DOOR_INTERACT_REACH:
-			return (
-				"[E] Enter House / Close Door   |   [U] House Workshop"
-				if house.is_door_open()
-				else "[E] Open House Door   |   [U] House Workshop"
-			)
-	var prop: Dictionary = world_builder.find_nearest_searchable(player.position, 32.0)
-	if not prop.is_empty():
-		return "[Hold E] Search %s" % String(prop["name"])
-	if nearest_struct != null:
-		return "[U] %s" % nearest_struct.get_tooltip_text()
-	return ""
+	elif nearest_gate != null and nearest_gate.is_standing():
+		var act_verb: String = "Close" if nearest_gate.gate_open else "Open"
+		out = "[E] %s Layer %d Gate   |   [U] Upgrade Layer %d" % [
+			act_verb, nearest_gate.ring, nearest_gate.ring
+		]
+	else:
+		var prop: Dictionary = world_builder.find_nearest_searchable(player.position, 32.0)
+		if not prop.is_empty():
+			out = "[Hold E] Search %s" % String(prop["name"])
+		elif nearest_struct != null and nearest_struct.is_built:
+			out = "[U] %s" % nearest_struct.get_tooltip_text()
+	return out
 
 
 func spawn_pile(
@@ -153,6 +160,8 @@ func find_nearest_structure(
 	for s in structures:
 		if is_instance_valid(s):
 			var st: Structure = s as Structure
+			if not st.is_built:
+				continue
 			var d: float = st.distance_from_point(world_pos)
 			if d <= best_d:
 				best_d = d
@@ -160,10 +169,57 @@ func find_nearest_structure(
 	return best
 
 
+func find_nearest_gate(
+	fences: Array, world_pos: Vector2, max_d: float
+) -> Structure:
+	var best: Structure = null
+	var best_d: float = max_d
+	for f in fences:
+		if is_instance_valid(f) and f is Structure:
+			var st: Structure = f as Structure
+			if st.is_gate and st.is_standing():
+				var d: float = st.distance_from_point(world_pos)
+				if d <= best_d:
+					best_d = d
+					best = st
+	return best
+
+
+func has_open_fence_gate(fences: Array) -> bool:
+	for f in fences:
+		if is_instance_valid(f):
+			var st: Structure = f as Structure
+			if st.is_gate and st.is_standing() and st.gate_open:
+				return true
+	return false
+
+
+func clear_piles_in_tree(tree: SceneTree) -> void:
+	for p in tree.get_nodes_in_group("piles"):
+		if is_instance_valid(p):
+			p.remove_from_group("piles")
+			if p.get_parent() != null:
+				p.get_parent().remove_child(p)
+			p.queue_free()
+
+
+func prune_invalid_arrays(lists: Array) -> void:
+	for arr in lists:
+		var typed_list: Array = arr as Array
+		var i: int = typed_list.size() - 1
+		while i >= 0:
+			if not is_instance_valid(typed_list[i]):
+				typed_list.remove_at(i)
+			i -= 1
+
+
 func clear_group_or_list(items: Array) -> void:
 	for item in items:
 		if is_instance_valid(item):
-			(item as Node).queue_free()
+			var n: Node = item as Node
+			if n.get_parent() != null:
+				n.get_parent().remove_child(n)
+			n.queue_free()
 	items.clear()
 
 
@@ -196,19 +252,24 @@ func build_hud_payload(
 	var act: int = int(main_node.get("act"))
 	var day: int = int(main_node.get("day"))
 	var phase_timer: float = float(main_node.get("phase_timer"))
+	var trap_mode_active: bool = bool(main_node.get("_trap_mode_active"))
 	var player: Player = main_node.get("_player") as Player
 	var house: Structure = main_node.get("house") as Structure
+	var fences: Array = main_node.get("fences") as Array
 	var bag: Inventory = main_node.get("bag") as Inventory
 	var stockpile: Inventory = main_node.get("stockpile") as Inventory
 	var wb: WorldBuilder = main_node.get("_world_builder") as WorldBuilder
+	var near_gate: Structure = find_nearest_gate(fences, player.position, 28.0)
 	var obj: String = build_objective_text(
 		is_night, is_blood, act, day, bag.count("plank") + stockpile.count("plank")
 	)
-	var prompt: String = build_context_prompt(player, house, wb, nearest_struct)
+	var prompt: String = build_context_prompt(
+		player, house, wb, nearest_struct, near_gate, trap_mode_active, selected_trap_idx
+	)
 	var tooltip: String = (
 		hovered_struct.get_tooltip_text()
-		if is_instance_valid(hovered_struct)
-		else "[I] Bag  [U] Upgrade  [E] Door/Search  [1/2/3+T] Trap  [Esc] Pause"
+		if is_instance_valid(hovered_struct) and hovered_struct.is_built
+		else ""
 	)
 	var home_arrow: Vector2 = Vector2.ZERO
 	if act == 2 and not player.inside_house:
@@ -239,6 +300,7 @@ func build_hud_payload(
 		"objective": obj,
 		"bounce_cd": bounce_cd,
 		"selected_trap": selected_trap_idx,
+		"trap_mode_active": trap_mode_active,
 		"trap_spike": bag.count("trap_spike"),
 		"trap_snare": bag.count("trap_snare"),
 		"trap_lure": bag.count("trap_lure"),

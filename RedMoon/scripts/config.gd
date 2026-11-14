@@ -6,8 +6,8 @@ const VIEW_SIZE := Vector2(640, 360)
 const WORLD_SIZE := Vector2(2400, 1350)
 const WORLD_RECT := Rect2(0, 0, 2400, 1350)
 const HOUSE_CENTER := Vector2(1200, 675)
-const HOUSE_DOOR := Vector2(1200, 738)  # HOUSE_CENTER + Vector2(0, 63), south gate line
-const HOUSE_DOOR_STEP := Vector2(1200, 722)  # Porch doorstep directly on the south facade
+const HOUSE_DOOR := Vector2(1200, 730)  # Stepping-stone porch area outside the front steps
+const HOUSE_DOOR_STEP := Vector2(1200, 721)  # Stone porch doorstep directly on the south facade
 const ACT1_RECT := Rect2(720, 405, 960, 540)  # 960x540 playable area centered on HOUSE_CENTER
 const WORLD_EXPAND_NIGHT := 3  # World expands after surviving this night (early Blood Moon)
 
@@ -115,70 +115,82 @@ const INTRUDER_HOUSE_DPS := 3.0
 const INTRUDER_PLAYER_DMG := 10
 const INTRUDER_PLAYER_INTERVAL := 1.2
 
-# Concentric onion fence rings around HOUSE_CENTER (T0.4).
-# Rings 1 & 2 stand at full HP from day 1; Ring 3 starts as unbuilt ghost foundations.
+# Concentric onion fence rings around HOUSE_CENTER.
+# Ring 1 is the starter perimeter with a closable gate; Rings 2 & 3 are player-unlocked layers.
 const FENCE_GATE_WIDTH := 28.0
 const FENCE_RINGS := [
-	{"ring": 1, "half_extents": Vector2(92.0, 62.0), "gate_offset_x": 0.0, "built_at_start": true},
-	{"ring": 2, "half_extents": Vector2(136.0, 106.0), "gate_offset_x": 0.0, "built_at_start": true},
-	{"ring": 3, "half_extents": Vector2(180.0, 150.0), "gate_offset_x": 0.0, "built_at_start": false},
+	{"ring": 1, "half_extents": Vector2(96.0, 68.0), "gate_offset_x": 0.0, "built_at_start": true},
+	{"ring": 2, "half_extents": Vector2(142.0, 112.0), "gate_offset_x": 0.0, "built_at_start": false},
+	{"ring": 3, "half_extents": Vector2(188.0, 156.0), "gate_offset_x": 0.0, "built_at_start": false},
 ]
 
 # --- Inventory & Economy (T1.6 / T2.1 / T2.2) ---
 const BAG_CAPACITY := 16
 const ACT1_START_STOCKPILE := 4
 const ACT2_START_STOCKPILE := 8
+const START_SPIKE_TRAPS := 2
 const LOSE_BAG_AT_DUSK_ACT1 := false
 const LOSE_BAG_AT_DUSK_ACT2 := true
 
-# Costs stored as resource Dictionaries so planks and scrap integrate cleanly everywhere.
-const COST_BUILD_RING3_SEG := {"plank": 3}
-const COST_FENCE_LV2_SEG := {"plank": 3}
-const COST_FENCE_LV3_SEG := {"plank": 3, "scrap": 2}
-const COST_FENCE_SPIKES_SEG := {"plank": 3, "scrap": 1}
+# Whole-ring fence layer unlock, upgrade, and spike costs (no per-segment upgrades).
+const COST_UNLOCK_RING2 := {"plank": 12}
+const COST_UNLOCK_RING3 := {"plank": 18, "scrap": 4}
+const COST_RING_LV2 := {
+	1: {"plank": 10},
+	2: {"plank": 14},
+	3: {"plank": 18},
+}
+const COST_RING_LV3 := {
+	1: {"plank": 12, "scrap": 4},
+	2: {"plank": 16, "scrap": 6},
+	3: {"plank": 20, "scrap": 8},
+}
+const COST_RING_SPIKES := {
+	1: {"plank": 6, "scrap": 2},
+	2: {"plank": 8, "scrap": 3},
+	3: {"plank": 10, "scrap": 4},
+}
 const COST_HOUSE_LV2 := {"plank": 12, "scrap": 4}
 const COST_HOUSE_LV3 := {"plank": 20, "scrap": 10}
 const COST_HOUSE_REBUILD := {"plank": 25, "scrap": 8}
 const COST_HOUSE_REBUILD_ACT1 := {"plank": 35}
-const COST_BIGGER_QUIVER := {"plank": 6, "scrap": 2}
-const COST_QUICK_HANDS := {"plank": 8, "scrap": 3}
+const COST_GEAR_TIER2 := {"plank": 8, "scrap": 2}
+const COST_GEAR_TIER3 := {"plank": 14, "scrap": 6}
 const COST_BUY_ARROWS := {"plank": 1}
-const COST_BARBED_ARROWS := {"plank": 8, "scrap": 4}
-const COST_HEAVY_BAT := {"plank": 6, "scrap": 2}
-const COST_SWIFT_BOOTS := {"plank": 5, "scrap": 2}
-const COST_QUICK_BOUNCE := {"plank": 10, "scrap": 4}
-const COST_WATCHTOWER := {"plank": 15, "scrap": 6}
-const BUY_ARROWS_AMOUNT := 8
+const COST_WATCHTOWER := {"plank": 14, "scrap": 5}
+const BUY_ARROWS_AMOUNT := 10
 const WATCHTOWER_MAX := 2
 const WATCHTOWER_HP := 40
 const WATCHTOWER_RANGE := 120.0
 const WATCHTOWER_FIRE_INTERVAL := 1.2
 
 # --- Traps (T2.3) ---
-const MAX_TRAPS := 12
-const TRAP_MIN_SPACING := 12.0
+const MAX_TRAPS := 16
+const TRAP_MIN_SPACING := 14.0
+const TRAP_PLACE_RANGE := 72.0
 const TRAPS := {
 	"trap_spike": {
 		"label": "Spike Trap",
-		"cost": {"plank": 3},
+		"cost": {"plank": 2},
 		"damage": 3,
-		"cooldown": 0.8,
+		"cooldown": 0.7,
 		"max_triggers": 5,
-		"radius": 12.0,
-	},
-	"trap_snare": {
-		"label": "Snare",
-		"cost": {"plank": 2, "scrap": 1},
-		"root_time": 3.0,
-		"max_triggers": 1,
 		"radius": 13.0,
 	},
-	"trap_lure": {
-		"label": "Lure Post",
-		"cost": {"plank": 2},
-		"hp": 25,
-		"attract_radius": 140.0,
+	"trap_snare": {
+		"label": "Bear Snare",
+		"cost": {"plank": 2, "scrap": 1},
+		"damage": 1,
+		"root_time": 3.5,
+		"max_triggers": 1,
 		"radius": 14.0,
+	},
+	"trap_lure": {
+		"label": "Decoy Lure",
+		"cost": {"plank": 2},
+		"hp": 30,
+		"attract_radius": 150.0,
+		"radius": 15.0,
 	},
 }
 
