@@ -1,13 +1,19 @@
 class_name SpriteFactory
 extends RefCounted
-## Builds and caches textures, SpriteFrames, procedural pixel art (spear & moon), and the UI Theme.
+## Central asset/texture/font factory: cached sprites, SpriteFrames, 3-font retro UI theme,
+## 3D-shaded farmhouse variants, 2D light gradients, and crisp procedural pixel icons.
 
 static var _tex_cache: Dictionary = {}
 static var _frames_cache: Dictionary = {}
 static var _silhouette_cache: Dictionary = {}
+static var _house_cache: Dictionary = {}
+static var _icon_cache: Dictionary = {}
 static var _theme_cache: Theme = null
-static var _spear_tex: ImageTexture = null
-static var _moon_tex_cache: Dictionary = {}
+static var _font_body_cache: Font = null
+static var _font_bold_cache: Font = null
+static var _font_display_cache: Font = null
+static var _light_tex_cache: Dictionary = {}
+static var _blob_cache: Dictionary = {}
 
 
 ## Loads a PNG sprite from res://assets/ and caches it so we never reload from disk twice.
@@ -19,8 +25,6 @@ static func tex(key: String) -> Texture2D:
 	var loaded: Texture2D = null
 	if ResourceLoader.exists(res_path):
 		loaded = load(res_path) as Texture2D
-
-	# If a file is missing, generate a colored box placeholder so the game still runs.
 	if loaded == null:
 		loaded = _make_placeholder(key)
 
@@ -36,7 +40,6 @@ static func get_image_rgba8(key: String) -> Image:
 		img = Image.create_empty(16, 16, false, Image.FORMAT_RGBA8)
 		img.fill(Color(0.8, 0.2, 0.7, 1.0))
 		return img
-
 	if img.is_compressed():
 		img.decompress()
 	if img.get_format() != Image.FORMAT_RGBA8:
@@ -45,7 +48,6 @@ static func get_image_rgba8(key: String) -> Image:
 
 
 ## Creates a solid-color silhouette matching the exact alpha pixels of a sprite.
-## Used for the house's dark-red damage overlay so it never draws a box over the roof corners.
 static func get_tinted_silhouette(key: String, fill_color: Color) -> Texture2D:
 	var cache_key: String = "%s|%s" % [key, fill_color.to_html()]
 	if _silhouette_cache.has(cache_key):
@@ -55,18 +57,15 @@ static func get_tinted_silhouette(key: String, fill_color: Color) -> Texture2D:
 	var width: int = src.get_width()
 	var height: int = src.get_height()
 	var out: Image = Image.create_empty(width, height, false, Image.FORMAT_RGBA8)
-
 	for y in range(height):
 		for x in range(width):
 			var pixel: Color = src.get_pixel(x, y)
 			if pixel.a > 0.01:
-				var tinted: Color = Color(
-					fill_color.r,
-					fill_color.g,
-					fill_color.b,
-					pixel.a * fill_color.a
+				out.set_pixel(
+					x,
+					y,
+					Color(fill_color.r, fill_color.g, fill_color.b, pixel.a * fill_color.a)
 				)
-				out.set_pixel(x, y, tinted)
 			else:
 				out.set_pixel(x, y, Color(0.0, 0.0, 0.0, 0.0))
 
@@ -82,25 +81,136 @@ static func make_static_sprite(key: String, feet_origin: bool = true) -> Sprite2
 	sprite.texture = loaded_tex
 	sprite.centered = false
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-
 	if feet_origin:
 		var dims: Array = SpriteData.STATIC.get(
-			key,
-			[loaded_tex.get_width(), loaded_tex.get_height()]
+			key, [loaded_tex.get_width(), loaded_tex.get_height()]
 		)
-		var width: int = int(dims[0])
-		var height: int = int(dims[1])
-		sprite.offset = Vector2(-floorf(float(width) * 0.5), -float(height))
-
+		sprite.offset = Vector2(-floorf(float(int(dims[0])) * 0.5), -float(int(dims[1])))
 	return sprite
 
 
-## Computes the feet-origin offset for an animated strip frame so characters never float or jump.
 static func feet_offset_for_animated(key: String, x_shift: float = 0.0) -> Vector2:
 	var info: Array = SpriteData.ANIMATED.get(key, [1, 16, 16])
-	var frame_w: float = float(info[1])
-	var frame_h: float = float(info[2])
-	return Vector2(-floorf(frame_w * 0.5) + x_shift, -frame_h)
+	return Vector2(-floorf(float(info[1]) * 0.5) + x_shift, -float(info[2]))
+
+
+## T0.B: Centralized 3-font retro pixel font accessors (PixelOperator8, Bold, KiwiSoda).
+static func font_body() -> Font:
+	if _font_body_cache == null:
+		_font_body_cache = _load_pixel_font("res://assets/fonts/PixelOperator8.ttf")
+	return _font_body_cache
+
+
+static func font_bold() -> Font:
+	if _font_bold_cache == null:
+		_font_bold_cache = _load_pixel_font("res://assets/fonts/PixelOperator8-Bold.ttf")
+	return _font_bold_cache
+
+
+static func font_display() -> Font:
+	if _font_display_cache == null:
+		_font_display_cache = _load_pixel_font("res://assets/fonts/KiwiSoda.ttf")
+	return _font_display_cache
+
+
+static func _load_pixel_font(res_path: String) -> Font:
+	if not ResourceLoader.exists(res_path):
+		return ThemeDB.fallback_font
+	var loaded: Font = load(res_path) as Font
+	if loaded == null:
+		return ThemeDB.fallback_font
+	if loaded is FontFile:
+		var ff: FontFile = loaded as FontFile
+		ff.antialiasing = TextServer.FONT_ANTIALIASING_NONE
+		ff.hinting = TextServer.HINTING_NONE
+		ff.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
+		ff.generate_mipmaps = false
+	return loaded
+
+
+## Applies font, integer multiple-of-8 size, nearest filter, and crisp 1px dark outline to a Label.
+static func style_label(
+	lbl: Label,
+	style: String = "body",
+	size_px: int = 8,
+	color: Color = Color.WHITE
+) -> void:
+	lbl.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var f: Font = font_body()
+	if style == "bold":
+		f = font_bold()
+	elif style == "display":
+		f = font_display()
+	lbl.add_theme_font_override("font", f)
+	lbl.add_theme_font_size_override("font_size", size_px)
+	lbl.add_theme_color_override("font_color", color)
+	lbl.add_theme_color_override("font_outline_color", Color(0.10, 0.07, 0.12, 0.95))
+	lbl.add_theme_constant_override("outline_size", 1)
+
+
+## Shared crisp pixel UI Theme using PixelOperator8 (body) and PixelOperator8-Bold (buttons).
+static func get_game_theme(_unused_path: String = "") -> Theme:
+	if _theme_cache != null:
+		return _theme_cache
+
+	var theme: Theme = Theme.new()
+	theme.default_font = font_body()
+	theme.default_font_size = 8
+
+	theme.set_font("font", "Label", font_body())
+	theme.set_font_size("font_size", "Label", 8)
+	theme.set_color("font_outline_color", "Label", Color(0.10, 0.07, 0.12, 0.95))
+	theme.set_constant("outline_size", "Label", 1)
+	theme.set_color("font_shadow_color", "Label", Color(0.0, 0.0, 0.0, 0.75))
+	theme.set_constant("shadow_offset_x", "Label", 1)
+	theme.set_constant("shadow_offset_y", "Label", 1)
+
+	theme.set_font("font", "Button", font_bold())
+	theme.set_font_size("font_size", "Button", 8)
+	theme.set_color("font_color", "Button", Color(0.95, 0.95, 0.95))
+	theme.set_color("font_hover_color", "Button", Color(1.0, 0.92, 0.58))
+	theme.set_color("font_pressed_color", "Button", Color(1.0, 0.75, 0.45))
+	theme.set_color("font_disabled_color", "Button", Color(0.46, 0.42, 0.48))
+	theme.set_stylebox(
+		"normal",
+		"Button",
+		_make_button_box(Color(0.12, 0.10, 0.15, 0.96), Color(0.42, 0.34, 0.40))
+	)
+	theme.set_stylebox(
+		"hover",
+		"Button",
+		_make_button_box(Color(0.22, 0.15, 0.20, 0.98), Color(0.92, 0.36, 0.32))
+	)
+	theme.set_stylebox(
+		"pressed",
+		"Button",
+		_make_button_box(Color(0.30, 0.12, 0.15, 1.0), Color(1.0, 0.52, 0.42))
+	)
+	theme.set_stylebox(
+		"disabled",
+		"Button",
+		_make_button_box(Color(0.09, 0.08, 0.11, 0.85), Color(0.26, 0.22, 0.28))
+	)
+	theme.set_stylebox(
+		"focus",
+		"Button",
+		_make_button_box(Color(0.20, 0.14, 0.19, 0.98), Color(0.95, 0.42, 0.36))
+	)
+
+	_theme_cache = theme
+	return _theme_cache
+
+
+static func _make_button_box(bg_color: Color, border_color: Color) -> StyleBoxFlat:
+	var box: StyleBoxFlat = StyleBoxFlat.new()
+	box.bg_color = bg_color
+	box.border_color = border_color
+	box.set_border_width_all(1)
+	box.content_margin_left = 6.0
+	box.content_margin_right = 6.0
+	box.content_margin_top = 4.0
+	box.content_margin_bottom = 4.0
+	return box
 
 
 ## Builds and caches all player animations (idle, run, attack, death) from horizontal strips.
@@ -112,11 +222,9 @@ static func get_player_frames(swing_time: float = 0.3) -> SpriteFrames:
 	if frames.has_animation(&"default"):
 		frames.remove_animation(&"default")
 
-	var directions: Array[String] = ["down", "up", "left", "right"]
-	for dir_name in directions:
+	for dir_name in ["down", "up", "left", "right"]:
 		_add_strip_animation(frames, "idle_" + dir_name, "player/idle_" + dir_name, 6.0, true)
 		_add_strip_animation(frames, "run_" + dir_name, "player/run_" + dir_name, 10.0, true)
-
 		var punch_key: String = "player/punch_" + dir_name
 		var punch_info: Array = SpriteData.ANIMATED.get(punch_key, [4, 16, 16])
 		var punch_fps: float = float(punch_info[0]) / maxf(swing_time, 0.05)
@@ -124,7 +232,6 @@ static func get_player_frames(swing_time: float = 0.3) -> SpriteFrames:
 
 	_add_strip_animation(frames, "death_left", "player/death_left", 10.0, false)
 	_add_strip_animation(frames, "death_right", "player/death_right", 10.0, false)
-
 	_frames_cache["player"] = frames
 	return frames
 
@@ -139,214 +246,403 @@ static func get_enemy_frames(enemy_type: String) -> SpriteFrames:
 	if frames.has_animation(&"default"):
 		frames.remove_animation(&"default")
 
-	var walk_fps: float = 8.0
-	if enemy_type == "raider":
-		walk_fps = 10.0
-
-	var directions: Array[String] = ["down", "up", "left", "right"]
-	for dir_name in directions:
+	var walk_fps: float = 10.0 if enemy_type == "raider" else 8.0
+	for dir_name in ["down", "up", "left", "right"]:
 		var walk_key: String = "enemies/%s/walk_%s" % [enemy_type, dir_name]
 		_add_strip_animation(frames, "walk_" + dir_name, walk_key, walk_fps, true)
-
 		var attack_key: String = "enemies/%s/attack_%s" % [enemy_type, dir_name]
 		var attack_info: Array = SpriteData.ANIMATED.get(attack_key, [4, 16, 16])
-		var attack_fps: float = float(attack_info[0]) / 0.3
+		var attack_fps: float = float(attack_info[0]) / 0.35
 		_add_strip_animation(frames, "attack_" + dir_name, attack_key, attack_fps, false)
 
-	var death_left_key: String = "enemies/%s/death_left" % enemy_type
-	var death_right_key: String = "enemies/%s/death_right" % enemy_type
-	_add_strip_animation(frames, "death_left", death_left_key, 10.0, false)
-	_add_strip_animation(frames, "death_right", death_right_key, 10.0, false)
-
+	_add_strip_animation(frames, "death_left", "enemies/%s/death_left" % enemy_type, 10.0, false)
+	_add_strip_animation(frames, "death_right", "enemies/%s/death_right" % enemy_type, 10.0, false)
 	_frames_cache[cache_key] = frames
 	return frames
 
 
-## Draws a crisp 26x7 pixel-art spear pointing right (wooden shaft, red wrap, steel tip).
-## Drawn in code so the player has a readable melee weapon without needing extra PNG files.
-static func get_spear_texture() -> ImageTexture:
-	if _spear_tex != null:
-		return _spear_tex
+## T1.4: Generates a volumetric 2D-shaded house texture (top-left light, right wall shadow,
+## roof overhang line, base AO, chimney, inset windows, porch step, and level 2/3 reinforcement).
+static func get_shaded_house_texture(level: int = 1, door_open: bool = false) -> ImageTexture:
+	var cache_key: String = "house_%d_%s" % [level, "open" if door_open else "closed"]
+	if _house_cache.has(cache_key):
+		return _house_cache[cache_key] as ImageTexture
 
-	var img: Image = Image.create_empty(26, 7, false, Image.FORMAT_RGBA8)
-	var outline: Color = Color(0.12, 0.08, 0.08, 1.0)
-	var wood_dark: Color = Color(0.45, 0.28, 0.16, 1.0)
-	var wood_light: Color = Color(0.64, 0.42, 0.24, 1.0)
-	var wrap_red: Color = Color(0.78, 0.2, 0.2, 1.0)
-	var steel_dark: Color = Color(0.58, 0.64, 0.72, 1.0)
-	var steel_bright: Color = Color(0.92, 0.96, 1.0, 1.0)
+	var img: Image = get_image_rgba8("structures/house")
+	var w: int = img.get_width()
+	var h: int = img.get_height()
 
-	# Draw the wooden shaft from x = 0 to x = 16 along the center row (y = 3).
-	for x in range(1, 17):
-		img.set_pixel(x, 2, outline)
-		img.set_pixel(x, 4, outline)
-		img.set_pixel(x, 3, wood_light if x % 3 != 0 else wood_dark)
-	img.set_pixel(0, 3, outline)
+	# 1. Apply top-left directional shading, darker right wall strip, overhang shadow, and base AO.
+	for y in range(h):
+		for x in range(w):
+			var c: Color = img.get_pixel(x, y)
+			if c.a < 0.05:
+				continue
+			# Subtle top-left sunlight lift on roof/upper edge.
+			if y < 22 and x < w - 16:
+				c = c.lightened(0.08)
+			# Darker right-side wall face (8 px strip) to imply 3D depth.
+			if x >= w - 10 and y >= 24:
+				c = c.darkened(0.28)
+			elif x >= w - 14 and y >= 28:
+				c = c.darkened(0.12)
+			# Roof overhang cast shadow along facade midline.
+			if y >= 48 and y <= 52 and x >= 6 and x <= w - 8:
+				c = c.darkened(0.26)
+			# Ground ambient-occlusion band at the base of the walls.
+			if y >= h - 5:
+				c = c.darkened(0.32)
+			img.set_pixel(x, y, c)
 
-	# Draw a red cloth binding right behind the blade so the spear pops against dark nights.
-	for x in range(16, 19):
-		img.set_pixel(x, 2, outline)
-		img.set_pixel(x, 3, wrap_red)
-		img.set_pixel(x, 4, outline)
+	# 2. Level 2/3 reinforced roof trim and iron corner braces.
+	var outline: Color = Color(0.16, 0.12, 0.18, 1.0)
+	if level >= 2:
+		var trim_col: Color = (
+			Color(0.54, 0.58, 0.66, 1.0) if level == 3 else Color(0.58, 0.44, 0.30, 1.0)
+		)
+		for x in range(8, w - 8):
+			img.set_pixel(x, 47, trim_col)
+			img.set_pixel(x, 48, outline)
+		for y in range(50, h - 4):
+			for bx in [7, 8, w - 9, w - 8]:
+				img.set_pixel(bx, y, trim_col)
+	if level >= 3:
+		# Extra metal shutters and steel roof rivets on Level 3 fortress home.
+		for x in range(12, w - 12, 8):
+			img.set_pixel(x, 46, Color(0.82, 0.86, 0.92, 1.0))
 
-	# Draw the pointed steel spearhead from x = 19 to x = 25.
-	for x in range(19, 25):
-		img.set_pixel(x, 3, steel_bright)
-	img.set_pixel(19, 1, outline)
-	img.set_pixel(20, 1, outline)
-	img.set_pixel(21, 1, outline)
-	img.set_pixel(19, 2, steel_bright)
-	img.set_pixel(20, 2, steel_bright)
-	img.set_pixel(21, 2, steel_dark)
-	img.set_pixel(22, 2, outline)
-	img.set_pixel(23, 2, outline)
-	img.set_pixel(19, 4, steel_dark)
-	img.set_pixel(20, 4, steel_dark)
-	img.set_pixel(21, 4, steel_dark)
-	img.set_pixel(22, 4, outline)
-	img.set_pixel(23, 4, outline)
-	img.set_pixel(19, 5, outline)
-	img.set_pixel(20, 5, outline)
-	img.set_pixel(21, 5, outline)
-	img.set_pixel(25, 3, outline)
+	# 3. Pixel chimney block on upper-left roof with right-side shadow.
+	for y in range(4, 18):
+		for x in range(16, 25):
+			var col: Color = Color(0.42, 0.30, 0.28, 1.0)
+			if x == 16 or x == 24 or y == 4:
+				col = outline
+			elif x >= 22:
+				col = Color(0.26, 0.18, 0.20, 1.0)
+			elif x <= 18:
+				col = Color(0.54, 0.40, 0.36, 1.0)
+			img.set_pixel(x, y, col)
 
-	_spear_tex = ImageTexture.create_from_image(img)
-	return _spear_tex
+	# 4. Inset window frames on left and right facade walls.
+	for wx in [20, 64]:
+		for y in range(58, 70):
+			for x in range(wx, wx + 12):
+				var is_edge: bool = (x == wx or x == wx + 11 or y == 58 or y == 69)
+				var is_bar: bool = (x == wx + 5 or y == 64)
+				if is_edge or is_bar:
+					img.set_pixel(x, y, outline)
+				elif y == 59:
+					img.set_pixel(x, y, Color(0.22, 0.20, 0.28, 1.0))
+				else:
+					img.set_pixel(x, y, Color(0.36, 0.46, 0.56, 1.0))
 
-
-## Draws a pixel-art moon disc (pale silver on normal nights, glowing crimson on Blood Moons).
-static func get_moon_texture(diameter: int, is_blood_moon: bool) -> ImageTexture:
-	var cache_key: String = "%d|%s" % [diameter, "blood" if is_blood_moon else "pale"]
-	if _moon_tex_cache.has(cache_key):
-		return _moon_tex_cache[cache_key] as ImageTexture
-
-	var img: Image = Image.create_empty(diameter, diameter, false, Image.FORMAT_RGBA8)
-	var radius: float = float(diameter) * 0.5 - 1.5
-	var center: Vector2 = Vector2(float(diameter) * 0.5, float(diameter) * 0.5)
-
-	# Pick bright/dark palette colors based on whether the Blood Moon has risen.
-	var base_col: Color = Color(0.92, 0.94, 0.98, 1.0)
-	var crater_col: Color = Color(0.72, 0.76, 0.84, 1.0)
-	var rim_col: Color = Color(0.35, 0.42, 0.58, 0.75)
-	if is_blood_moon:
-		base_col = Color(0.94, 0.18, 0.18, 1.0)
-		crater_col = Color(0.64, 0.08, 0.1, 1.0)
-		rim_col = Color(0.45, 0.04, 0.06, 0.85)
-
-	# Three small decorative craters so the moon looks textured rather than flat.
-	var crater_a: Vector2 = center + Vector2(-radius * 0.32, -radius * 0.18)
-	var crater_b: Vector2 = center + Vector2(radius * 0.28, radius * 0.24)
-	var crater_c: Vector2 = center + Vector2(-radius * 0.1, radius * 0.38)
-
-	for y in range(diameter):
-		for x in range(diameter):
-			var sample_pos: Vector2 = Vector2(float(x) + 0.5, float(y) + 0.5)
-			var dist: float = sample_pos.distance_to(center)
-			if dist <= radius:
-				var shade: float = clampf(1.0 - (dist / maxf(radius, 1.0)) * 0.25, 0.65, 1.0)
-				var is_crater: bool = (
-					sample_pos.distance_to(crater_a) <= radius * 0.22
-					or sample_pos.distance_to(crater_b) <= radius * 0.18
-					or sample_pos.distance_to(crater_c) <= radius * 0.13
-				)
-				var chosen: Color = crater_col if is_crater else base_col
-				var shaded: Color = Color(
-					chosen.r * shade,
-					chosen.g * shade,
-					chosen.b * shade,
-					1.0
-				)
-				img.set_pixel(x, y, shaded)
-			elif dist <= radius + 1.2:
-				img.set_pixel(x, y, rim_col)
+	# 5. Front porch step, doormat, and open/closed wooden door centered at x = 48.
+	for y in range(66, h - 2):
+		for x in range(41, 55):
+			var is_frame: bool = (x == 41 or x == 54 or y == 66)
+			if is_frame:
+				img.set_pixel(x, y, outline)
+			elif door_open:
+				# Dark interior doorway with swung-in door edge.
+				var inside_col: Color = Color(0.11, 0.08, 0.12, 1.0)
+				if x <= 44:
+					inside_col = Color(0.38, 0.24, 0.15, 1.0)
+				img.set_pixel(x, y, inside_col)
 			else:
-				img.set_pixel(x, y, Color(0.0, 0.0, 0.0, 0.0))
+				var plank_col: Color = (
+					Color(0.46, 0.30, 0.18, 1.0) if (x % 3 != 0) else Color(0.36, 0.22, 0.14, 1.0)
+				)
+				if x >= 51:
+					plank_col = plank_col.darkened(0.2)
+				img.set_pixel(x, y, plank_col)
+				if x == 51 and y == 78:
+					img.set_pixel(x, y, Color(0.92, 0.78, 0.34, 1.0))  # Brass handle
+	# Porch step & mat at bottom of facade.
+	for y in range(h - 3, h):
+		for x in range(39, 57):
+			var step_col: Color = (
+				Color(0.52, 0.44, 0.36, 1.0) if y == h - 3 else Color(0.32, 0.25, 0.22, 1.0)
+			)
+			img.set_pixel(x, y, step_col)
 
 	var result: ImageTexture = ImageTexture.create_from_image(img)
-	_moon_tex_cache[cache_key] = result
+	_house_cache[cache_key] = result
 	return result
 
 
-## Builds one shared UI Theme that applies the user's retro pixel .ttf font to all UI controls.
-## Falls back cleanly to Godot's built-in font if the .ttf has not been placed yet.
-static func get_game_theme(primary_font_path: String) -> Theme:
-	if _theme_cache != null:
-		return _theme_cache
-
-	var theme: Theme = Theme.new()
-	theme.default_font_size = 8
-
-	# Check the configured font path first, then common pixel font filenames in assets/fonts/.
-	var candidate_paths: Array[String] = [
-		primary_font_path,
-		"res://assets/fonts/KiwiSoda.ttf",
-		"res://assets/fonts/dogicapixel.ttf",
-		"res://assets/fonts/PixelDogica.ttf",
-	]
-	var loaded_font: Font = null
-	for path in candidate_paths:
-		if not path.is_empty() and ResourceLoader.exists(path):
-			loaded_font = load(path) as Font
-			if loaded_font != null:
-				break
-
-	if loaded_font != null:
-		if loaded_font is FontFile:
-			var font_file: FontFile = loaded_font as FontFile
-			# Disable smoothing so pixel fonts stay razor sharp at 480x270.
-			font_file.antialiasing = TextServer.FONT_ANTIALIASING_NONE
-			font_file.hinting = TextServer.HINTING_NONE
-		theme.default_font = loaded_font
-
-	# Give Labels a crisp 1-pixel drop shadow by default so text reads over bright or dark ground.
-	theme.set_color("font_shadow_color", "Label", Color(0.0, 0.0, 0.0, 0.92))
-	theme.set_constant("shadow_offset_x", "Label", 1)
-	theme.set_constant("shadow_offset_y", "Label", 1)
-
-	# Style Buttons cleanly for the Pause Menu and Lose Screen.
-	theme.set_font_size("font_size", "Button", 8)
-	theme.set_color("font_color", "Button", Color(0.95, 0.95, 0.95))
-	theme.set_color("font_hover_color", "Button", Color(1.0, 0.92, 0.58))
-	theme.set_color("font_pressed_color", "Button", Color(1.0, 0.75, 0.45))
-	theme.set_stylebox(
-		"normal",
-		"Button",
-		_make_button_box(Color(0.12, 0.1, 0.14, 0.95), Color(0.42, 0.34, 0.38))
-	)
-	theme.set_stylebox(
-		"hover",
-		"Button",
-		_make_button_box(Color(0.22, 0.15, 0.18, 0.98), Color(0.9, 0.35, 0.32))
-	)
-	theme.set_stylebox(
-		"pressed",
-		"Button",
-		_make_button_box(Color(0.3, 0.12, 0.14, 1.0), Color(1.0, 0.5, 0.42))
-	)
-	theme.set_stylebox(
-		"focus",
-		"Button",
-		_make_button_box(Color(0.2, 0.14, 0.18, 0.98), Color(0.95, 0.42, 0.36))
-	)
-
-	_theme_cache = theme
-	return _theme_cache
+## Soft radial light texture for PointLight2D windows/door/lantern (GL Compatibility safe).
+static func get_radial_light_texture(size_px: int = 128) -> GradientTexture2D:
+	if _light_tex_cache.has(size_px):
+		return _light_tex_cache[size_px] as GradientTexture2D
+	var grad: Gradient = Gradient.new()
+	grad.set_color(0, Color(1.0, 1.0, 1.0, 1.0))
+	grad.set_color(1, Color(1.0, 1.0, 1.0, 0.0))
+	var gt: GradientTexture2D = GradientTexture2D.new()
+	gt.gradient = grad
+	gt.fill = GradientTexture2D.FILL_RADIAL
+	gt.fill_from = Vector2(0.5, 0.5)
+	gt.fill_to = Vector2(0.5, 0.0)
+	gt.width = size_px
+	gt.height = size_px
+	_light_tex_cache[size_px] = gt
+	return gt
 
 
-## Helper to build a crisp pixel-bordered StyleBoxFlat for menu buttons.
-static func _make_button_box(bg_color: Color, border_color: Color) -> StyleBoxFlat:
-	var box: StyleBoxFlat = StyleBoxFlat.new()
-	box.bg_color = bg_color
-	box.border_color = border_color
-	box.set_border_width_all(1)
-	box.content_margin_left = 6.0
-	box.content_margin_right = 6.0
-	box.content_margin_top = 3.0
-	box.content_margin_bottom = 3.0
-	return box
+## Flat dark elliptical blob shadow for player, enemies, trees, cars, and piles (T1.4).
+static func get_blob_shadow(width: int, height: int) -> ImageTexture:
+	var key: String = "%dx%d" % [width, height]
+	if _blob_cache.has(key):
+		return _blob_cache[key] as ImageTexture
+	var img: Image = Image.create_empty(width, height, false, Image.FORMAT_RGBA8)
+	var rx: float = maxf(1.0, float(width) * 0.5)
+	var ry: float = maxf(1.0, float(height) * 0.5)
+	for y in range(height):
+		for x in range(width):
+			var nx: float = (float(x) + 0.5 - rx) / rx
+			var ny: float = (float(y) + 0.5 - ry) / ry
+			var d: float = nx * nx + ny * ny
+			if d <= 0.72:
+				img.set_pixel(x, y, Color(0.08, 0.06, 0.11, 0.34))
+			elif d <= 1.0 and ((x + y) % 2 == 0):
+				img.set_pixel(x, y, Color(0.08, 0.06, 0.11, 0.22))
+	var result: ImageTexture = ImageTexture.create_from_image(img)
+	_blob_cache[key] = result
+	return result
 
 
-## Slices a horizontal PNG strip into individual AtlasTexture frames for a SpriteFrames resource.
+## Draws a crisp 26x7 pixel-art spear pointing right.
+static func get_spear_texture() -> ImageTexture:
+	if _icon_cache.has("spear"):
+		return _icon_cache["spear"] as ImageTexture
+	var img: Image = Image.create_empty(26, 7, false, Image.FORMAT_RGBA8)
+	var out_c: Color = Color(0.16, 0.12, 0.18, 1.0)
+	var wood_l: Color = Color(0.64, 0.42, 0.24, 1.0)
+	var wood_d: Color = Color(0.45, 0.28, 0.16, 1.0)
+	var wrap_c: Color = Color(0.78, 0.20, 0.20, 1.0)
+	var steel_b: Color = Color(0.92, 0.96, 1.0, 1.0)
+	var steel_d: Color = Color(0.58, 0.64, 0.72, 1.0)
+
+	for x in range(1, 17):
+		img.set_pixel(x, 2, out_c)
+		img.set_pixel(x, 4, out_c)
+		img.set_pixel(x, 3, wood_l if x % 3 != 0 else wood_d)
+	img.set_pixel(0, 3, out_c)
+	for x in range(16, 19):
+		img.set_pixel(x, 2, out_c)
+		img.set_pixel(x, 3, wrap_c)
+		img.set_pixel(x, 4, out_c)
+	for x in range(19, 25):
+		img.set_pixel(x, 3, steel_b)
+	for x in [19, 20, 21]:
+		img.set_pixel(x, 1, out_c)
+		img.set_pixel(x, 5, out_c)
+		img.set_pixel(x, 2, steel_b if x < 21 else steel_d)
+		img.set_pixel(x, 4, steel_d)
+	img.set_pixel(22, 2, out_c)
+	img.set_pixel(23, 2, out_c)
+	img.set_pixel(22, 4, out_c)
+	img.set_pixel(23, 4, out_c)
+	img.set_pixel(25, 3, out_c)
+
+	var result: ImageTexture = ImageTexture.create_from_image(img)
+	_icon_cache["spear"] = result
+	return result
+
+
+## Procedural icons & gameplay sprites matching the muted pixel palette (outline #2a1f2d).
+static func get_icon_texture(icon_id: String) -> ImageTexture:
+	if _icon_cache.has(icon_id):
+		return _icon_cache[icon_id] as ImageTexture
+
+	var result: ImageTexture = null
+	match icon_id:
+		"arrow_proj":
+			result = _make_arrow_projectile()
+		"bow":
+			result = _make_bow_icon()
+		"scrap":
+			result = _make_scrap_icon()
+		"arrow":
+			result = _make_arrow_icon()
+		"trap_spike":
+			result = _make_trap_spike_icon()
+		"trap_snare":
+			result = _make_trap_snare_icon()
+		"trap_lure":
+			result = _make_trap_lure_icon()
+		"watchtower":
+			result = _make_watchtower_texture()
+		"trophy", "moon", "world", "broken_house":
+			result = _make_badge_icon(icon_id)
+		"cursor":
+			result = _make_pixel_cursor()
+		_:
+			result = _make_placeholder(icon_id)
+
+	_icon_cache[icon_id] = result
+	return result
+
+
+static func _make_arrow_projectile() -> ImageTexture:
+	var img: Image = Image.create_empty(8, 3, false, Image.FORMAT_RGBA8)
+	var shaft: Color = Color(0.56, 0.36, 0.20, 1.0)
+	var tip: Color = Color(0.92, 0.95, 0.98, 1.0)
+	var fletch: Color = Color(0.86, 0.28, 0.26, 1.0)
+	img.set_pixel(0, 0, fletch)
+	img.set_pixel(0, 2, fletch)
+	for x in range(1, 6):
+		img.set_pixel(x, 1, shaft)
+	img.set_pixel(6, 1, tip)
+	img.set_pixel(7, 1, tip)
+	img.set_pixel(6, 0, tip)
+	img.set_pixel(6, 2, tip)
+	return ImageTexture.create_from_image(img)
+
+
+static func _make_bow_icon() -> ImageTexture:
+	var img: Image = Image.create_empty(12, 12, false, Image.FORMAT_RGBA8)
+	var wood: Color = Color(0.68, 0.44, 0.24, 1.0)
+	var str_c: Color = Color(0.86, 0.86, 0.90, 1.0)
+	for y in range(2, 10):
+		img.set_pixel(3, y, str_c)
+	for pt in [
+		Vector2i(4, 1), Vector2i(5, 1), Vector2i(6, 2), Vector2i(7, 3),
+		Vector2i(8, 4), Vector2i(8, 5), Vector2i(8, 6), Vector2i(8, 7),
+		Vector2i(7, 8), Vector2i(6, 9), Vector2i(5, 10), Vector2i(4, 10),
+	]:
+		img.set_pixel(pt.x, pt.y, wood)
+	return ImageTexture.create_from_image(img)
+
+
+static func _make_scrap_icon() -> ImageTexture:
+	var img: Image = Image.create_empty(12, 12, false, Image.FORMAT_RGBA8)
+	var out_c: Color = Color(0.16, 0.12, 0.18, 1.0)
+	var metal: Color = Color(0.62, 0.68, 0.74, 1.0)
+	var rust: Color = Color(0.68, 0.36, 0.22, 1.0)
+	for y in range(3, 9):
+		for x in range(2, 10):
+			var edge: bool = (x == 2 or x == 9 or y == 3 or y == 8)
+			img.set_pixel(x, y, out_c if edge else (rust if (x + y) % 3 == 0 else metal))
+	img.set_pixel(4, 5, out_c)
+	img.set_pixel(7, 6, out_c)
+	return ImageTexture.create_from_image(img)
+
+
+static func _make_arrow_icon() -> ImageTexture:
+	var img: Image = Image.create_empty(12, 12, false, Image.FORMAT_RGBA8)
+	var shaft: Color = Color(0.62, 0.42, 0.24, 1.0)
+	var tip: Color = Color(0.92, 0.96, 1.0, 1.0)
+	var red: Color = Color(0.86, 0.26, 0.24, 1.0)
+	for i in range(2, 10):
+		img.set_pixel(i, 11 - i, shaft)
+	img.set_pixel(9, 2, tip)
+	img.set_pixel(8, 2, tip)
+	img.set_pixel(9, 3, tip)
+	img.set_pixel(2, 8, red)
+	img.set_pixel(3, 9, red)
+	return ImageTexture.create_from_image(img)
+
+
+static func _make_trap_spike_icon() -> ImageTexture:
+	var img: Image = Image.create_empty(14, 14, false, Image.FORMAT_RGBA8)
+	var out_c: Color = Color(0.16, 0.12, 0.18, 1.0)
+	var base: Color = Color(0.46, 0.32, 0.20, 1.0)
+	var tip: Color = Color(0.86, 0.90, 0.95, 1.0)
+	for y in range(4, 11):
+		for x in range(2, 12):
+			img.set_pixel(x, y, out_c if (x == 2 or x == 11 or y == 4 or y == 10) else base)
+	for sx in [4, 7, 10]:
+		img.set_pixel(sx, 3, tip)
+		img.set_pixel(sx, 6, tip)
+		img.set_pixel(sx, 8, tip)
+	return ImageTexture.create_from_image(img)
+
+
+static func _make_trap_snare_icon() -> ImageTexture:
+	var img: Image = Image.create_empty(14, 14, false, Image.FORMAT_RGBA8)
+	var rope: Color = Color(0.76, 0.64, 0.42, 1.0)
+	var iron: Color = Color(0.54, 0.60, 0.68, 1.0)
+	for y in range(3, 11):
+		for x in range(3, 11):
+			var d: float = Vector2(float(x) - 6.5, float(y) - 6.5).length()
+			if d >= 2.6 and d <= 4.0:
+				img.set_pixel(x, y, rope if (x + y) % 2 == 0 else iron)
+	return ImageTexture.create_from_image(img)
+
+
+static func _make_trap_lure_icon() -> ImageTexture:
+	var img: Image = Image.create_empty(14, 18, false, Image.FORMAT_RGBA8)
+	var out_c: Color = Color(0.16, 0.12, 0.18, 1.0)
+	var post: Color = Color(0.56, 0.38, 0.22, 1.0)
+	var cloth: Color = Color(0.86, 0.24, 0.26, 1.0)
+	for y in range(4, 17):
+		img.set_pixel(6, y, post)
+		img.set_pixel(7, y, post.darkened(0.2))
+		img.set_pixel(5, y, out_c)
+		img.set_pixel(8, y, out_c)
+	for y in range(4, 9):
+		for x in range(8, 13):
+			img.set_pixel(x, y, cloth)
+	return ImageTexture.create_from_image(img)
+
+
+static func _make_watchtower_texture() -> ImageTexture:
+	var img: Image = Image.create_empty(20, 34, false, Image.FORMAT_RGBA8)
+	var out_c: Color = Color(0.16, 0.12, 0.18, 1.0)
+	var wood_l: Color = Color(0.60, 0.42, 0.26, 1.0)
+	var wood_d: Color = Color(0.40, 0.26, 0.16, 1.0)
+	var roof: Color = Color(0.48, 0.52, 0.60, 1.0)
+	for y in range(14, 33):
+		for lx in [4, 5, 14, 15]:
+			img.set_pixel(lx, y, wood_l if lx % 2 == 0 else wood_d)
+	for y in range(6, 15):
+		for x in range(2, 18):
+			var edge: bool = (x == 2 or x == 17 or y == 6 or y == 14)
+			img.set_pixel(x, y, out_c if edge else (wood_d if x >= 14 else wood_l))
+	for y in range(2, 7):
+		for x in range(1, 19):
+			img.set_pixel(x, y, roof if y > 2 else out_c)
+	return ImageTexture.create_from_image(img)
+
+
+static func _make_badge_icon(kind: String) -> ImageTexture:
+	var img: Image = Image.create_empty(14, 14, false, Image.FORMAT_RGBA8)
+	var c1: Color = Color(0.95, 0.80, 0.30, 1.0)
+	if kind == "moon":
+		c1 = Color(0.94, 0.26, 0.26, 1.0)
+	elif kind == "world":
+		c1 = Color(0.42, 0.84, 0.54, 1.0)
+	elif kind == "broken_house":
+		c1 = Color(0.62, 0.54, 0.58, 1.0)
+	var out_c: Color = Color(0.16, 0.12, 0.18, 1.0)
+	for y in range(2, 12):
+		for x in range(2, 12):
+			var d: float = Vector2(float(x) - 6.5, float(y) - 6.5).length()
+			if kind == "broken_house":
+				if y >= 6 and (x < 6 or x > 7):
+					img.set_pixel(x, y, c1)
+				elif y < 6 and absf(float(x) - 6.5) <= float(y):
+					img.set_pixel(x, y, c1.darkened(0.2))
+			elif d <= 4.2:
+				img.set_pixel(x, y, c1)
+			elif d <= 5.2:
+				img.set_pixel(x, y, out_c)
+	return ImageTexture.create_from_image(img)
+
+
+static func _make_pixel_cursor() -> ImageTexture:
+	var img: Image = Image.create_empty(12, 12, false, Image.FORMAT_RGBA8)
+	var out_c: Color = Color(0.10, 0.07, 0.12, 1.0)
+	var fill_c: Color = Color(0.98, 0.94, 0.86, 1.0)
+	for y in range(0, 10):
+		for x in range(0, y + 1):
+			if x > 7:
+				continue
+			var edge: bool = (x == 0 or x == y or y == 9)
+			img.set_pixel(x, y, out_c if edge else fill_c)
+	return ImageTexture.create_from_image(img)
+
+
 static func _add_strip_animation(
 	frames: SpriteFrames,
 	anim_name: String,
@@ -378,7 +674,6 @@ static func _add_strip_animation(
 			frames.add_frame(anim_name, strip)
 
 
-## Builds a deterministic colored rectangle fallback when an asset file is missing.
 static func _make_placeholder(key: String) -> ImageTexture:
 	var width: int = 16
 	var height: int = 16
@@ -392,12 +687,13 @@ static func _make_placeholder(key: String) -> ImageTexture:
 		height = maxi(2, int(anim_dims[2]))
 
 	var hash_val: int = key.hash() & 0x7FFFFFFF
-	var red: float = 0.35 + float(hash_val % 50) / 100.0
-	var green: float = 0.25 + float((hash_val >> 3) % 50) / 100.0
-	var blue: float = 0.35 + float((hash_val >> 6) % 50) / 100.0
-	var fill: Color = Color(red, green, blue, 1.0)
-	var border: Color = Color(red * 0.45, green * 0.45, blue * 0.45, 1.0)
-
+	var fill: Color = Color(
+		0.35 + float(hash_val % 50) / 100.0,
+		0.25 + float((hash_val >> 3) % 50) / 100.0,
+		0.35 + float((hash_val >> 6) % 50) / 100.0,
+		1.0
+	)
+	var border: Color = Color(fill.r * 0.45, fill.g * 0.45, fill.b * 0.45, 1.0)
 	var img: Image = Image.create_empty(width, height, false, Image.FORMAT_RGBA8)
 	img.fill(fill)
 	for x in range(width):

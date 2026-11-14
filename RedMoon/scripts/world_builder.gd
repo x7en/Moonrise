@@ -1,888 +1,506 @@
 class_name WorldBuilder
 extends RefCounted
-## Pre-renders the 1440x810 ground texture, builds the farmhouse yard fence, and scatters scenery.
+## Builds the 2400x1350 world (T0.1b), concentric onion fence geometry (T0.4), zero fake wood
+## (T0.3), 12-18 seeded searchable POIs (T2.1 / T3.1), Act 1 soft fog, and meteor craters (T3.2b).
 
-const GRASS_KEYS: Array[String] = [
-	"terrain/grass_0",
-	"terrain/grass_1",
-	"terrain/grass_2",
-	"terrain/grass_3",
-]
-const WASTELAND_KEYS: Array[String] = [
-	"terrain/wasteland_0",
-	"terrain/wasteland_1",
-	"terrain/wasteland_2",
-	"terrain/wasteland_3",
-]
+const TILESET_COLS := 6
+const TILE_SIZE := 16
+const MAX_SEG_LEN := 64.0
+const FENCE_THICKNESS := 10.0
 
-const TREE_KEYS: Array[String] = [
-	"nature/tree_1_spruce_green",
-	"nature/tree_2_spruce-sparse_green",
-	"nature/tree_3_normal_green",
-	"nature/tree_5_big_green",
-	"nature/tree_6_pine_big_green",
-	"nature/tree_7_birch_green",
-	"nature/tree_8_birch_green",
-	"nature/tree_9_small-oak_green",
-	"nature/tree_10_small-oak_green",
-]
-
-const SMALL_NATURE_KEYS: Array[String] = [
-	"nature/bush_1_green",
-	"nature/bush_2_green",
-	"nature/grass_1_green",
-	"nature/grass_2_green",
-	"nature/grass_3_green",
-	"nature/grass_4_green",
-	"nature/grass_5_green",
-	"nature/rock-grass",
-]
-
-const CONTAINER_KEYS: Array[String] = [
-	"props/container_11_green_horizontal",
-	"props/container_3_gray_horizontal",
-	"props/container_7_red_horizontal",
-	"props/container_1_gray_vertical",
-	"props/container_5_red_vertical",
-	"props/container_9_green_vertical",
-]
-
-const CAR_KEYS: Array[String] = [
-	"vehicles/car_1_rust_blue",
-	"vehicles/car_2_rust_blue_upsidedown",
-	"vehicles/car_3_rust_blue_van",
-	"vehicles/car_4_rust_red",
-	"vehicles/car_6_rust_green_scrap",
-	"vehicles/car_7_rust_green_truck_",
-]
-
-const MIDDLE_PROP_KEYS: Array[String] = [
-	"props/barrel_blue_1",
-	"props/barrel_red_1",
-	"props/barrel_rust_blue_1",
-	"props/barrel_rust_red_1",
-	"props/tire_1",
-	"props/trash-bag_1",
-	"props/cardboard_1",
-	"nature/tree-trunk_2_grass_green",
-]
-
-const FAR_PROP_KEYS: Array[String] = [
-	"props/barrel_rust_red_1",
-	"props/barrel_rust_blue_1",
-	"props/garbage-bin_1",
-	"props/shopping-cart",
-	"props/street-light_1_side",
-	"props/hydrant_1_red",
-	"props/traffic-cone",
-	"props/trash-can_1",
-	"props/cardboard_2",
-	"structures/ruins/gray-brick_debris",
-	"structures/ruins/iron-beam",
-	"structures/ruins/metal-plates",
-]
+var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+var search_props: Array[Dictionary] = []  # {id, node, pos, name, searched, loot_scrap, loot_plank}
+var _act1_boundary_overlay: Node2D = null
+var _decals_layer: Node2D = null
+var _entities_layer: Node2D = null
 
 
-## Pre-renders the entire 1440x810 ground into ONE ImageTexture for fast 60 fps rendering.
-## Includes grass near home, bleak wasteland beyond 330 px, and a farmhouse yard/path dirt patch.
-static func build_ground_texture(
-	world_size: Vector2,
-	house_center: Vector2,
-	seed_val: int = 1337
-) -> ImageTexture:
-	var width: int = int(world_size.x)
-	var height: int = int(world_size.y)
-	var ground: Image = Image.create_empty(width, height, false, Image.FORMAT_RGBA8)
+## Generates exact contiguous, zero-gap fence segment specs for concentric rings 1, 2, 3 (T0.4).
+func build_onion_fence_specs() -> Array[Dictionary]:
+	var specs: Array[Dictionary] = []
+	var half_t: float = FENCE_THICKNESS * 0.5
+	var center: Vector2 = Config.HOUSE_CENTER
+	var gate_half: float = Config.FENCE_GATE_WIDTH * 0.5
 
-	var grass_imgs: Array[Image] = []
-	for key in GRASS_KEYS:
-		grass_imgs.append(SpriteFactory.get_image_rgba8(key))
+	for ring_def in Config.FENCE_RINGS:
+		var ring_num: int = int(ring_def["ring"])
+		var he: Vector2 = ring_def["half_extents"] as Vector2
+		var gate_x: float = center.x + float(ring_def["gate_offset_x"])
+		var built: bool = bool(ring_def["built_at_start"])
 
-	var waste_imgs: Array[Image] = []
-	for key in WASTELAND_KEYS:
-		waste_imgs.append(SpriteFactory.get_image_rgba8(key))
+		var left_x: float = center.x - he.x
+		var right_x: float = center.x + he.x
+		var top_y: float = center.y - he.y
+		var bottom_y: float = center.y + he.y
 
-	# Stamp 16x16 terrain tiles across the entire world map.
-	var cols: int = int(ceili(float(width) / 16.0))
-	var rows: int = int(ceili(float(height) / 16.0))
-	for ty in range(rows):
-		var dst_y: int = ty * 16
-		var blit_h: int = mini(16, height - dst_y)
-		for tx in range(cols):
-			var dst_x: int = tx * 16
-			var blit_w: int = mini(16, width - dst_x)
-			var tile_center: Vector2 = Vector2(float(dst_x + 8), float(dst_y + 8))
-			var dist: float = tile_center.distance_to(house_center)
+		# North wall spans full [left_x - half_t, right_x + half_t] so corners are 100% solid.
+		_append_h_run(specs, ring_num, built, left_x - half_t, right_x + half_t, top_y)
+		# South-West wing and South-East wing leave an exact 28 px south gate gap.
+		_append_h_run(specs, ring_num, built, left_x - half_t, gate_x - gate_half, bottom_y)
+		_append_h_run(specs, ring_num, built, gate_x + gate_half, right_x + half_t, bottom_y)
+		# West and East walls overlap the corner squares so zero diagonal gap exists.
+		_append_v_run(specs, ring_num, built, left_x, top_y - half_t, bottom_y + half_t)
+		_append_v_run(specs, ring_num, built, right_x, top_y - half_t, bottom_y + half_t)
 
-			var h_val: int = _tile_hash(tx, ty, seed_val)
-			var variant: int = _pick_tile_variant(h_val)
-
-			# Slight noise around 330 px makes the grass-to-wasteland edge look natural.
-			var transition_r: float = 330.0 + float((h_val % 25) - 12)
-			var tile_img: Image = grass_imgs[variant]
-			if dist > transition_r:
-				tile_img = waste_imgs[variant]
-
-			ground.blit_rect(tile_img, Rect2i(0, 0, blit_w, blit_h), Vector2i(dst_x, dst_y))
-
-	# Paint a warm packed-dirt yard inside the farmhouse fence and a path out the south gate.
-	_paint_farmhouse_yard_dirt(ground, house_center, seed_val)
-
-	return ImageTexture.create_from_image(ground)
+	return specs
 
 
-## Builds the visible farmhouse yard fence around the house with a clear front DOOR gap at south.
-## Returns the 6 Act-1 decorative fill segments so main.gd can hide them when Act-2 fences activate.
-static func build_farmhouse_yard(
-	entities_parent: Node2D,
-	house_center: Vector2,
-	fence_slots: Array
-) -> Array[Node2D]:
-	var left_x: float = house_center.x - 92.0
-	var right_x: float = house_center.x + 92.0
-	var top_y: float = house_center.y - 62.0
-	var bottom_y: float = house_center.y + 62.0
-
-	# 1. Four wooden corner posts tying the yard walls into one tidy farmhouse compound.
-	_place_yard_piece(
-		entities_parent,
-		"structures/fence_wood/left-side_right_down-connect",
-		Vector2(left_x - 6.0, top_y + 9.0)
-	)
-	_place_yard_piece(
-		entities_parent,
-		"structures/fence_wood/right-side_left_down-connect",
-		Vector2(right_x - 6.0, top_y + 9.0)
-	)
-	_place_yard_piece(
-		entities_parent,
-		"structures/fence_wood/left-side_right_up-connect",
-		Vector2(left_x - 6.0, bottom_y + 7.0)
-	)
-	_place_yard_piece(
-		entities_parent,
-		"structures/fence_wood/right-side_left_up-connect",
-		Vector2(right_x - 6.0, bottom_y + 7.0)
-	)
-
-	# 2. North center fence rail connecting the top-left and top-right fence slots.
-	var north_x: float = house_center.x - 46.0
-	for i in range(6):
-		_place_yard_piece(
-			entities_parent,
-			"structures/fence_wood/horizontal",
-			Vector2(north_x + float(i * 16), top_y + 7.0)
-		)
-
-	# 3. South front yard fence WITH A CLEAR DOOR GAP centered on HOUSE_DOOR (x = 720).
-	# Left wing runs up to x = 700, right wing starts at x = 740, leaving a clear doorway.
-	_place_yard_piece(
-		entities_parent,
-		"structures/fence_wood/horizontal",
-		Vector2(house_center.x - 46.0, bottom_y + 7.0)
-	)
-	_place_yard_piece(
-		entities_parent,
-		"structures/fence_wood/horizontal",
-		Vector2(house_center.x - 34.0, bottom_y + 7.0)
-	)
-	_place_yard_piece(
-		entities_parent,
-		"structures/fence_wood/vertical_for-gate",
-		Vector2(house_center.x - 20.0, bottom_y + 7.0)
-	)
-
-	_place_yard_piece(
-		entities_parent,
-		"structures/fence_wood/vertical_for-gate",
-		Vector2(house_center.x + 13.0, bottom_y + 7.0)
-	)
-	_place_yard_piece(
-		entities_parent,
-		"structures/fence_wood/horizontal",
-		Vector2(house_center.x + 18.0, bottom_y + 7.0)
-	)
-	_place_yard_piece(
-		entities_parent,
-		"structures/fence_wood/horizontal",
-		Vector2(house_center.x + 30.0, bottom_y + 7.0)
-	)
-
-	# 4. West and East vertical rails connecting corners to the middle side fence slots.
-	for side_x in [left_x - 4.0, right_x - 4.0]:
-		_place_yard_piece(
-			entities_parent,
-			"structures/fence_wood/vertical",
-			Vector2(side_x, top_y + 28.0)
-		)
-		_place_yard_piece(
-			entities_parent,
-			"structures/fence_wood/vertical",
-			Vector2(side_x, top_y + 45.0)
-		)
-		_place_yard_piece(
-			entities_parent,
-			"structures/fence_wood/vertical",
-			Vector2(side_x, bottom_y - 30.0)
-		)
-		_place_yard_piece(
-			entities_parent,
-			"structures/fence_wood/vertical",
-			Vector2(side_x, bottom_y - 11.0)
-		)
-
-	# 5. Act-1 decorative fills for the 6 defense slots so the yard fence is complete in Act 1,
-	#    then cleanly swaps out for real destructible/repairable Fences in Act 2.
-	var act1_slot_fills: Array[Node2D] = []
-	for slot_item in fence_slots:
-		var slot: Dictionary = slot_item as Dictionary
-		var slot_center: Vector2 = house_center + (slot["offset"] as Vector2)
-		var is_horiz: bool = bool(slot["horizontal"])
-		var fill_holder: Node2D = Node2D.new()
-
-		if is_horiz:
-			fill_holder.position = Vector2(slot_center.x, slot_center.y + 7.0)
-			for seg_idx in range(3):
-				var spr: Sprite2D = Sprite2D.new()
-				spr.texture = SpriteFactory.tex("structures/fence_wood/horizontal")
-				spr.centered = false
-				spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-				spr.position = Vector2(-24.0 + float(seg_idx * 16), -14.0)
-				fill_holder.add_child(spr)
-		else:
-			fill_holder.position = Vector2(slot_center.x, slot_center.y + 16.0)
-			for seg_idx in range(2):
-				var spr: Sprite2D = Sprite2D.new()
-				spr.texture = SpriteFactory.tex("structures/fence_wood/vertical")
-				spr.centered = false
-				spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-				spr.position = Vector2(-4.0, -32.0 + float(seg_idx * 16))
-				fill_holder.add_child(spr)
-
-		entities_parent.add_child(fill_holder)
-		act1_slot_fills.append(fill_holder)
-
-	return act1_slot_fills
+func _append_h_run(
+	specs: Array[Dictionary],
+	ring_num: int,
+	built: bool,
+	x0: float,
+	x1: float,
+	y_center: float
+) -> void:
+	var span: float = x1 - x0
+	if span <= 4.0:
+		return
+	var count: int = maxi(1, ceili(span / MAX_SEG_LEN))
+	var step: float = span / float(count)
+	for i in range(count):
+		var a: float = x0 + float(i) * step
+		var b: float = x1 if (i == count - 1) else (x0 + float(i + 1) * step)
+		specs.append({
+			"ring": ring_num,
+			"horizontal": true,
+			"built": built,
+			"rect": Rect2(a, y_center - FENCE_THICKNESS * 0.5, b - a, FENCE_THICKNESS),
+		})
 
 
-## Populates the 1440x810 map with richer seeded trees, bushes, rocks, containers, cars, and props.
-## Returns solid collider Rect2s so plank piles never spawn trapped inside solid obstacles.
-static func populate_scenery(
-	entities_parent: Node2D,
-	structures: Array,
-	world_size: Vector2,
-	house_center: Vector2,
-	act1_rect: Rect2,
-	seed_val: int = 4242
-) -> Array[Rect2]:
-	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+func _append_v_run(
+	specs: Array[Dictionary],
+	ring_num: int,
+	built: bool,
+	x_center: float,
+	y0: float,
+	y1: float
+) -> void:
+	var span: float = y1 - y0
+	if span <= 4.0:
+		return
+	var count: int = maxi(1, ceili(span / MAX_SEG_LEN))
+	var step: float = span / float(count)
+	for i in range(count):
+		var a: float = y0 + float(i) * step
+		var b: float = y1 if (i == count - 1) else (y0 + float(i + 1) * step)
+		specs.append({
+			"ring": ring_num,
+			"horizontal": false,
+			"built": built,
+			"rect": Rect2(x_center - FENCE_THICKNESS * 0.5, a, FENCE_THICKNESS, b - a),
+		})
+
+
+## Builds ground, decals, Act 1 fog frame, solid world edges, nature props, and 15 seeded POIs.
+func build_world(
+	ground_layer: Node2D,
+	decals_layer: Node2D,
+	entities_layer: Node2D,
+	seed_val: int
+) -> void:
 	rng.seed = seed_val
+	_decals_layer = decals_layer
+	_entities_layer = entities_layer
+	search_props.clear()
 
-	var solid_rects: Array[Rect2] = []
-	var placed_positions: Array[Vector2] = []
-
-	# 1. Act 1 border framing: trees and natural accents around the edges of the center screen.
-	var act1_border_trees: Array[Vector2] = [
-		Vector2(504.0, 296.0),
-		Vector2(546.0, 286.0),
-		Vector2(934.0, 296.0),
-		Vector2(892.0, 286.0),
-		Vector2(504.0, 522.0),
-		Vector2(552.0, 530.0),
-		Vector2(934.0, 522.0),
-		Vector2(886.0, 530.0),
-		Vector2(496.0, 358.0),
-		Vector2(496.0, 464.0),
-		Vector2(944.0, 358.0),
-		Vector2(944.0, 464.0),
-	]
-	for spot in act1_border_trees:
-		var tree_key: String = TREE_KEYS[rng.randi() % TREE_KEYS.size()]
-		var jitter: Vector2 = Vector2(rng.randf_range(-4.0, 4.0), rng.randf_range(-4.0, 4.0))
-		_try_place_scenery(
-			entities_parent,
-			tree_key,
-			spot + jitter,
-			true,
-			house_center,
-			structures,
-			solid_rects,
-			placed_positions,
-			16.0
-		)
-
-	var act1_border_details: Array[Vector2] = [
-		Vector2(526.0, 326.0),
-		Vector2(912.0, 326.0),
-		Vector2(532.0, 496.0),
-		Vector2(906.0, 496.0),
-		Vector2(604.0, 286.0),
-		Vector2(836.0, 286.0),
-		Vector2(606.0, 528.0),
-		Vector2(834.0, 528.0),
-		Vector2(556.0, 405.0),
-		Vector2(884.0, 405.0),
-	]
-	for detail_spot in act1_border_details:
-		var detail_key: String = SMALL_NATURE_KEYS[rng.randi() % SMALL_NATURE_KEYS.size()]
-		_try_place_scenery(
-			entities_parent,
-			detail_key,
-			detail_spot,
-			false,
-			house_center,
-			structures,
-			solid_rects,
-			placed_positions,
-			12.0
-		)
-
-	# 2. Enriched middle and outer rings: denser groves of trees, shipping containers, and cars.
-	var act1_inner: Rect2 = act1_rect.grow(-14.0)
-
-	# Place trees across the grassy ring and sparse dead-edge pines in the wasteland.
-	for _i in range(135):
-		var pos: Vector2 = _random_world_pos(rng, world_size, 26.0)
-		var dist: float = pos.distance_to(house_center)
-		if dist < 140.0 or act1_inner.has_point(pos):
-			continue
-		if dist > 360.0 and rng.randf() > 0.28:
-			continue
-		var tree_key: String = TREE_KEYS[rng.randi() % TREE_KEYS.size()]
-		_try_place_scenery(
-			entities_parent,
-			tree_key,
-			pos,
-			true,
-			house_center,
-			structures,
-			solid_rects,
-			placed_positions,
-			26.0
-		)
-
-	# Place shipping containers in middle and far wasteland zones as strong landmarks.
-	for _i in range(24):
-		var pos: Vector2 = _random_world_pos(rng, world_size, 42.0)
-		var dist: float = pos.distance_to(house_center)
-		if dist < 205.0 or act1_inner.has_point(pos):
-			continue
-		var container_key: String = CONTAINER_KEYS[rng.randi() % CONTAINER_KEYS.size()]
-		_try_place_scenery(
-			entities_parent,
-			container_key,
-			pos,
-			true,
-			house_center,
-			structures,
-			solid_rects,
-			placed_positions,
-			44.0
-		)
-
-	# Place abandoned rusty cars and trucks throughout the middle and outer wasteland.
-	for _i in range(26):
-		var pos: Vector2 = _random_world_pos(rng, world_size, 44.0)
-		var dist: float = pos.distance_to(house_center)
-		if dist < 210.0 or act1_inner.has_point(pos):
-			continue
-		var car_key: String = CAR_KEYS[rng.randi() % CAR_KEYS.size()]
-		_try_place_scenery(
-			entities_parent,
-			car_key,
-			pos,
-			true,
-			house_center,
-			structures,
-			solid_rects,
-			placed_positions,
-			44.0
-		)
-
-	# 3. Generous non-solid details: bushes, grass tufts, rocks, barrels, and wasteland debris.
-	for _i in range(220):
-		var pos: Vector2 = _random_world_pos(rng, world_size, 18.0)
-		var dist: float = pos.distance_to(house_center)
-		if dist < 130.0:
-			continue
-
-		var prop_key: String = ""
-		if dist <= 330.0:
-			if rng.randf() < 0.75:
-				prop_key = SMALL_NATURE_KEYS[rng.randi() % SMALL_NATURE_KEYS.size()]
-			else:
-				prop_key = MIDDLE_PROP_KEYS[rng.randi() % MIDDLE_PROP_KEYS.size()]
-		else:
-			if rng.randf() < 0.30:
-				prop_key = "nature/rock-grass"
-			else:
-				prop_key = FAR_PROP_KEYS[rng.randi() % FAR_PROP_KEYS.size()]
-
-		_try_place_scenery(
-			entities_parent,
-			prop_key,
-			pos,
-			false,
-			house_center,
-			structures,
-			solid_rects,
-			placed_positions,
-			14.0
-		)
-
-	return solid_rects
+	_build_ground(ground_layer)
+	_build_homestead_paths(decals_layer)
+	_build_world_border_walls(entities_layer)
+	_build_act1_boundary_overlay(decals_layer)
+	_build_nature_and_pois(decals_layer, entities_layer)
 
 
-## Paints packed earth inside the farmhouse fence yard and a worn dirt lane out the front gate.
-static func _paint_farmhouse_yard_dirt(
-	ground: Image,
-	house_center: Vector2,
-	seed_val: int
-) -> void:
-	var yard_rect: Rect2i = Rect2i(
-		int(house_center.x) - 90,
-		int(house_center.y) - 60,
-		180,
-		122
-	)
-	var path_rect: Rect2i = Rect2i(
-		int(house_center.x) - 16,
-		int(house_center.y) + 54,
-		32,
-		72
-	)
-	var dirt_warm: Color = Color(0.56, 0.45, 0.34, 1.0)
-	var dirt_dark: Color = Color(0.46, 0.36, 0.27, 1.0)
-
-	_blend_dirt_rect(ground, yard_rect, dirt_warm, dirt_dark, 0.42, seed_val)
-	_blend_dirt_rect(ground, path_rect, dirt_warm, dirt_dark, 0.56, seed_val + 99)
+func set_act1_fog_visible(is_visible: bool) -> void:
+	if _act1_boundary_overlay != null:
+		_act1_boundary_overlay.visible = is_visible
 
 
-## Blends subtle speckled packed dirt over a rectangular area of the ground texture.
-static func _blend_dirt_rect(
-	ground: Image,
-	rect: Rect2i,
-	light_col: Color,
-	dark_col: Color,
-	strength: float,
-	seed_val: int
-) -> void:
-	var max_w: int = ground.get_width()
-	var max_h: int = ground.get_height()
-	var x0: int = maxi(0, rect.position.x)
-	var y0: int = maxi(0, rect.position.y)
-	var x1: int = mini(max_w, rect.end.x)
-	var y1: int = mini(max_h, rect.end.y)
-
-	for y in range(y0, y1):
-		for x in range(x0, x1):
-			# Feather the outer 4 pixels so the yard dirt blends softly into the grass.
-			var edge_x: int = mini(x - x0, (x1 - 1) - x)
-			var edge_y: int = mini(y - y0, (y1 - 1) - y)
-			var edge_dist: int = mini(edge_x, edge_y)
-			var edge_fade: float = clampf(float(edge_dist + 1) / 5.0, 0.15, 1.0)
-
-			var h_val: int = _tile_hash(x, y, seed_val)
-			var dirt_col: Color = light_col if (h_val % 3 != 0) else dark_col
-			var base_col: Color = ground.get_pixel(x, y)
-			var blended: Color = base_col.lerp(dirt_col, strength * edge_fade)
-			ground.set_pixel(x, y, blended)
-
-
-## Places a single decorative wooden fence piece inside Entities using its bottom-left feet point.
-static func _place_yard_piece(
-	entities_parent: Node2D,
-	tex_key: String,
-	bottom_left_pos: Vector2
-) -> void:
-	var dims: Array = SpriteData.STATIC.get(tex_key, [16, 14])
-	var sprite_h: float = float(dims[1])
-
-	var holder: Node2D = Node2D.new()
-	holder.position = Vector2(bottom_left_pos.x, bottom_left_pos.y).round()
-
+## T3.2b: Places a charred lunar crater decal using owner moon/lunar_04..09 art.
+func spawn_crater_decal(world_pos: Vector2) -> void:
+	if _decals_layer == null:
+		return
+	var lunar_idx: int = rng.randi_range(4, 9)
+	var key: String = "moon/lunar_%02d" % lunar_idx
 	var spr: Sprite2D = Sprite2D.new()
-	spr.texture = SpriteFactory.tex(tex_key)
-	spr.centered = false
+	spr.texture = SpriteFactory.tex(key)
+	spr.centered = true
+	spr.position = world_pos.round()
 	spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	spr.position = Vector2(0.0, -sprite_h)
-	holder.add_child(spr)
-	entities_parent.add_child(holder)
+	spr.modulate = Color(0.90, 0.84, 0.88, 0.92)
+	_decals_layer.add_child(spr)
 
 
-## Validates spacing and places either a solid StaticBody2D prop or a decorative Node2D prop.
-static func _try_place_scenery(
-	entities_parent: Node2D,
-	key: String,
-	pos: Vector2,
-	is_solid: bool,
-	house_center: Vector2,
-	structures: Array,
-	solid_rects: Array[Rect2],
-	placed_positions: Array[Vector2],
-	min_spacing: float
-) -> bool:
-	var snapped: Vector2 = pos.round()
-	if snapped.distance_to(house_center) < 125.0:
-		return false
+## Finds the nearest unsearched prop within reach pixels (for holding E to scavenge scrap).
+func find_nearest_searchable(world_pos: Vector2, max_dist: float = 30.0) -> Dictionary:
+	var best: Dictionary = {}
+	var best_d: float = max_dist
+	for prop in search_props:
+		if bool(prop["searched"]):
+			continue
+		var d: float = world_pos.distance_to(prop["pos"] as Vector2)
+		if d <= best_d:
+			best_d = d
+			best = prop
+	return best
 
-	# Keep clear of the house, front door path, and all 6 fence slots.
-	for item in structures:
-		var struct_node: Structure = item as Structure
-		if struct_node != null and struct_node.distance_from_point(snapped) < 30.0:
-			return false
 
-	var col_size: Vector2 = _collider_size_for_key(key)
-	var world_col: Rect2 = Rect2(
-		snapped.x - col_size.x * 0.5,
-		snapped.y - col_size.y,
-		col_size.x,
-		col_size.y
+func mark_prop_searched(prop_id: int) -> void:
+	for prop in search_props:
+		if int(prop["id"]) == prop_id:
+			prop["searched"] = true
+			var node: Node2D = prop["node"] as Node2D
+			if is_instance_valid(node):
+				node.modulate = Color(0.68, 0.66, 0.68, 1.0)
+			return
+
+
+## Generates Act 1 plank spawns inside ACT1_RECT, outside Ring 2 and clear of the house/fences.
+func build_act1_plank_positions(count: int, seed_val: int) -> Array[Vector2]:
+	var prng: RandomNumberGenerator = RandomNumberGenerator.new()
+	prng.seed = seed_val
+	var positions: Array[Vector2] = []
+	var rect: Rect2 = Config.ACT1_RECT.grow(-24.0)
+	var inner_clear: Rect2 = Rect2(Config.HOUSE_CENTER - Vector2(150.0, 118.0), Vector2(300.0, 236.0))
+	var tries: int = 0
+	while positions.size() < count and tries < 600:
+		tries += 1
+		var p: Vector2 = Vector2(
+			prng.randf_range(rect.position.x, rect.end.x),
+			prng.randf_range(rect.position.y, rect.end.y)
+		).round()
+		if inner_clear.has_point(p):
+			continue
+		if _too_close(p, positions, 26.0):
+			continue
+		positions.append(p)
+	return positions
+
+
+## Generates Act 2 plank + scrap pile specs across the full 2400x1350 world.
+func build_act2_pile_specs(seed_val: int) -> Array[Dictionary]:
+	var prng: RandomNumberGenerator = RandomNumberGenerator.new()
+	prng.seed = seed_val
+	var specs: Array[Dictionary] = []
+	var used: Array[Vector2] = []
+	var tier_names: Array[String] = ["near", "middle", "far"]
+
+	for idx in range(Config.PILES.size()):
+		var def: Dictionary = Config.PILES[idx]
+		var count: int = int(def["count"])
+		var planks: int = int(def["planks"])
+		var r_min: float = float(def["r_min"])
+		var r_max: float = float(def["r_max"])
+		var tier_name: String = tier_names[mini(idx, 2)]
+		var tries: int = 0
+		var spawned: int = 0
+		while spawned < count and tries < 800:
+			tries += 1
+			var ang: float = prng.randf_range(0.0, TAU)
+			var dist: float = prng.randf_range(r_min, r_max)
+			var p: Vector2 = (Config.HOUSE_CENTER + Vector2(cos(ang), sin(ang)) * dist).round()
+			if not Config.WORLD_RECT.grow(-48.0).has_point(p):
+				continue
+			if _too_close(p, used, 36.0):
+				continue
+			used.append(p)
+			specs.append({"pos": p, "amount": planks, "tier": tier_name, "type": "plank"})
+			spawned += 1
+
+	# Scatter loose scrap piles around mid/outer ruins as well.
+	for _s in range(6):
+		var ang_s: float = prng.randf_range(0.0, TAU)
+		var dist_s: float = prng.randf_range(290.0, 920.0)
+		var ps: Vector2 = (Config.HOUSE_CENTER + Vector2(cos(ang_s), sin(ang_s)) * dist_s).round()
+		if Config.WORLD_RECT.grow(-52.0).has_point(ps):
+			specs.append({
+				"pos": ps,
+				"amount": prng.randi_range(1, 2),
+				"tier": "scrap",
+				"type": "scrap",
+			})
+	return specs
+
+
+func _build_ground(ground_layer: Node2D) -> void:
+	var cols: int = int(Config.WORLD_SIZE.x / float(TILE_SIZE))
+	var rows: int = int(Config.WORLD_SIZE.y / float(TILE_SIZE))
+	var grass_imgs: Array[Image] = [
+		SpriteFactory.get_image_rgba8("terrain/grass_0"),
+		SpriteFactory.get_image_rgba8("terrain/grass_1"),
+		SpriteFactory.get_image_rgba8("terrain/grass_2"),
+		SpriteFactory.get_image_rgba8("terrain/grass_3"),
+	]
+	var waste_imgs: Array[Image] = [
+		SpriteFactory.get_image_rgba8("terrain/wasteland_0"),
+		SpriteFactory.get_image_rgba8("terrain/wasteland_1"),
+		SpriteFactory.get_image_rgba8("terrain/wasteland_2"),
+		SpriteFactory.get_image_rgba8("terrain/wasteland_3"),
+	]
+	var road_img: Image = _make_asphalt_tile(waste_imgs[0])
+	var world_img: Image = Image.create_empty(
+		int(Config.WORLD_SIZE.x), int(Config.WORLD_SIZE.y), false, Image.FORMAT_RGBA8
 	)
 
-	# Keep breathing room between solid obstacles so fast player movement never gets wedged.
-	var pad: float = 18.0 if is_solid else 6.0
-	for existing in solid_rects:
-		if existing.grow(pad).intersects(world_col):
-			return false
+	var hc: Vector2 = Config.HOUSE_CENTER
+	var yard_rect: Rect2 = Rect2(hc - Vector2(184.0, 154.0), Vector2(368.0, 308.0))
+	var road_y_top: float = hc.y + 188.0
+	var road_y_bot: float = hc.y + 236.0
+	var road_x_left: float = hc.x - 24.0
+	var road_x_right: float = hc.x + 24.0
+	var tile_rect: Rect2i = Rect2i(0, 0, TILE_SIZE, TILE_SIZE)
 
-	var min_sq: float = min_spacing * min_spacing
-	for prev in placed_positions:
-		if prev.distance_squared_to(snapped) < min_sq:
-			return false
+	for ty in range(rows):
+		var wy: float = float(ty * TILE_SIZE + 8)
+		for tx in range(cols):
+			var wx: float = float(tx * TILE_SIZE + 8)
+			var pt: Vector2 = Vector2(wx, wy)
+			var src_img: Image = grass_imgs[rng.randi() % grass_imgs.size()]
+			var on_main_road: bool = (wy >= road_y_top and wy <= road_y_bot)
+			var on_driveway: bool = (
+				wx >= road_x_left and wx <= road_x_right and wy >= hc.y + 56.0 and wy <= road_y_bot
+			)
+			if on_main_road or on_driveway:
+				src_img = road_img
+			elif yard_rect.has_point(pt):
+				src_img = (
+					waste_imgs[rng.randi() % waste_imgs.size()]
+					if rng.randf() < 0.72
+					else grass_imgs[rng.randi() % grass_imgs.size()]
+				)
+			elif rng.randf() < 0.14:
+				src_img = waste_imgs[rng.randi() % waste_imgs.size()]
 
-	var node: Node2D = null
-	if is_solid:
+			world_img.blit_rect(src_img, tile_rect, Vector2i(tx * TILE_SIZE, ty * TILE_SIZE))
+
+	var ground_spr: Sprite2D = Sprite2D.new()
+	ground_spr.name = "GroundBaked"
+	ground_spr.texture = ImageTexture.create_from_image(world_img)
+	ground_spr.centered = false
+	ground_spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	ground_layer.add_child(ground_spr)
+
+
+func _make_asphalt_tile(base_img: Image) -> Image:
+	var out: Image = base_img.duplicate() as Image
+	for y in range(out.get_height()):
+		for x in range(out.get_width()):
+			var c: Color = out.get_pixel(x, y)
+			var gray: float = (c.r * 0.3 + c.g * 0.5 + c.b * 0.2) * 0.58
+			out.set_pixel(x, y, Color(gray * 0.98, gray * 0.96, gray * 1.04, 1.0))
+	return out
+
+
+func _build_homestead_paths(decals_layer: Node2D) -> void:
+	# Pure flat stone stepping pads at the south gate line (zero fake wood, T0.3).
+	var hc: Vector2 = Config.HOUSE_CENTER
+	for gy in [hc.y + 62.0, hc.y + 106.0, hc.y + 150.0]:
+		var pad: ColorRect = ColorRect.new()
+		pad.position = Vector2(hc.x - 14.0, gy - 5.0)
+		pad.size = Vector2(28.0, 10.0)
+		pad.color = Color(0.46, 0.42, 0.36, 0.55)
+		decals_layer.add_child(pad)
+
+
+func _build_world_border_walls(entities_layer: Node2D) -> void:
+	var border_body: StaticBody2D = StaticBody2D.new()
+	border_body.name = "WorldBorder"
+	border_body.collision_layer = 1
+	border_body.collision_mask = 0
+	var ws: Vector2 = Config.WORLD_SIZE
+	for wall in [
+		{"pos": Vector2(ws.x * 0.5, -8.0), "size": Vector2(ws.x + 32.0, 16.0)},
+		{"pos": Vector2(ws.x * 0.5, ws.y + 8.0), "size": Vector2(ws.x + 32.0, 16.0)},
+		{"pos": Vector2(-8.0, ws.y * 0.5), "size": Vector2(16.0, ws.y + 32.0)},
+		{"pos": Vector2(ws.x + 8.0, ws.y * 0.5), "size": Vector2(16.0, ws.y + 32.0)},
+	]:
+		var col: CollisionShape2D = CollisionShape2D.new()
+		var sh: RectangleShape2D = RectangleShape2D.new()
+		sh.size = wall["size"] as Vector2
+		col.shape = sh
+		col.position = wall["pos"] as Vector2
+		border_body.add_child(col)
+	entities_layer.add_child(border_body)
+
+
+func _build_act1_boundary_overlay(decals_layer: Node2D) -> void:
+	_act1_boundary_overlay = Node2D.new()
+	_act1_boundary_overlay.name = "Act1FogFrame"
+	_act1_boundary_overlay.z_index = 4
+	var ar: Rect2 = Config.ACT1_RECT
+	var ws: Vector2 = Config.WORLD_SIZE
+	var fog_col: Color = Color(0.06, 0.05, 0.09, 0.62)
+	for rect_def in [
+		Rect2(0.0, 0.0, ws.x, ar.position.y),
+		Rect2(0.0, ar.end.y, ws.x, ws.y - ar.end.y),
+		Rect2(0.0, ar.position.y, ar.position.x, ar.size.y),
+		Rect2(ar.end.x, ar.position.y, ws.x - ar.end.x, ar.size.y),
+	]:
+		var r: ColorRect = ColorRect.new()
+		r.position = rect_def.position
+		r.size = rect_def.size
+		r.color = fog_col
+		_act1_boundary_overlay.add_child(r)
+	decals_layer.add_child(_act1_boundary_overlay)
+
+
+func _build_nature_and_pois(decals_layer: Node2D, entities_layer: Node2D) -> void:
+	var hc: Vector2 = Config.HOUSE_CENTER
+	var safe_yard: Rect2 = Rect2(hc - Vector2(215.0, 185.0), Vector2(430.0, 370.0))
+	var used_spots: Array[Vector2] = []
+
+	# 15 curated / seeded Points of Interest (T3.1 + T2.1 searchable scrap props).
+	var poi_templates: Array = [
+		["Crashed Sedan", "vehicles/car_4_rust_red", Vector2(36, 16), 2, 1],
+		["Wrecked Blue Car", "vehicles/car_1_rust_blue", Vector2(22, 22), 2, 1],
+		["Wrecked Van", "vehicles/car_3_rust_blue_van", Vector2(40, 18), 3, 1],
+		["Shipping Container", "props/container_3_gray_horizontal", Vector2(38, 18), 2, 2],
+		["Supply Container", "props/container_7_red_horizontal", Vector2(38, 18), 3, 1],
+		["Burnt Barrel Cache", "props/barrel_rust_red_1", Vector2(14, 10), 2, 1],
+		["Ruined Shack", "structures/ruins/gray-brick_debris", Vector2(18, 12), 2, 3],
+		["Iron Beam Wreck", "structures/ruins/iron-beam", Vector2(16, 8), 3, 0],
+		["Roadside Barricade", "props/garbage-bin_1", Vector2(24, 14), 2, 2],
+		["Abandoned Camp", "props/cardboard_1", Vector2(12, 8), 1, 3],
+		["Collapsed Shed", "structures/ruins/metal-plates", Vector2(20, 12), 2, 2],
+		["Green Cargo Box", "props/container_11_green_horizontal", Vector2(38, 18), 3, 1],
+		["Scrap Truck", "vehicles/car_6_rust_green_scrap", Vector2(36, 16), 3, 1],
+		["Old Shopping Cart", "props/shopping-cart", Vector2(12, 10), 2, 2],
+		["Fuel Drum Pile", "props/barrel_rust_blue_1", Vector2(14, 10), 2, 1],
+	]
+
+	var prop_id: int = 1
+	# Place 4 searchable props inside ACT1_RECT (outside Ring 3) so players can find scrap early!
+	for idx in range(poi_templates.size()):
+		var tpl: Array = poi_templates[idx]
+		var in_act1: bool = (idx < 4)
+		var pos: Vector2 = _pick_poi_position(in_act1, safe_yard, used_spots)
+		used_spots.append(pos)
+		var node: Node2D = _spawn_prop_node(
+			entities_layer, String(tpl[1]), pos, tpl[2] as Vector2
+		)
+		# Small ground stain decal under each POI for visual storytelling.
+		var stain: ColorRect = ColorRect.new()
+		stain.position = pos + Vector2(-18.0, -8.0)
+		stain.size = Vector2(36.0, 16.0)
+		stain.color = Color(0.16, 0.14, 0.15, 0.25)
+		decals_layer.add_child(stain)
+
+		search_props.append({
+			"id": prop_id,
+			"node": node,
+			"pos": pos,
+			"name": String(tpl[0]),
+			"searched": false,
+			"loot_scrap": int(tpl[3]),
+			"loot_plank": int(tpl[4]),
+		})
+		prop_id += 1
+
+	# Scatter solid trees and decorative bushes around the countryside (strictly outside Ring 3).
+	var tree_keys: Array[String] = [
+		"nature/tree_1_spruce_green",
+		"nature/tree_2_spruce-sparse_green",
+		"nature/tree_3_normal_green",
+		"nature/tree_5_big_green",
+		"nature/tree_6_pine_big_green",
+		"nature/tree_7_birch_green",
+		"nature/tree_8_birch_green",
+		"nature/tree_10_small-oak_green",
+	]
+	var bush_keys: Array[String] = [
+		"nature/bush_1_green",
+		"nature/bush_2_green",
+		"nature/grass_3_green",
+		"nature/rock-grass",
+	]
+	for _t in range(72):
+		var tp: Vector2 = Vector2(
+			rng.randf_range(44.0, Config.WORLD_SIZE.x - 44.0),
+			rng.randf_range(44.0, Config.WORLD_SIZE.y - 44.0)
+		).round()
+		if safe_yard.has_point(tp):
+			continue
+		if absf(tp.y - (hc.y + 212.0)) < 36.0:
+			continue
+		if _too_close(tp, used_spots, 42.0):
+			continue
+		used_spots.append(tp)
+		var key_t: String = tree_keys[rng.randi() % tree_keys.size()]
+		_spawn_prop_node(entities_layer, key_t, tp, Vector2(14.0, 10.0))
+
+	for _b in range(60):
+		var bp: Vector2 = Vector2(
+			rng.randf_range(32.0, Config.WORLD_SIZE.x - 32.0),
+			rng.randf_range(32.0, Config.WORLD_SIZE.y - 32.0)
+		).round()
+		if safe_yard.has_point(bp):
+			continue
+		var bush_spr: Sprite2D = SpriteFactory.make_static_sprite(
+			bush_keys[rng.randi() % bush_keys.size()], true
+		)
+		bush_spr.position = bp
+		entities_layer.add_child(bush_spr)
+
+
+func _pick_poi_position(in_act1: bool, safe_yard: Rect2, used: Array[Vector2]) -> Vector2:
+	var region: Rect2 = (
+		Config.ACT1_RECT.grow(-36.0) if in_act1 else Config.WORLD_RECT.grow(-90.0)
+	)
+	for _attempt in range(250):
+		var p: Vector2 = Vector2(
+			rng.randf_range(region.position.x, region.end.x),
+			rng.randf_range(region.position.y, region.end.y)
+		).round()
+		if safe_yard.has_point(p):
+			continue
+		if not in_act1 and Config.ACT1_RECT.grow(24.0).has_point(p):
+			continue
+		if _too_close(p, used, 90.0):
+			continue
+		return p
+	return Vector2(region.position.x + 48.0, region.position.y + 48.0)
+
+
+func _spawn_prop_node(
+	parent: Node2D,
+	tex_key: String,
+	pos: Vector2,
+	solid_size: Vector2
+) -> Node2D:
+	var holder: Node2D = Node2D.new()
+	holder.position = pos.round()
+
+	var shadow: Sprite2D = Sprite2D.new()
+	shadow.texture = SpriteFactory.get_blob_shadow(
+		maxi(14, int(solid_size.x + 6.0)), maxi(6, int(solid_size.y * 0.55))
+	)
+	shadow.position = Vector2(0.0, 2.0)
+	shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	holder.add_child(shadow)
+
+	var spr: Sprite2D = SpriteFactory.make_static_sprite(tex_key, true)
+	holder.add_child(spr)
+
+	if solid_size.x > 0.0 and solid_size.y > 0.0:
 		var body: StaticBody2D = StaticBody2D.new()
 		body.collision_layer = 1
 		body.collision_mask = 0
-		var shape_node: CollisionShape2D = CollisionShape2D.new()
-		var rect_shape: RectangleShape2D = RectangleShape2D.new()
-		rect_shape.size = col_size
-		shape_node.shape = rect_shape
-		shape_node.position = Vector2(0.0, -col_size.y * 0.5)
-		body.add_child(shape_node)
-		node = body
-		solid_rects.append(world_col)
-	else:
-		node = Node2D.new()
+		var col: CollisionShape2D = CollisionShape2D.new()
+		var sh: RectangleShape2D = RectangleShape2D.new()
+		sh.size = solid_size
+		col.shape = sh
+		col.position = Vector2(0.0, -solid_size.y * 0.5)
+		body.add_child(col)
+		holder.add_child(body)
 
-	node.position = snapped
-	var spr: Sprite2D = SpriteFactory.make_static_sprite(key, true)
-	node.add_child(spr)
-	entities_parent.add_child(node)
-	placed_positions.append(snapped)
-	return true
+	parent.add_child(holder)
+	return holder
 
 
-## Chooses an appropriate base footprint collider size for trees, containers, and cars.
-static func _collider_size_for_key(key: String) -> Vector2:
-	if key.begins_with("nature/tree"):
-		return Vector2(12.0, 6.0)
-	if key.begins_with("props/container"):
-		var dims: Array = SpriteData.STATIC.get(key, [24, 24])
-		var width: float = float(dims[0])
-		var height: float = float(dims[1])
-		return Vector2(maxf(12.0, width - 6.0), clampf(height * 0.45, 10.0, 22.0))
-	if key.begins_with("vehicles/"):
-		var dims: Array = SpriteData.STATIC.get(key, [24, 24])
-		var width: float = float(dims[0])
-		var height: float = float(dims[1])
-		return Vector2(maxf(14.0, width - 8.0), clampf(height * 0.42, 10.0, 20.0))
-	return Vector2(10.0, 6.0)
-
-
-## Picks a seeded ground tile index (mostly variant 0, with accents sprinkled in).
-static func _pick_tile_variant(hash_val: int) -> int:
-	var roll: int = hash_val % 100
-	if roll < 68:
-		return 0
-	if roll < 80:
-		return 1
-	if roll < 91:
-		return 2
-	return 3
-
-
-## Picks a random point inside the world with a safety margin from the map edges.
-static func _random_world_pos(
-	rng: RandomNumberGenerator,
-	world_size: Vector2,
-	margin: float
-) -> Vector2:
-	return Vector2(
-		rng.randf_range(margin, world_size.x - margin),
-		rng.randf_range(margin, world_size.y - margin)
-	)
-
-
-## Divides a night's zombies and raiders into small clusters of 2-3 arriving from one side.
-## Rotating sides prevents an unfair 360-degree wall while keeping every wave exciting.
-static func build_wave_groups(
-	zombies: int,
-	raiders: int,
-	group_min: int,
-	group_max: int,
-	include_brute: bool
-) -> Array:
-	var groups: Array = []
-
-	var remaining_zombies: int = zombies
-	var last_side: int = -1
-	while remaining_zombies > 0:
-		var group_size: int = mini(randi_range(group_min, group_max), remaining_zombies)
-		remaining_zombies -= group_size
-
-		var chosen_side: int = randi() % 4
-		if chosen_side == last_side:
-			chosen_side = (chosen_side + 1 + (randi() % 3)) % 4
-		last_side = chosen_side
-
-		var members: Array[String] = []
-		for _k in range(group_size):
-			members.append("zombie")
-		groups.append({"side": chosen_side, "members": members})
-
-	# Raiders always march in pairs from the east edge (side 3).
-	var remaining_raiders: int = raiders
-	while remaining_raiders > 0:
-		var raider_size: int = mini(2, remaining_raiders)
-		remaining_raiders -= raider_size
-		var r_members: Array[String] = []
-		for _k in range(raider_size):
-			r_members.append("raider")
-		groups.append({"side": 3, "members": r_members})
-
-	if include_brute:
-		groups.append({"side": randi() % 4, "members": ["brute"]})
-
-	groups.shuffle()
-	return groups
-
-
-## Picks a perimeter spawn coordinate just outside the active spawn ring along the chosen side.
-## Side indices: 0 = North, 1 = South, 2 = West, 3 = East. Never spawns on top of the player.
-static func pick_spawn_position(
-	area: Rect2,
-	enemy_type: String,
-	side: int,
-	raider_side: String,
-	player_pos: Vector2,
-	world_rect: Rect2
-) -> Vector2:
-	var margin: float = 14.0
-	var chosen_pos: Vector2 = Vector2.ZERO
-
-	if enemy_type == "raider" and raider_side == "east":
-		chosen_pos = Vector2(
-			area.end.x + margin,
-			randf_range(area.position.y + 40.0, area.end.y - 40.0)
-		)
-	else:
-		match side:
-			0:
-				chosen_pos = Vector2(
-					randf_range(area.position.x + 36.0, area.end.x - 36.0),
-					area.position.y - margin
-				)
-			1:
-				chosen_pos = Vector2(
-					randf_range(area.position.x + 36.0, area.end.x - 36.0),
-					area.end.y + margin
-				)
-			2:
-				chosen_pos = Vector2(
-					area.position.x - margin,
-					randf_range(area.position.y + 36.0, area.end.y - 36.0)
-				)
-			_:
-				chosen_pos = Vector2(
-					area.end.x + margin,
-					randf_range(area.position.y + 36.0, area.end.y - 36.0)
-				)
-
-	# If the player wandered near the spawn ring at dusk, push the spawn safely off-screen.
-	if chosen_pos.distance_to(player_pos) < 160.0:
-		var away: Vector2 = chosen_pos - player_pos
-		if away.length_squared() < 1.0:
-			away = Vector2.RIGHT
-		chosen_pos = player_pos + away.normalized() * 175.0
-		chosen_pos.x = clampf(chosen_pos.x, world_rect.position.x - margin, world_rect.end.x + margin)
-		chosen_pos.y = clampf(chosen_pos.y, world_rect.position.y - margin, world_rect.end.y + margin)
-
-	return chosen_pos
-
-
-## Scatters Act 1 single planks around the center screen and returns nothing (adds to decals).
-static func scatter_act1_planks(
-	decals_parent: Node2D,
-	act1_rect: Rect2,
-	house_center: Vector2,
-	plank_count: int,
-	structures: Array,
-	solid_rects: Array[Rect2]
-) -> void:
-	var placed: Array[Vector2] = []
-	var bounds: Rect2 = act1_rect.grow(-22.0)
-
-	for _i in range(plank_count):
-		var pos: Vector2 = find_valid_plank_pos(
-			bounds, house_center, 82.0, 260.0, structures, solid_rects, placed
-		)
-		placed.append(pos)
-		var pile: Pile = Pile.new()
-		decals_parent.add_child(pile)
-		pile.setup(pos, 1, "single")
-
-
-## Scatters Act 2 plank piles across the 3 distance rings (near, middle, far wasteland).
-static func scatter_act2_piles(
-	decals_parent: Node2D,
-	world_rect: Rect2,
-	house_center: Vector2,
-	pile_rings: Array,
-	structures: Array,
-	solid_rects: Array[Rect2]
-) -> void:
-	var placed: Array[Vector2] = []
-	var bounds: Rect2 = world_rect.grow(-28.0)
-	var tier_names: Array[String] = ["near", "middle", "far"]
-
-	for ring_idx in range(pile_rings.size()):
-		var ring: Dictionary = pile_rings[ring_idx] as Dictionary
-		var count: int = int(ring["count"])
-		var planks_val: int = int(ring["planks"])
-		var r_min: float = float(ring["r_min"])
-		var r_max: float = float(ring["r_max"])
-		var tier_name: String = tier_names[mini(ring_idx, tier_names.size() - 1)]
-
-		for _j in range(count):
-			var pos: Vector2 = find_valid_ring_pos(
-				bounds, house_center, r_min, r_max, structures, solid_rects, placed
-			)
-			placed.append(pos)
-			var pile: Pile = Pile.new()
-			decals_parent.add_child(pile)
-			pile.setup(pos, planks_val, tier_name)
-
-
-## Finds an unobstructed spot for an Act 1 plank inside the center screen.
-static func find_valid_plank_pos(
-	bounds: Rect2,
-	house_center: Vector2,
-	min_dist: float,
-	max_dist: float,
-	structures: Array,
-	solid_rects: Array[Rect2],
-	existing: Array[Vector2]
-) -> Vector2:
-	for _attempt in range(60):
-		var candidate: Vector2 = Vector2(
-			randf_range(bounds.position.x, bounds.end.x),
-			randf_range(bounds.position.y, bounds.end.y)
-		).round()
-
-		var dist: float = candidate.distance_to(house_center)
-		if dist < min_dist or dist > max_dist:
-			continue
-		if _is_pile_pos_blocked(candidate, house_center, structures, solid_rects, existing):
-			continue
-		return candidate
-
-	return (house_center + Vector2(115.0, 0.0)).round()
-
-
-## Finds a randomized spot inside a loot ring (r_min..r_max) that honors the minimum distance.
-## Rejecting too-close clamped points guarantees far piles sit 6-10 seconds away at 85 px/s.
-static func find_valid_ring_pos(
-	bounds: Rect2,
-	house_center: Vector2,
-	r_min: float,
-	r_max: float,
-	structures: Array,
-	solid_rects: Array[Rect2],
-	existing: Array[Vector2]
-) -> Vector2:
-	for _attempt in range(90):
-		var angle: float = randf_range(0.0, TAU)
-		var radius: float = randf_range(r_min, r_max)
-		var candidate: Vector2 = house_center + Vector2(cos(angle), sin(angle)) * radius
-		candidate.x = clampf(candidate.x, bounds.position.x, bounds.end.x)
-		candidate.y = clampf(candidate.y, bounds.position.y, bounds.end.y)
-		candidate = candidate.round()
-
-		if candidate.distance_to(house_center) < r_min * 0.92:
-			continue
-		if _is_pile_pos_blocked(candidate, house_center, structures, solid_rects, existing):
-			continue
-		return candidate
-
-	var fallback_side: float = 1.0 if randf() >= 0.5 else -1.0
-	var fallback_x: float = clampf(
-		house_center.x + fallback_side * r_min,
-		bounds.position.x,
-		bounds.end.x
-	)
-	return Vector2(fallback_x, house_center.y).round()
-
-
-## Returns true if a loot pile overlaps the farmhouse yard, structures, scenery, or another pile.
-static func _is_pile_pos_blocked(
-	pos: Vector2,
-	house_center: Vector2,
-	structures: Array,
-	solid_rects: Array[Rect2],
-	existing: Array[Vector2]
-) -> bool:
-	# Keep all planks outside the wooden farmhouse yard fence perimeter.
-	var yard_rect: Rect2 = Rect2(house_center - Vector2(104.0, 76.0), Vector2(208.0, 152.0))
-	if yard_rect.has_point(pos):
-		return true
-	for item in structures:
-		var struct_node: Structure = item as Structure
-		if struct_node != null and struct_node.footprint_rect.grow(16.0).has_point(pos):
-			return true
-	for col_rect in solid_rects:
-		if col_rect.grow(10.0).has_point(pos):
-			return true
-	for prev in existing:
-		if prev.distance_squared_to(pos) < 900.0:
+func _too_close(p: Vector2, others: Array[Vector2], min_d: float) -> bool:
+	var min_sq: float = min_d * min_d
+	for o in others:
+		if p.distance_squared_to(o) < min_sq:
 			return true
 	return false
-
-
-## Spawns a rising world-space floating text popup using the shared retro pixel font Theme.
-static func spawn_floating_text(
-	effects_parent: Node2D,
-	world_pos: Vector2,
-	text: String,
-	color: Color,
-	ui_theme: Theme
-) -> void:
-	var holder: Node2D = Node2D.new()
-	holder.position = world_pos.round()
-
-	var lbl: Label = Label.new()
-	lbl.text = text
-	lbl.position = Vector2(-42.0, -8.0)
-	lbl.size = Vector2(84.0, 12.0)
-	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.theme = ui_theme
-	lbl.add_theme_font_size_override("font_size", 8)
-	lbl.add_theme_color_override("font_color", color)
-	holder.add_child(lbl)
-	effects_parent.add_child(holder)
-
-	var tw: Tween = holder.create_tween()
-	tw.set_parallel(true)
-	tw.tween_property(holder, "position:y", holder.position.y - 14.0, 0.85)
-	tw.tween_property(holder, "modulate:a", 0.0, 0.85)
-	tw.chain().tween_callback(holder.queue_free)
-
-
-## Deterministic integer hash used for ground tiling and dirt speckling.
-static func _tile_hash(tx: int, ty: int, seed_val: int) -> int:
-	var n: int = tx * 374761393 + ty * 668265263 + seed_val * 1442695041
-	n = (n ^ (n >> 13)) * 1274126177
-	n = n ^ (n >> 16)
-	return n & 0x7FFFFFFF
