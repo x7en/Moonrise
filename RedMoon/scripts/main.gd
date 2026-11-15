@@ -99,8 +99,7 @@ func _process(delta: float) -> void:
 	if _hit_stop > 0.0:
 		_hit_stop = maxf(0.0, _hit_stop - delta)
 		return
-	if _shake_timer > 0.0:
-		_shake_timer = maxf(0.0, _shake_timer - delta)
+	_shake_timer = maxf(0.0, _shake_timer - delta)
 	_update_camera()
 	if state == GameState.DAY or state == GameState.NIGHT:
 		_step_gameplay(delta)
@@ -109,17 +108,20 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _intro.active or _night_intro.active:
 		return
-	if event is InputEventKey and event.pressed and not event.echo:
-		_handle_key_press(event)
-	elif event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_LEFT:
+	if event is InputEventKey:
+		var ke: InputEventKey = event as InputEventKey
+		if ke.pressed and not ke.echo:
+			_handle_key_press(ke)
+	elif event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event as InputEventMouseButton
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			_handle_left_click()
-		elif event.button_index == MOUSE_BUTTON_RIGHT:
+		elif mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT:
 			if _trap_mode_active:
 				_set_trap_mode(false)
 			else:
 				_try_right_click_structure()
-	elif event is InputEventScreenTouch and event.pressed:
+	elif event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed:
 		_handle_left_click()
 
 
@@ -238,10 +240,8 @@ func _step_gameplay(delta: float) -> void:
 	_player.step_player(delta, _waves.read_move_vector(), bounds, not _menus.is_open(), bag)
 	_player.set_night_lantern(state == GameState.NIGHT)
 
-	if _bounce_cd > 0.0:
-		_bounce_cd = maxf(0.0, _bounce_cd - delta)
-	if _shockwave_cd > 0.0:
-		_shockwave_cd = maxf(0.0, _shockwave_cd - delta)
+	_bounce_cd = maxf(0.0, _bounce_cd - delta)
+	_shockwave_cd = maxf(0.0, _shockwave_cd - delta)
 
 	_waves.prune_invalid_arrays([enemies, ghosts, arrows, boomerangs, traps, watchtowers, dogs])
 	var hostiles := _waves.get_all_hostiles(enemies, ghosts)
@@ -419,8 +419,7 @@ func _start_night_combat() -> void:
 	_ghost_spawn_timer = _waves.next_ghost_interval(true)
 	_night_damage_taken = false
 	_night_had_intruder = false
-	_waves.clear_group_or_list(enemies)
-	_waves.clear_group_or_list(ghosts)
+	_clear_dynamic_world()
 	_wave_queue = _waves.build_night_wave_queue(day, act)
 	_spawn_timer = 0.8
 	var bn := _waves.get_night_banner_info(day, is_blood_moon, is_even_moon)
@@ -453,13 +452,12 @@ func _finish_night() -> void:
 		if house != null and house.is_fallen:
 			_unlock_achievement("homeless_survivor")
 		state = GameState.VICTORY
-		var h_status = "Fallen (Homeless Victory!)" if house.is_fallen else (
-			"%d/%d HP" % [house.hp, house.max_hp]
-		)
-		var end_txt = (
-			"You outlasted the Final Blood Moon on Night 7!\n\n"
-			+ "Enemies Defeated: %d\nHouse Status: %s\nAchievements Unlocked: %d/%d"
-			% [_kills_total, h_status, settings.get_unlocked_count(), SaveData.ACHIEVEMENT_DEFS.size()]
+		var fallen := house != null and house.is_fallen
+		var h_status := "Fallen (Homeless Victory!)" if fallen else "%d/%d HP" % [house.hp, house.max_hp]
+		var ach_txt := "%d/%d" % [settings.get_unlocked_count(), SaveData.ACHIEVEMENT_DEFS.size()]
+		var end_txt := "You outlasted the Final Blood Moon on Night 7!\n\n" + (
+			"Enemies Defeated: %d\nHouse Status: %s\nAchievements Unlocked: %s"
+			% [_kills_total, h_status, ach_txt]
 		)
 		_hud.show_end_screen(true, "DAWN BREAKS - YOU SURVIVED!", end_txt, false)
 		return
@@ -583,7 +581,10 @@ func _handle_interact_press() -> void:
 			if house.is_door_open():
 				_hud.show_message("Door open! Press E at step to enter, or E to close.", 1.8)
 		return
-
+	if not _map.find_nearest_searchable(_player.position, 32.0).is_empty():
+		return
+	if not _map.find_nearest_tree(_player.position, 26.0).is_empty():
+		return
 	_try_open_nearby_structure_menu()
 
 
@@ -663,7 +664,11 @@ func _on_player_bow_fired(origin: Vector2, dir: Vector2, dmg: int, pierce: int) 
 	_spawn_arrow(origin, dir, dmg, Config.BOW_RANGE, pierce, true)
 
 
-func _on_watchtower_fire(origin: Vector2, target: Node) -> void:
+func _on_player_boomerang_thrown(origin: Vector2, dir: Vector2, dmg: int) -> void:
+	_waves.spawn_boomerang_for(self, origin, dir, dmg)
+
+
+func _on_watchtower_fire(origin: Vector2, target: Node2D) -> void:
 	if is_instance_valid(target):
 		var dir = (target.position + Vector2(0.0, -8.0) - origin).normalized()
 		_sfx.play("bow_shoot", -12.0)
@@ -675,9 +680,9 @@ func _spawn_arrow(
 ) -> void:
 	var arr = Arrow.new()
 	arr.setup(origin, dir, Config.ARROW_SPEED, dmg, max_range, pierce, from_player)
-	arr.hit_enemy.connect(func(e: Node, a: Arrow, fp: bool) -> void:
+	arr.hit_enemy.connect(func(e: Node2D, a: Arrow, fp: bool) -> void:
 		if is_instance_valid(e) and e.has_method("take_hit"):
-			e.take_hit(a.damage, a.velocity.normalized(), fp)
+			e.call("take_hit", a.damage, a.velocity.normalized(), fp)
 	)
 	_entities_layer.add_child(arr)
 	arrows.append(arr)
@@ -694,12 +699,12 @@ func _on_enemy_hit_feedback(pos: Vector2, is_kill: bool) -> void:
 func _on_enemy_structure_damaged(target: Node, damage: int, _enemy: Enemy) -> void:
 	_night_damage_taken = true
 	if target is Structure:
-		var st = target
+		var st: Structure = target as Structure
 		st.take_damage(damage)
 		_sfx.play("struct_hit", -9.0)
 		_fx.spawn_sparks(st.target_center, Color(0.76, 0.56, 0.34, 1.0), 5)
 	elif target is Watchtower:
-		target.take_damage(damage)
+		(target as Watchtower).take_damage(damage)
 		_sfx.play("struct_hit", -9.0)
 
 
@@ -908,19 +913,11 @@ func _build_scene_tree() -> void:
 	_player = Player.new()
 	_player.spear_swung.connect(_on_player_spear_swung)
 	_player.bow_fired.connect(_on_player_bow_fired)
-	_player.boomerang_thrown.connect(func(o, d, m): _waves.spawn_boomerang_for(self, o, d, m))
+	_player.boomerang_thrown.connect(_on_player_boomerang_thrown)
 	_player.bow_empty_clicked.connect(func() -> void: _sfx.play("bow_empty", -8.0))
 	_player.bow_reloaded.connect(func() -> void: _sfx.play("bow_reload", -10.0))
 	_player.died.connect(_on_player_died)
 	_entities_layer.add_child(_player)
-
-
-func _on_title_panel_requested(kind: String) -> void:
-	if kind == "tutorial":
-		_open_tutorial_cards(true)
-		return
-	_info_return_to_title = true
-	_menus.open_info_panel(kind, settings)
 
 
 func _open_tutorial_cards(from_title: bool) -> void:
@@ -943,7 +940,13 @@ func _connect_ui_signals() -> void:
 		else:
 			_begin_new_run()
 	)
-	_hud.menu_panel_requested.connect(_on_title_panel_requested)
+	_hud.menu_panel_requested.connect(func(kind: String) -> void:
+		if kind == "tutorial":
+			_open_tutorial_cards(true)
+			return
+		_info_return_to_title = true
+		_menus.open_info_panel(kind, settings)
+	)
 	_hud.trap_slot_clicked.connect(_toggle_trap_slot)
 	_hud.tame_dog_requested.connect(_on_tame_dog_clicked)
 	_hud.quit_requested.connect(func() -> void: get_tree().quit(0))

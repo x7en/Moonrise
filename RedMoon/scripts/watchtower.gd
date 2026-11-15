@@ -1,7 +1,7 @@
 class_name Watchtower
 extends Node2D
 
-signal fire_requested(origin: Vector2, target: Node)
+signal fire_requested(origin: Vector2, target: Node2D)
 signal destroyed(tower: Watchtower)
 
 var hp: int = 40

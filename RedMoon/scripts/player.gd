@@ -104,7 +104,7 @@ func reset_for_new_game(spawn_pos: Vector2) -> void:
 	facing_vec = Vector2.DOWN
 	dead = false
 	inside_house = false
-	unlocked_weapons = Config.DEFAULT_WEAPONS.duplicate()
+	unlocked_weapons.assign(Config.DEFAULT_WEAPONS)
 	active_weapon = "bow"
 	melee_damage = 1
 	speed_mult = 1.0

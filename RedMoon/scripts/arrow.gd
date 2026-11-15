@@ -1,7 +1,7 @@
 class_name Arrow
 extends Node2D
 
-signal hit_enemy(enemy: Node, arrow: Arrow, from_player: bool)
+signal hit_enemy(enemy: Node2D, arrow: Arrow, from_player: bool)
 
 var velocity: Vector2 = Vector2.ZERO
 var damage: int = 1

@@ -198,8 +198,8 @@ func _draw_debug_colliders() -> void:
 	for s in _debug_structures:
 		if not is_instance_valid(s) or not (s is Structure):
 			continue
-		var st = s
-		var col := (
+		var st: Structure = s as Structure
+		var col: Color = (
 			Color(0.25, 0.95, 0.45, 0.90) if st.is_standing() else Color(0.5, 0.5, 0.6, 0.35)
 		)
 		draw_rect(st.footprint_rect, col, false, 1.0)

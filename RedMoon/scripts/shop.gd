@@ -303,10 +303,10 @@ func spawn_trap_node(
 
 	var trap = Trap.new()
 	trap.setup(t_key, place_pos)
-	trap.triggered.connect(func(tr: Trap, en: Node) -> void:
+	trap.triggered.connect(func(tr: Trap, en: Node2D) -> void:
 		sfx.play("trap_trigger", -7.0)
 		if is_instance_valid(en):
-			var ep = en.position
+			var ep := en.position
 			if tr.trap_type == "trap_snare":
 				fx.spawn_sparks(ep, Color(0.95, 0.85, 0.35, 1.0), 8)
 				fx.spawn_floating_text(ep, "SNARED!", Color(1.0, 0.88, 0.38))
@@ -350,7 +350,7 @@ func try_place_trap_at(
 	return true
 
 
-func compute_trap_place_pos(trap_mode_active: bool, main_node: Node) -> Vector2:
+func compute_trap_place_pos(trap_mode_active: bool, main_node: Node2D) -> Vector2:
 	var player = main_node.get("_player")
 	if trap_mode_active and DisplayServer.get_name() != "headless":
 		var mw = main_node.get_global_mouse_position()
@@ -362,7 +362,7 @@ func compute_trap_place_pos(trap_mode_active: bool, main_node: Node) -> Vector2:
 
 
 func update_trap_preview(
-	trap_mode_active: bool, selected_idx: int, main_node: Node
+	trap_mode_active: bool, selected_idx: int, main_node: Node2D
 ) -> void:
 	var fx = main_node.get("_fx")
 	var player = main_node.get("_player")
@@ -451,16 +451,20 @@ func step_hold_gather(delta: float, main_node: Node) -> void:
 	if not holding_e:
 		reset_hold_gather(main_node)
 		return
-	var prop = map.find_nearest_searchable(player.position, 32.0)
-	var tree_rec = {} if not prop.is_empty() else map.find_nearest_tree(player.position, 26.0)
+	var prop: Dictionary = map.find_nearest_searchable(player.position, 32.0)
+	var tree_rec: Dictionary = (
+		{} if not prop.is_empty() else map.find_nearest_tree(player.position, 26.0)
+	)
 	if prop.is_empty() and tree_rec.is_empty():
 		reset_hold_gather(main_node)
 		return
-	var is_prop := not prop.is_empty()
-	var target_key := ("p:%d" % int(prop["id"])) if is_prop else ("t:%d" % int(tree_rec["id"]))
-	var needed := Config.SEARCH_HOLD_TIME if is_prop else Config.CHOP_HOLD_TIME
-	var same_target := String(main_node.get("_search_key")) == target_key
-	var timer := (float(main_node.get("_search_timer")) if same_target else 0.0) + delta
+	var is_prop: bool = not prop.is_empty()
+	var target_key: String = (
+		("p:%d" % int(prop["id"])) if is_prop else ("t:%d" % int(tree_rec["id"]))
+	)
+	var needed: float = Config.SEARCH_HOLD_TIME if is_prop else Config.CHOP_HOLD_TIME
+	var same_target: bool = String(main_node.get("_search_key")) == target_key
+	var timer: float = (float(main_node.get("_search_timer")) if same_target else 0.0) + delta
 	main_node.set("_search_key", target_key)
 	main_node.set("_search_timer", timer)
 	main_node.set("_search_progress", clampf(timer / maxf(0.1, needed), 0.0, 1.0))
@@ -520,7 +524,8 @@ func handle_inventory_action(action_id: String, data: Dictionary, main_node: Nod
 		var w_id := String(data.get("weapon_id", ""))
 		if player.equip_weapon(w_id):
 			main_node.get("_sfx").play("pickup", -8.0)
-			var w_lbl := String((Config.WEAPON_DEFS.get(w_id, {})).get("label", w_id))
+			var w_def: Dictionary = Config.WEAPON_DEFS.get(w_id, {})
+			var w_lbl: String = String(w_def.get("label", w_id))
 			main_node.get("_hud").show_message("Equipped %s!" % w_lbl, 1.8, Color(0.62, 0.96, 0.68))
 			menus.open_inventory(bag, stockpile, player, main_node.get("upgrades"))
 		return true

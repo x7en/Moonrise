@@ -281,14 +281,13 @@ func spawn_ghost_for(main_node: Node) -> Ghost:
 	var ghosts: Array = main_node.get("ghosts")
 	if ghosts.size() >= Config.GHOST_MAX_ALIVE:
 		return null
-	var player = main_node.get("_player")
+	var player: Player = main_node.get("_player") as Player
 	if player == null or player.dead:
 		return null
 	var pos := _pick_ghost_spawn_pos(player.position)
 	var variant := "scythe" if randf() < 0.65 else "lunge"
 	var g := Ghost.new()
-	if not g.setup(pos, variant):
-		return null
+	g.setup(pos, variant)
 	g.player_damaged.connect(func(dmg: int, _ghost: Node) -> void:
 		main_node.call("_on_ghost_player_damaged", dmg)
 	)
@@ -330,7 +329,7 @@ func spawn_dog_for(
 		main_node.call("_unlock_achievement", "tamed_dog")
 		hud.show_message("Dog tamed! Press G for Follow / Guard.", 2.6, Color(0.62, 0.96, 0.68))
 	)
-	d.attacked_enemy.connect(func(en: Node) -> void:
+	d.attacked_enemy.connect(func(en: Node2D) -> void:
 		sfx.play("dog_bark", -12.0)
 		if is_instance_valid(en):
 			fx.spawn_sparks(en.position, Color(1.0, 0.42, 0.34, 1.0), 5)
@@ -391,12 +390,12 @@ func spawn_boomerang_for(
 
 	var b := Boomerang.new()
 	b.setup(player, origin, aim_dir, dmg, Config.BOOMERANG_RANGE, true)
-	b.hit_target.connect(func(target: Node, boom: Boomerang, _is_ret: bool) -> void:
+	b.hit_target.connect(func(target: Node2D, boom: Boomerang, _is_ret: bool) -> void:
 		if is_instance_valid(target) and target.has_method("take_hit"):
 			var hit_dir := (
 				boom.velocity.normalized() if boom.velocity.length_squared() > 0.01 else Vector2.RIGHT
 			)
-			target.take_hit(boom.damage, hit_dir, false)
+			target.call("take_hit", boom.damage, hit_dir, false)
 	)
 	b.bounced.connect(func(pos: Vector2, hit_enemy: bool) -> void:
 		if hit_enemy:
