@@ -4,6 +4,8 @@ extends Node2D
 
 enum GameState { TITLE, STORY, DAY, MOONRISE, NIGHT, PAUSED, GAME_OVER, VICTORY }
 
+const ENEMY_SCENE: PackedScene = preload("res://scenes/enemy.tscn")
+
 var state: GameState = GameState.TITLE
 var act: int = 1
 var day: int = 1
@@ -476,7 +478,7 @@ func _expand_to_act2() -> void:
 
 
 func _spawn_enemy(etype: String, pos: Vector2, is_wanderer: bool) -> Enemy:
-	var e = Enemy.new()
+	var e: Enemy = ENEMY_SCENE.instantiate() as Enemy
 	e.setup(etype, pos, is_wanderer)
 	e.structure_damaged.connect(_on_enemy_structure_damaged)
 	e.player_damaged.connect(_on_enemy_player_damaged)
