@@ -6,8 +6,8 @@ const VIEW_SIZE := Vector2(640, 360)
 const WORLD_SIZE := Vector2(2400, 1350)
 const WORLD_RECT := Rect2(0, 0, 2400, 1350)
 const HOUSE_CENTER := Vector2(1200, 675)
-const HOUSE_DOOR := Vector2(1200, 730)  # Stepping-stone porch area outside the front steps
-const HOUSE_DOOR_STEP := Vector2(1200, 721)  # Stone porch doorstep directly on the south facade
+const HOUSE_DOOR := Vector2(1200, 729)  # Stepping-stone porch area outside the front door
+const HOUSE_DOOR_STEP := Vector2(1200, 720)  # Threshold directly on the south cabin facade
 const ACT1_RECT := Rect2(720, 405, 960, 540)  # 960x540 playable area centered on HOUSE_CENTER
 const WORLD_EXPAND_NIGHT := 3  # World expands after surviving this night (early Blood Moon)
 
@@ -117,11 +117,11 @@ const INTRUDER_PLAYER_INTERVAL := 1.2
 
 # Concentric onion fence rings around HOUSE_CENTER.
 # Ring 1 is the starter perimeter with a closable gate; Rings 2 & 3 are player-unlocked layers.
-const FENCE_GATE_WIDTH := 28.0
+const FENCE_GATE_WIDTH := 30.0
 const FENCE_RINGS := [
-	{"ring": 1, "half_extents": Vector2(96.0, 68.0), "gate_offset_x": 0.0, "built_at_start": true},
-	{"ring": 2, "half_extents": Vector2(142.0, 112.0), "gate_offset_x": 0.0, "built_at_start": false},
-	{"ring": 3, "half_extents": Vector2(188.0, 156.0), "gate_offset_x": 0.0, "built_at_start": false},
+	{"ring": 1, "half_extents": Vector2(114.0, 78.0), "gate_offset_x": 0.0, "built_at_start": true},
+	{"ring": 2, "half_extents": Vector2(160.0, 122.0), "gate_offset_x": 0.0, "built_at_start": false},
+	{"ring": 3, "half_extents": Vector2(206.0, 166.0), "gate_offset_x": 0.0, "built_at_start": false},
 ]
 
 # --- Inventory & Economy (T1.6 / T2.1 / T2.2) ---

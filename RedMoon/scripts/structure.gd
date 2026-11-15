@@ -86,11 +86,11 @@ func setup_house(decals_layer: Node2D) -> void:
 	gate_open = false
 	is_fallen = false
 	active_in_game = true
-	target_center = Config.HOUSE_CENTER + Vector2(0.0, 14.0)
-	# 3/4 oblique solid base footprint (lower wall/porch box so roof overhangs naturally).
-	footprint_rect = Rect2(Config.HOUSE_CENTER - Vector2(46.0, 12.0), Vector2(92.0, 52.0))
-	visual_rect = Rect2(Config.HOUSE_CENTER - Vector2(54.0, 48.0), Vector2(108.0, 94.0))
-	position = Config.HOUSE_CENTER + Vector2(0.0, 46.0)
+	target_center = Config.HOUSE_CENTER + Vector2(12.0, 20.0)
+	# 3/4 oblique solid base footprint matching 160x120 cottage + side woodshed (door at x=1200).
+	footprint_rect = Rect2(Config.HOUSE_CENTER + Vector2(-47.0, -3.0), Vector2(124.0, 46.0))
+	visual_rect = Rect2(Config.HOUSE_CENTER + Vector2(-80.0, -75.0), Vector2(160.0, 120.0))
+	position = Config.HOUSE_CENTER + Vector2(0.0, 45.0)
 	add_to_group("structures")
 	_build_house_nodes(decals_layer)
 
@@ -529,27 +529,31 @@ func _sync_door_collider() -> void:
 
 
 func _build_house_nodes(decals_layer: Node2D) -> void:
+	var base_tex: Texture2D = SpriteFactory.get_shaded_house_texture(1, false)
+	var hw: float = float(base_tex.get_width()) * 0.5
+	var hh: float = float(base_tex.get_height())
+
 	# Soft angled ground drop-shadow reinforcing the 3/4 3D height.
 	_cast_shadow = Polygon2D.new()
 	_cast_shadow.polygon = PackedVector2Array([
-		Vector2(-46.0, -4.0), Vector2(48.0, -4.0), Vector2(62.0, 10.0), Vector2(-34.0, 10.0)
+		Vector2(-48.0, -4.0), Vector2(78.0, -4.0), Vector2(92.0, 11.0), Vector2(-34.0, 11.0)
 	])
-	_cast_shadow.color = Color(0.08, 0.06, 0.12, 0.26)
+	_cast_shadow.color = Color(0.08, 0.06, 0.12, 0.28)
 	_cast_shadow.z_index = -2
 	add_child(_cast_shadow)
 
 	_house_sprite = Sprite2D.new()
 	_house_sprite.name = "HouseSprite"
-	_house_sprite.texture = SpriteFactory.get_shaded_house_texture(1, false)
+	_house_sprite.texture = base_tex
 	_house_sprite.centered = false
-	_house_sprite.offset = Vector2(-56.0, -96.0)
+	_house_sprite.offset = Vector2(-hw, -hh)
 	_house_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(_house_sprite)
 
 	_damage_overlay = Sprite2D.new()
 	_damage_overlay.texture = HouseArt.get_house_silhouette(Color(0.55, 0.0, 0.0, 1.0))
 	_damage_overlay.centered = false
-	_damage_overlay.offset = Vector2(-56.0, -96.0)
+	_damage_overlay.offset = Vector2(-hw, -hh)
 	_damage_overlay.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_damage_overlay.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	add_child(_damage_overlay)
@@ -558,8 +562,8 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_cracks_overlay = Node2D.new()
 	_cracks_overlay.visible = false
 	for crack_pts in [
-		[Vector2(-32.0, -34.0), Vector2(-26.0, -26.0), Vector2(-29.0, -16.0)],
-		[Vector2(22.0, -34.0), Vector2(28.0, -26.0), Vector2(24.0, -16.0)],
+		[Vector2(-32.0, -34.0), Vector2(-26.0, -24.0), Vector2(-29.0, -14.0)],
+		[Vector2(24.0, -34.0), Vector2(30.0, -24.0), Vector2(26.0, -14.0)],
 	]:
 		var ln: Line2D = Line2D.new()
 		ln.width = 1.5
@@ -571,21 +575,21 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	# Window intruder silhouettes (T1.5C).
 	_intruder_marks = Node2D.new()
 	_intruder_marks.visible = false
-	for wx in [-34.0, 15.0, 33.0]:
+	for pos in [Vector2(-34.0, -32.0), Vector2(28.0, -32.0), Vector2(-3.0, -62.0)]:
 		var sil: ColorRect = ColorRect.new()
-		sil.position = Vector2(wx, -29.0)
-		sil.size = Vector2(6.0, 8.0)
+		sil.position = pos as Vector2
+		sil.size = Vector2(7.0, 7.0)
 		sil.color = Color(0.88, 0.16, 0.16, 0.85)
 		_intruder_marks.add_child(sil)
 	add_child(_intruder_marks)
 
-	# Chimney smoke aligned with the 3D stone chimney on the left roof slope.
-	_chimney_smoke = _make_particles(Vector2(-33.0, -82.0), Color(0.78, 0.80, 0.86, 0.55), 5, 1.8)
+	# Chimney smoke aligned with the brick chimney on the right roof slope.
+	_chimney_smoke = _make_particles(Vector2(32.0, -109.0), Color(0.78, 0.80, 0.86, 0.55), 6, 1.8)
 	add_child(_chimney_smoke)
-	_damage_smoke = _make_particles(Vector2(-6.0, -70.0), Color(0.28, 0.26, 0.30, 0.75), 10, 1.5)
+	_damage_smoke = _make_particles(Vector2(0.0, -84.0), Color(0.28, 0.26, 0.30, 0.75), 10, 1.5)
 	_damage_smoke.emitting = false
 	add_child(_damage_smoke)
-	_damage_flames = _make_particles(Vector2(4.0, -56.0), Color(1.0, 0.45, 0.15, 0.90), 14, 0.7)
+	_damage_flames = _make_particles(Vector2(6.0, -68.0), Color(1.0, 0.45, 0.15, 0.90), 14, 0.7)
 	_damage_flames.emitting = false
 	add_child(_damage_flames)
 
@@ -593,10 +597,10 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_window_lights.clear()
 	var light_tex: GradientTexture2D = SpriteFactory.get_radial_light_texture(128)
 	for spec in [
-		{"pos": Vector2(-31.0, -25.0), "scale": 0.85, "energy": 0.72},
-		{"pos": Vector2(17.0, -25.0), "scale": 0.85, "energy": 0.72},
-		{"pos": Vector2(35.0, -25.0), "scale": 0.80, "energy": 0.65},
-		{"pos": Vector2(-4.0, -12.0), "scale": 2.2, "energy": 0.52},
+		{"pos": Vector2(-31.0, -29.0), "scale": 0.90, "energy": 0.72},
+		{"pos": Vector2(31.0, -29.0), "scale": 0.90, "energy": 0.72},
+		{"pos": Vector2(0.0, -58.0), "scale": 0.85, "energy": 0.65},
+		{"pos": Vector2(0.0, -12.0), "scale": 2.3, "energy": 0.54},
 	]:
 		var pl: PointLight2D = PointLight2D.new()
 		pl.texture = light_tex
@@ -612,7 +616,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_occluder = LightOccluder2D.new()
 	var occ_poly: OccluderPolygon2D = OccluderPolygon2D.new()
 	occ_poly.polygon = PackedVector2Array([
-		Vector2(-45.0, -56.0), Vector2(45.0, -56.0), Vector2(45.0, -6.0), Vector2(-45.0, -6.0)
+		Vector2(-46.0, -56.0), Vector2(76.0, -56.0), Vector2(76.0, -4.0), Vector2(-46.0, -4.0)
 	])
 	_occluder.occluder = occ_poly
 	add_child(_occluder)
@@ -624,9 +628,9 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_body.collision_mask = 0
 	_collider = CollisionShape2D.new()
 	var rect_shape: RectangleShape2D = RectangleShape2D.new()
-	rect_shape.size = Vector2(92.0, 52.0)
+	rect_shape.size = Vector2(124.0, 46.0)
 	_collider.shape = rect_shape
-	_collider.position = Vector2(0.0, -32.0)
+	_collider.position = Vector2(15.0, -25.0)
 	_body.add_child(_collider)
 	add_child(_body)
 
@@ -636,15 +640,15 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_door_body.collision_mask = 0
 	_door_collider = CollisionShape2D.new()
 	var door_shape: RectangleShape2D = RectangleShape2D.new()
-	door_shape.size = Vector2(18.0, 5.0)
+	door_shape.size = Vector2(20.0, 5.0)
 	_door_collider.shape = door_shape
-	_door_collider.position = Vector2(-4.0, -4.0)
+	_door_collider.position = Vector2(0.0, -2.0)
 	_door_body.add_child(_door_collider)
 	add_child(_door_body)
 
 	# World-space floating HP bar above the cottage roof peak.
 	_hp_bar_holder = Node2D.new()
-	_hp_bar_holder.position = Vector2(0.0, -102.0)
+	_hp_bar_holder.position = Vector2(0.0, -hh - 6.0)
 	_hp_bar_holder.z_index = 12
 	_hp_bar_holder.visible = false
 	var bar_bg: ColorRect = ColorRect.new()
@@ -665,7 +669,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_hp_bar_holder.add_child(_hp_bar_label)
 	add_child(_hp_bar_holder)
 
-	_hover_outline = _make_hover_outline(Rect2(-50.0, -90.0, 100.0, 86.0))
+	_hover_outline = _make_hover_outline(Rect2(-64.0, -hh + 4.0, 142.0, hh - 4.0))
 	add_child(_hover_outline)
 
 	# Walkable house rubble pile placed in Decals (hidden until house crumbles, T1.5D).
