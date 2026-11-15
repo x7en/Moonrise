@@ -5,6 +5,7 @@ extends Node2D
 enum GameState { TITLE, STORY, DAY, MOONRISE, NIGHT, PAUSED, GAME_OVER, VICTORY }
 
 const ENEMY_SCENE: PackedScene = preload("res://scenes/enemy.tscn")
+const ARROW_SCENE: PackedScene = preload("res://scenes/arrow.tscn")
 
 var state: GameState = GameState.TITLE
 var act: int = 1
@@ -680,7 +681,7 @@ func _on_watchtower_fire(origin: Vector2, target: Node2D) -> void:
 func _spawn_arrow(
 	origin: Vector2, dir: Vector2, dmg: int, max_range: float, pierce: int, from_player: bool
 ) -> void:
-	var arr = Arrow.new()
+	var arr: Arrow = ARROW_SCENE.instantiate() as Arrow
 	arr.setup(origin, dir, Config.ARROW_SPEED, dmg, max_range, pierce, from_player)
 	arr.hit_enemy.connect(func(e: Node2D, a: Arrow, fp: bool) -> void:
 		if is_instance_valid(e) and e.has_method("take_hit"):
