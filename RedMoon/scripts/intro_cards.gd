@@ -167,64 +167,22 @@ func _render_card_art(art_kind: String) -> void:
 
 
 func _build_ui() -> void:
-	_root = Control.new()
-	_root.position = Vector2.ZERO
-	_root.size = Config.VIEW_SIZE
+	_root = get_node("Root") as Control
 	_root.theme = Art.get_game_theme()
-	add_child(_root)
 
-	var bg := ColorRect.new()
-	bg.position = Vector2.ZERO
-	bg.size = Config.VIEW_SIZE
-	bg.color = Color(0.05, 0.04, 0.08, 0.96)
-	_root.add_child(bg)
+	_art_holder = get_node("Root/ArtHolder") as Control
 
-	var frame := PanelContainer.new()
-	frame.position = Vector2(64.0, 28.0)
-	frame.size = Vector2(Config.VIEW_SIZE.x - 128.0, Config.VIEW_SIZE.y - 56.0)
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.09, 0.07, 0.13, 0.96)
-	style.border_color = Color(0.55, 0.30, 0.34, 1.0)
-	style.set_border_width_all(2)
-	frame.add_theme_stylebox_override("panel", style)
-	_root.add_child(frame)
-
-	_art_holder = Control.new()
-	_art_holder.position = Vector2.ZERO
-	_art_holder.size = Config.VIEW_SIZE
-	_art_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(_art_holder)
-
-	_title_lbl = Label.new()
-	_title_lbl.position = Vector2(84.0, 36.0)
-	_title_lbl.size = Vector2(Config.VIEW_SIZE.x - 168.0, 28.0)
-	_title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title_lbl = get_node("Root/TitleLabel") as Label
 	Art.style_label(_title_lbl, "display", 16, Color(0.98, 0.88, 0.78))
-	_root.add_child(_title_lbl)
 
-	_body_lbl = Label.new()
-	_body_lbl.position = Vector2(96.0, 174.0)
-	_body_lbl.size = Vector2(Config.VIEW_SIZE.x - 192.0, 110.0)
-	_body_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_body_lbl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
-	_body_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_body_lbl = get_node("Root/BodyLabel") as Label
 	Art.style_label(_body_lbl, "body", 8, Color(0.92, 0.90, 0.94))
-	_root.add_child(_body_lbl)
 
-	_prompt_lbl = Label.new()
-	_prompt_lbl.position = Vector2(84.0, Config.VIEW_SIZE.y - 56.0)
-	_prompt_lbl.size = Vector2(Config.VIEW_SIZE.x - 168.0, 16.0)
-	_prompt_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_prompt_lbl = get_node("Root/PromptLabel") as Label
 	Art.style_label(_prompt_lbl, "bold", 8, Color(1.0, 0.86, 0.48))
-	_root.add_child(_prompt_lbl)
 
-	_skip_lbl = Label.new()
-	_skip_lbl.position = Vector2(Config.VIEW_SIZE.x - 180.0, Config.VIEW_SIZE.y - 24.0)
-	_skip_lbl.size = Vector2(170.0, 14.0)
-	_skip_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_skip_lbl.text = "[Esc] Skip"
+	_skip_lbl = get_node("Root/SkipLabel") as Label
 	Art.style_label(_skip_lbl, "body", 8, Color(0.68, 0.66, 0.74))
-	_root.add_child(_skip_lbl)
 
 
 static func get_opening_cards() -> Array[Dictionary]:

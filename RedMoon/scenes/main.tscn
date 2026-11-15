@@ -7,7 +7,7 @@
 [ext_resource type="Script" path="res://scripts/hud.gd" id="5_hud"]
 [ext_resource type="Script" path="res://scripts/menus.gd" id="6_menus"]
 [ext_resource type="Script" path="res://scripts/night_intro.gd" id="7_night_intro"]
-[ext_resource type="Script" path="res://scripts/intro_cards.gd" id="8_intro_cards"]
+[ext_resource type="PackedScene" path="res://scenes/intro_cards.tscn" id="8_intro_cards"]
 [ext_resource type="PackedScene" path="res://scenes/popups.tscn" id="9_popups"]
 
 [node name="Main" type="Node2D"]
@@ -75,9 +75,6 @@ layer = 40
 visible = false
 script = ExtResource("7_night_intro")
 
-[node name="IntroCards" type="CanvasLayer" parent="."]
-layer = 50
-visible = false
-script = ExtResource("8_intro_cards")
+[node name="IntroCards" parent="." instance=ExtResource("8_intro_cards")]
 
 [node name="Popups" parent="." instance=ExtResource("9_popups")]
