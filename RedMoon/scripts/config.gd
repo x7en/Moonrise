@@ -16,8 +16,6 @@ const FONT_BODY_PATH := "res://assets/fonts/PixelOperator8.ttf"
 const FONT_BOLD_PATH := "res://assets/fonts/PixelOperator8-Bold.ttf"
 const FONT_DISPLAY_PATH := "res://assets/fonts/KiwiSoda.ttf"
 
-const DEBUG_COLLIDERS := false
-
 
 # player & melee
 const PLAYER_SPEED := 82.0
@@ -46,20 +44,6 @@ const BOW_RESERVE_MAX := 30
 const BOW_DAMAGE := 1
 const ARROW_SPEED := 220.0
 
-const WEAPONS := {
-	"bow": {
-		"name": "Hunting Bow",
-		"range": BOW_RANGE,
-		"fire_interval": BOW_FIRE_INTERVAL,
-		"mag_size": BOW_MAG,
-		"reload_time": BOW_RELOAD,
-		"reserve_max": BOW_RESERVE_MAX,
-		"damage": BOW_DAMAGE,
-		"projectile_speed": ARROW_SPEED,
-		"pierce": 0,
-	},
-}
-
 
 # enemies (TODO: maybe nerf raider speed if night 5 feels too brutal)
 const ENEMY_TYPES := {
@@ -81,15 +65,6 @@ const ENEMY_TYPES := {
 		"aggro_radius": 80.0,
 		"tint": Color(1.0, 0.6, 0.55),
 	},
-	"brute": {
-		"hits": 6,
-		"speed": 20.0,
-		"struct_dmg": 12,
-		"attack_interval": 1.5,
-		"player_dmg": 15,
-		"aggro_radius": 70.0,
-		"tint": Color(1, 1, 1),
-	},
 }
 
 const ENEMY_LEASH_RADIUS := 140.0
@@ -97,7 +72,6 @@ const ENEMY_LEASH_TIME := 3.0
 const ENEMY_PLAYER_WINDUP := 0.35
 const ENEMY_PLAYER_COOLDOWN := 1.0
 const ENEMY_SEPARATION_RADIUS := 10.0
-const BRUTE_ENABLED := false
 const RAIDER_SIDE := "east"
 
 const WAVE_GROUP_MIN := 2
@@ -112,7 +86,6 @@ const FENCE_HP := 50
 const FENCE_LEVEL_HP := [50, 90, 140]
 const PLANK_HEAL := 8
 const DAWN_FREE_REPAIR := 10
-const FENCE_REINFORCED_MIN_HP := 20
 
 const HOUSE_REACH := 56.0
 const FENCE_REACH := 20.0
@@ -137,7 +110,6 @@ const BAG_CAPACITY := 16
 const ACT1_START_STOCKPILE := 4
 const ACT2_START_STOCKPILE := 8
 const START_SPIKE_TRAPS := 2
-const LOSE_BAG_AT_DUSK_ACT1 := false
 const LOSE_BAG_AT_DUSK_ACT2 := true
 
 const COST_UNLOCK_RING2 := {"plank": 12}

@@ -78,9 +78,10 @@ func build_objective_text(
 func build_context_prompt(
 	player: Player,
 	house: Structure,
-	world_builder: MapGen,
+	map: MapGen,
 	nearest_struct: Structure,
 	nearest_gate: Structure,
+	dogs: Array,
 	trap_mode_active: bool,
 	selected_trap_idx: int
 ) -> String:
@@ -107,11 +108,20 @@ func build_context_prompt(
 			act_verb, nearest_gate.ring, nearest_gate.ring
 		]
 	else:
-		var prop = world_builder.find_nearest_searchable(player.position, 32.0)
-		if not prop.is_empty():
-			out = "[Hold E] Search %s" % String(prop["name"])
-		elif nearest_struct != null and nearest_struct.is_built:
-			out = "[U] %s" % nearest_struct.get_tooltip_text()
+		var near_stray = false
+		for d in dogs:
+			if is_instance_valid(d) and d.mode == Dog.Mode.STRAY:
+				if d.position.distance_to(player.position) <= 24.0:
+					near_stray = true
+					break
+		if near_stray:
+			out = "[Hold E] Tame Stray Dog"
+		else:
+			var prop = map.find_nearest_searchable(player.position, 32.0)
+			if not prop.is_empty():
+				out = "[Hold E] Search %s" % String(prop["name"])
+			elif nearest_struct != null and nearest_struct.is_built:
+				out = "[U] %s" % nearest_struct.get_tooltip_text()
 	return out
 
 
@@ -124,16 +134,16 @@ func spawn_pile(
 
 
 func spawn_day_pickups(
-	world_builder: MapGen, entities_layer: Node2D, act: int, day: int
+	map: MapGen, entities_layer: Node2D, act: int, day: int
 ) -> void:
 	if act == 1:
-		var pts: Array[Vector2] = world_builder.build_act1_plank_positions(
+		var pts: Array[Vector2] = map.build_act1_plank_positions(
 			Config.ACT1_PLANKS_PER_DAY, day * 97 + 11
 		)
 		for p in pts:
 			spawn_pile(entities_layer, p, 1, "single", "plank")
 	else:
-		for s in world_builder.make_act2_piles(day * 131 + 29):
+		for s in map.make_act2_piles(day * 131 + 29):
 			spawn_pile(
 				entities_layer,
 				s["pos"],
@@ -259,13 +269,14 @@ func make_hud_data(
 	var fences: Array = main_node.get("fences")
 	var bag = main_node.get("bag")
 	var stockpile = main_node.get("stockpile")
-	var wb = main_node.get("_world_builder")
+	var map = main_node.get("_map")
+	var dogs: Array = main_node.get("dogs")
 	var near_gate = find_nearest_gate(fences, player.position, 28.0)
 	var obj = build_objective_text(
 		is_night, is_blood, act, day, bag.count("plank") + stockpile.count("plank")
 	)
 	var prompt = build_context_prompt(
-		player, house, wb, nearest_struct, near_gate, trap_mode_active, selected_trap_idx
+		player, house, map, nearest_struct, near_gate, dogs, trap_mode_active, selected_trap_idx
 	)
 	var tooltip = (
 		hovered_struct.get_tooltip_text()

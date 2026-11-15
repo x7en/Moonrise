@@ -97,19 +97,19 @@ static func feet_offset_for_animated(key: String, x_shift: float = 0.0) -> Vecto
 
 static func font_body() -> Font:
 	if _font_body_cache == null:
-		_font_body_cache = _load_pixel_font("res://assets/fonts/PixelOperator8.ttf")
+		_font_body_cache = _load_pixel_font(Config.FONT_BODY_PATH)
 	return _font_body_cache
 
 
 static func font_bold() -> Font:
 	if _font_bold_cache == null:
-		_font_bold_cache = _load_pixel_font("res://assets/fonts/PixelOperator8-Bold.ttf")
+		_font_bold_cache = _load_pixel_font(Config.FONT_BOLD_PATH)
 	return _font_bold_cache
 
 
 static func font_display() -> Font:
 	if _font_display_cache == null:
-		_font_display_cache = _load_pixel_font("res://assets/fonts/KiwiSoda.ttf")
+		_font_display_cache = _load_pixel_font(Config.FONT_DISPLAY_PATH)
 	return _font_display_cache
 
 

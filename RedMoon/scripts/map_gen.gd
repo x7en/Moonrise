@@ -3,7 +3,6 @@ extends RefCounted
 
 # sets up the baked ground map, concentric fence rings, trees, bushes, and scrap wrecks
 
-const TILESET_COLS := 6
 const TILE_SIZE := 16
 const MAX_SEG_LEN := 64.0
 const FENCE_THICKNESS := 10.0
