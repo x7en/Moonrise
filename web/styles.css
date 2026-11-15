@@ -430,10 +430,13 @@ body {
 
 /* ==================== MULTI-TOUCH CONTROLS ==================== */
 .touch-layer {
+  --tc-scale: 1;
+  --tc-opacity: 0.9;
   position: absolute;
   inset: 0;
   z-index: 22;
   pointer-events: none;
+  opacity: var(--tc-opacity);
 }
 
 .joystick-zone {
@@ -452,8 +455,8 @@ body {
   position: absolute;
   left: calc(28px + var(--safe-left));
   bottom: calc(26px + var(--safe-bottom));
-  width: clamp(92px, 16vw, 122px);
-  height: clamp(92px, 16vw, 122px);
+  width: calc(clamp(92px, 16vw, 122px) * var(--tc-scale));
+  height: calc(clamp(92px, 16vw, 122px) * var(--tc-scale));
   border-radius: 50%;
   background: radial-gradient(circle, rgba(255, 255, 255, 0.08) 0%, rgba(16, 12, 26, 0.56) 72%);
   border: 2px solid rgba(226, 200, 232, 0.35);
@@ -463,6 +466,7 @@ body {
   justify-content: center;
   transition: opacity 0.12s ease;
   opacity: 0.72;
+  will-change: transform, left, top;
 }
 
 .joystick-base.active {
@@ -479,6 +483,7 @@ body {
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.55);
   transform: translate(0px, 0px);
   pointer-events: none;
+  will-change: transform;
 }
 
 .context-cluster {
@@ -582,18 +587,18 @@ body {
 }
 
 .touch-lg {
-  width: clamp(64px, 11.5vw, 78px);
-  height: clamp(64px, 11.5vw, 78px);
+  width: calc(clamp(64px, 11.5vw, 78px) * var(--tc-scale));
+  height: calc(clamp(64px, 11.5vw, 78px) * var(--tc-scale));
 }
 
 .touch-md {
-  width: clamp(50px, 8.8vw, 60px);
-  height: clamp(50px, 8.8vw, 60px);
+  width: calc(clamp(50px, 8.8vw, 60px) * var(--tc-scale));
+  height: calc(clamp(50px, 8.8vw, 60px) * var(--tc-scale));
 }
 
 .touch-sm {
-  width: clamp(42px, 7.2vw, 50px);
-  height: clamp(42px, 7.2vw, 50px);
+  width: calc(clamp(42px, 7.2vw, 50px) * var(--tc-scale));
+  height: calc(clamp(42px, 7.2vw, 50px) * var(--tc-scale));
 }
 
 .btn-title {
@@ -628,6 +633,11 @@ body {
   border-color: rgba(154, 242, 255, 0.78);
 }
 
+.btn-teal {
+  background: radial-gradient(circle at 35% 30%, rgba(42, 152, 122, 0.88), rgba(18, 76, 60, 0.9));
+  border-color: rgba(142, 248, 212, 0.8);
+}
+
 .btn-amber {
   background: radial-gradient(circle at 35% 30%, rgba(188, 112, 42, 0.86), rgba(96, 48, 18, 0.9));
   border-color: rgba(255, 200, 132, 0.78);
@@ -636,6 +646,35 @@ body {
 .btn-purple {
   background: radial-gradient(circle at 35% 30%, rgba(116, 74, 176, 0.86), rgba(56, 30, 96, 0.9));
   border-color: rgba(206, 176, 255, 0.78);
+}
+
+/* ==================== DEBUG TELEMETRY & TOUCH OVERLAY ==================== */
+.debug-hud {
+  position: absolute;
+  left: calc(8px + var(--safe-left));
+  top: calc(58px + var(--safe-top));
+  padding: 6px 8px;
+  background: rgba(8, 10, 18, 0.84);
+  border: 1px solid rgba(110, 236, 170, 0.55);
+  border-radius: 6px;
+  color: #b8ffd6;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.35;
+  white-space: pre;
+  pointer-events: none;
+  z-index: 28;
+  max-width: min(320px, 72vw);
+  text-shadow: 1px 1px 0 #000;
+}
+
+.debug-touch-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 26;
 }
 
 /* ==================== TITLE SCREEN ==================== */

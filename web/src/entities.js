@@ -70,10 +70,19 @@ export class Player {
     this.insideHealTimer = 0;
     this.recallHealLeft = 0;
     this.recallTickTimer = 0;
+    this.lastSwingBox = null;
+    this.godMode = false;
   }
 
   get sortY() {
     return this.y;
+  }
+
+  cycleWeapon() {
+    const list = this.ownedWeapons && this.ownedWeapons.length > 0 ? this.ownedWeapons : Config.DEFAULT_WEAPONS;
+    const idx = list.indexOf(this.activeWeapon);
+    this.activeWeapon = list[(idx + 1) % list.length];
+    return this.activeWeapon;
   }
 
   applyGearTier(tier) {
@@ -86,7 +95,7 @@ export class Player {
   }
 
   takeDamage(dmg) {
-    if (this.dead || this.invulnTimer > 0 || dmg <= 0) return false;
+    if (this.dead || this.godMode || this.invulnTimer > 0 || dmg <= 0) return false;
     this.hp = Math.max(0, this.hp - dmg);
     this.invulnTimer = Config.CONTACT_INVULN;
     this.flashTimer = 0.16;
@@ -172,25 +181,58 @@ export class Player {
     return true;
   }
 
-  trySpearSwing() {
+  findAimTarget(hostiles, range) {
+    let best = null;
+    let bestD = range;
+    for (const h of hostiles) {
+      if (!h.isAlive()) continue;
+      const d = dist(this.x, this.y - 6, h.x, h.y - 8);
+      if (d <= bestD) {
+        bestD = d;
+        best = h;
+      }
+    }
+    return best;
+  }
+
+  _faceToward(dir) {
+    const l = Math.hypot(dir.x, dir.y) || 1;
+    const nx = dir.x / l;
+    const ny = dir.y / l;
+    this.facingVec = { x: nx, y: ny };
+    this.facing = Math.abs(nx) > Math.abs(ny) ? (nx > 0 ? "right" : "left") : ny > 0 ? "down" : "up";
+    return this.facingVec;
+  }
+
+  trySpearSwing(hostiles = null, opts = {}) {
     if (this.dead || this.insideHouse || this.swingCd > 0) return null;
+    if (opts.aimDir) {
+      this._faceToward(opts.aimDir);
+    } else if (opts.autoAim && hostiles) {
+      const close = this.findAimTarget(hostiles, Config.SWING_OFFSET + 20);
+      if (close) {
+        this._faceToward({ x: close.x - this.x, y: close.y - 8 - (this.y - 6) });
+      }
+    }
     this.swingTimer = Config.SWING_TIME;
     this.swingCd = Config.SWING_COOLDOWN;
     const cx = this.x + this.facingVec.x * Config.SWING_OFFSET;
     const cy = this.y - 6 + this.facingVec.y * Config.SWING_OFFSET;
+    const hitbox = {
+      x: cx - Config.SWING_BOX.w * 0.5,
+      y: cy - Config.SWING_BOX.h * 0.5,
+      w: Config.SWING_BOX.w,
+      h: Config.SWING_BOX.h,
+    };
+    this.lastSwingBox = hitbox;
     return {
-      hitbox: {
-        x: cx - Config.SWING_BOX.w * 0.5,
-        y: cy - Config.SWING_BOX.h * 0.5,
-        w: Config.SWING_BOX.w,
-        h: Config.SWING_BOX.h,
-      },
+      hitbox,
       dir: { ...this.facingVec },
       damage: this.spearDamage,
     };
   }
 
-  tryFireBow(hostiles, bag) {
+  tryFireBow(hostiles, bag, opts = {}) {
     if (this.dead || this.insideHouse || this.bowCd > 0 || this.reloading) return { ok: false, reason: "busy" };
     if (this.bowMag <= 0) {
       if (bag.count("arrow") > 0) {
@@ -200,25 +242,15 @@ export class Player {
       return { ok: false, reason: "empty" };
     }
 
-    // Auto-aim nearest living hostile within BOW_RANGE
-    let best = null;
-    let bestD = Config.BOW_RANGE;
-    for (const h of hostiles) {
-      if (!h.isAlive()) continue;
-      const d = dist(this.x, this.y - 6, h.x, h.y - 8);
-      if (d <= bestD) {
-        bestD = d;
-        best = h;
-      }
-    }
+    const useAutoAim = opts.autoAim !== false;
     let dir = { ...this.facingVec };
-    if (best) {
-      const dx = best.x - this.x;
-      const dy = best.y - 8 - (this.y - 6);
-      const l = Math.hypot(dx, dy) || 1;
-      dir = { x: dx / l, y: dy / l };
-      this.facingVec = dir;
-      this.facing = Math.abs(dir.x) > Math.abs(dir.y) ? (dir.x > 0 ? "right" : "left") : dir.y > 0 ? "down" : "up";
+    if (opts.aimDir) {
+      dir = this._faceToward(opts.aimDir);
+    } else if (useAutoAim) {
+      const best = this.findAimTarget(hostiles, Config.BOW_RANGE);
+      if (best) {
+        dir = this._faceToward({ x: best.x - this.x, y: best.y - 8 - (this.y - 6) });
+      }
     }
 
     this.bowMag--;
@@ -235,24 +267,17 @@ export class Player {
     };
   }
 
-  tryThrowBoomerang(hostiles) {
+  tryThrowBoomerang(hostiles, opts = {}) {
     if (this.dead || this.insideHouse || this.boomerangInFlight || this.boomerangCd > 0) return null;
-    let best = null;
-    let bestD = Config.BOOMERANG_RANGE;
-    for (const h of hostiles) {
-      if (!h.isAlive()) continue;
-      const d = dist(this.x, this.y - 6, h.x, h.y - 8);
-      if (d <= bestD) {
-        bestD = d;
-        best = h;
-      }
-    }
+    const useAutoAim = opts.autoAim !== false;
     let dir = { ...this.facingVec };
-    if (best) {
-      const dx = best.x - this.x;
-      const dy = best.y - 8 - (this.y - 6);
-      const l = Math.hypot(dx, dy) || 1;
-      dir = { x: dx / l, y: dy / l };
+    if (opts.aimDir) {
+      dir = this._faceToward(opts.aimDir);
+    } else if (useAutoAim) {
+      const best = this.findAimTarget(hostiles, Config.BOOMERANG_RANGE);
+      if (best) {
+        dir = this._faceToward({ x: best.x - this.x, y: best.y - 8 - (this.y - 6) });
+      }
     }
     this.boomerangInFlight = true;
     return { origin: { x: this.x, y: this.y - 8 }, dir, damage: Config.BOOMERANG_DAMAGE + (this.gearTier >= 3 ? 1 : 0) };

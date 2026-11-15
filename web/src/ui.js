@@ -98,6 +98,7 @@ export class UIController {
 
     document.getElementById("btn-hud-inv").addEventListener("click", () => this.cb.onOpenInventory());
     document.getElementById("btn-hud-craft").addEventListener("click", () => this.cb.onOpenCrafting());
+    document.getElementById("btn-hud-dbg").addEventListener("click", () => this.cb.onOpenDebug?.());
     document.getElementById("btn-hud-pause").addEventListener("click", () => this.cb.onOpenPause());
     document.getElementById("btn-hud-fs").addEventListener("click", () => this.cb.onToggleFullscreen());
 

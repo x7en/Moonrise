@@ -66,6 +66,9 @@
             <button id="btn-hud-craft" class="mini-btn" type="button" aria-label="Crafting">
               <span>Craft</span>
             </button>
+            <button id="btn-hud-dbg" class="mini-btn" type="button" aria-label="Debug & Controls">
+              <span>DBG</span>
+            </button>
             <button id="btn-hud-pause" class="mini-btn" type="button" aria-label="Pause">
               <span>||</span>
             </button>
@@ -75,6 +78,9 @@
           </div>
         </div>
       </div>
+
+      <!-- Live Debug Telemetry HUD (F3 or Debug menu) -->
+      <pre id="debug-hud" class="debug-hud hidden"></pre>
 
       <!-- Status / Intruder Warning -->
       <div id="status-banner" class="status-banner hidden"></div>
@@ -139,6 +145,10 @@
       <!-- Right Combat & Action Cluster -->
       <div class="action-cluster">
         <div class="action-arc-top">
+          <button id="tc-swap" class="touch-btn touch-sm btn-teal" type="button">
+            <span class="btn-title">SWAP</span>
+            <span id="tc-swap-sub" class="btn-sub">BOW</span>
+          </button>
           <button id="tc-shock" class="touch-btn touch-sm btn-cyan" type="button">
             <span class="btn-title">SHOCK</span>
             <span id="tc-shock-sub" class="btn-sub">RDY</span>
@@ -169,6 +179,9 @@
         </div>
       </div>
     </div>
+
+    <!-- Optional Touch Zone & Pointer Debug Visualizer -->
+    <canvas id="debug-touch-overlay" class="debug-touch-overlay hidden"></canvas>
 
     <!-- Title Screen -->
     <div id="title-screen" class="overlay-screen hidden">

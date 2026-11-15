@@ -17,6 +17,7 @@ import {
 } from "./entities.js";
 import { InputController } from "./touch.js";
 import { UIController } from "./ui.js";
+import { DebugController } from "./debug.js";
 
 const STATE = {
   TITLE: "title",
@@ -115,6 +116,7 @@ class MoonriseGame {
       },
       onOpenInventory: () => this.openGameplayModal("inventory"),
       onOpenCrafting: () => this.openGameplayModal("crafting"),
+      onOpenDebug: () => this.openGameplayModal("debug"),
       onOpenPause: () => this.openGameplayModal("pause"),
       onToggleFullscreen: () => this.toggleFullscreen(),
       onCloseModal: () => this.closeModal(),
@@ -134,6 +136,7 @@ class MoonriseGame {
       onAnyGesture: () => Sfx.unlock(),
       onPrimaryAttack: () => this.handlePrimaryAttack(),
       onSpear: () => this.triggerMeleeOrClearIntruders(),
+      onSwapWeapon: () => this.swapWeapon(),
       onInteractTap: () => this.tryInteract(),
       onReload: () => this.tryReload(),
       onShockwave: () => this.tryShockwave(),
@@ -145,7 +148,12 @@ class MoonriseGame {
       onCancelTrap: () => this.setTrapMode(false),
       onKeyDown: (e) => this.handleKeyDown(e),
     });
-    this.input.setTouchMode(this.save.touchMode);
+    this.input.applyControlSettings(this.save);
+
+    this.debug = new DebugController();
+    this.debug.setHudVisible(this.save.debugHud);
+    this.mousePrimaryHeld = false;
+    this.mouseWorldPt = null;
 
     this._bindCanvasPointer();
     this._bindLifecycle();
@@ -207,11 +215,18 @@ class MoonriseGame {
   }
 
   _bindCanvasPointer() {
+    this.canvas.addEventListener("pointermove", (e) => {
+      if (e.pointerType === "mouse") {
+        this.mouseWorldPt = this._clientToWorld(e.clientX, e.clientY);
+      }
+    });
+
     this.canvas.addEventListener("pointerdown", (e) => {
       if (this.state !== STATE.DAY && this.state !== STATE.NIGHT) return;
       if (this.ui.isModalOpen()) return;
       Sfx.unlock();
       const worldPt = this._clientToWorld(e.clientX, e.clientY);
+      if (e.pointerType === "mouse") this.mouseWorldPt = worldPt;
 
       // Right-click on desktop cancels trap mode or quick-repairs
       if (e.button === 2) {
@@ -236,13 +251,31 @@ class MoonriseGame {
         return;
       }
 
-      // Desktop mouse left-click fires active weapon (on touchscreens use right-hand buttons to avoid accidental shots)
+      // Desktop mouse left-click fires active weapon toward cursor (on touchscreens use right-hand buttons)
       if (e.pointerType === "mouse" && !this.input.isTouchControlsVisible()) {
-        this.handlePrimaryAttack();
+        this.mousePrimaryHeld = true;
+        this.input.queuePrimaryBuffer();
+        this.handlePrimaryAttack(this._aimDirTo(worldPt));
       }
     });
 
+    const releaseMouse = () => {
+      this.mousePrimaryHeld = false;
+    };
+    window.addEventListener("pointerup", releaseMouse);
+    window.addEventListener("pointercancel", releaseMouse);
+    window.addEventListener("blur", releaseMouse);
+
     this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+
+  _aimDirTo(worldPt) {
+    if (!worldPt) return null;
+    const dx = worldPt.x - this.player.x;
+    const dy = worldPt.y - (this.player.y - 6);
+    const l = Math.hypot(dx, dy);
+    if (l < 4) return null;
+    return { x: dx / l, y: dy / l };
   }
 
   _clientToWorld(clientX, clientY) {
@@ -634,48 +667,71 @@ class MoonriseGame {
     return this.act === 1 ? Config.ACT1_RECT : { x: 0, y: 0, w: Config.WORLD_W, h: Config.WORLD_H };
   }
 
-  handlePrimaryAttack() {
+  swapWeapon() {
     if (this.state !== STATE.DAY && this.state !== STATE.NIGHT) return;
+    if (this.player.insideHouse) return;
+    const next = this.player.cycleWeapon();
+    const def = Config.WEAPON_DEFS[next];
+    Sfx.play("ui_blip", 0.38);
+    this.ui.showToast(`Weapon: ${def ? def.label : next.toUpperCase()}`, 1.3, "#9af5d8");
+  }
+
+  handlePrimaryAttack(aimDir = null, fromHold = false) {
+    if (this.state !== STATE.DAY && this.state !== STATE.NIGHT) return false;
     if (this.player.insideHouse) {
-      this.triggerMeleeOrClearIntruders();
-      return;
+      return this.triggerMeleeOrClearIntruders(aimDir);
     }
     const w = this.player.activeWeapon;
+    const opts = { autoAim: this.save.autoAim, aimDir };
     if (w === "spear") {
-      this.triggerMeleeOrClearIntruders();
+      return this.triggerMeleeOrClearIntruders(aimDir);
     } else if (w === "boomerang") {
-      const shot = this.player.tryThrowBoomerang(this.getAllHostiles());
+      const shot = this.player.tryThrowBoomerang(this.getAllHostiles(), opts);
       if (shot) {
+        this.input.consumeAttackBuffer();
         Sfx.play("boomerang_throw", 0.45);
         this.boomerangs.push(new Boomerang(this.player, shot.origin.x, shot.origin.y, shot.dir, shot.damage));
+        return true;
       }
+      return false;
     } else {
-      const res = this.player.tryFireBow(this.getAllHostiles(), this.bag);
+      const res = this.player.tryFireBow(this.getAllHostiles(), this.bag, opts);
       if (res.ok) {
+        this.input.consumeAttackBuffer();
         Sfx.play("bow_shoot", 0.45);
         this.arrows.push(new Arrow(res.origin.x, res.origin.y, res.dir, res.damage, Config.BOW_RANGE, res.pierce, true));
-      } else if (res.reason === "empty") {
+        return true;
+      } else if (!fromHold && res.reason === "empty") {
+        this.input.consumeAttackBuffer();
         Sfx.play("bow_empty", 0.45);
-        this.ui.showToast("Out of arrows! Craft more or switch weapon.", 1.8, "#ffaa88");
-      } else if (res.reason === "reloading") {
+        this.ui.showToast("Out of arrows! Tap SWAP or craft more.", 1.8, "#ffaa88");
+      } else if (!fromHold && res.reason === "reloading") {
+        this.input.consumeAttackBuffer();
         Sfx.play("bow_reload", 0.35);
       }
+      return false;
     }
   }
 
-  triggerMeleeOrClearIntruders() {
-    if (this.state !== STATE.DAY && this.state !== STATE.NIGHT) return;
+  triggerMeleeOrClearIntruders(aimDir = null) {
+    if (this.state !== STATE.DAY && this.state !== STATE.NIGHT) return false;
     if (this.player.insideHouse) {
       if (this.intrudersInside > 0) {
+        this.input.consumeSpearBuffer();
+        this.input.consumeAttackBuffer();
         this.intrudersInside--;
         this.killsTotal++;
         Sfx.play("hit", 0.5);
+        this.input.haptic(14);
         this.fx.spawnText(Config.HOUSE_CENTER.x, Config.HOUSE_CENTER.y, "Intruder cleared!", "#8ef59a");
+        return true;
       }
-      return;
+      return false;
     }
-    const swing = this.player.trySpearSwing();
-    if (!swing) return;
+    const swing = this.player.trySpearSwing(this.getAllHostiles(), { autoAim: this.save.autoAim, aimDir });
+    if (!swing) return false;
+    this.input.consumeSpearBuffer();
+    if (this.player.activeWeapon === "spear") this.input.consumeAttackBuffer();
     Sfx.play("swing", 0.42);
     for (const h of this.getAllHostiles()) {
       if (h.isAlive() && rectIntersects(swing.hitbox, h.getHurtbox())) {
@@ -683,6 +739,7 @@ class MoonriseGame {
         if (res.hit) this._onHostileHit(h.x, h.y - 10, res.killed, false);
       }
     }
+    return true;
   }
 
   tryReload() {
@@ -776,10 +833,27 @@ class MoonriseGame {
       return;
     }
 
+    // Tame a nearby stray dog if no door/gate was closer
+    const tameDog = this._findNearestTameableDog();
+    if (tameDog && this.dogs.filter((d) => d.isTamed()).length < Config.DOG_MAX_TAMED) {
+      this.tryTameDog();
+      return;
+    }
+
     // Quick repair if standing next to damaged fence
     const nearStruct = this._findNearestUpgradeStructure();
     if (nearStruct && nearStruct.kind === "fence" && nearStruct.hp < nearStruct.maxHp) {
       this.tryQuickRepairAt({ x: nearStruct.x, y: nearStruct.y });
+      return;
+    }
+
+    // Helpful hint if player quick-tapped next to a tree/wreck instead of holding
+    const nearWreck = this.world.findNearestSearchable(this.player.x, this.player.y, 34);
+    const nearTree = nearWreck ? null : this.world.findNearestTree(this.player.x, this.player.y, 30);
+    if (nearWreck) {
+      this.ui.showToast("Hold ACT / E to search wreck", 1.2, "#ffe08a");
+    } else if (nearTree) {
+      this.ui.showToast("Hold ACT / E to chop tree", 1.2, "#ffe08a");
     }
   }
 
@@ -998,12 +1072,15 @@ class MoonriseGame {
         { label: "Resume", right: "", onClick: () => this.closeModal() },
         { label: "Inventory & Weapons", right: this.player.activeWeapon.toUpperCase(), onClick: () => this.openGameplayModal("inventory") },
         { label: "Crafting Bench", right: `P:${this._totalResource("plank")} S:${this._totalResource("scrap")}`, onClick: () => this.openGameplayModal("crafting") },
+        { label: "Debug & Control Tuning", right: "F3 / DBG", desc: "Joystick tuning, button scale, hitboxes & sandbox tools", onClick: () => this.openDebugModal(true) },
         { label: "Tutorial Cards", onClick: () => this.openTutorial(false) },
         { label: "Controls", onClick: () => this.openInfoPanel("controls") },
         { label: "Settings", onClick: () => this.openInfoPanel("settings") },
         { label: "Achievements", right: `${this.save.unlockedCount()}/${Object.keys(ACHIEVEMENT_DEFS).length}`, onClick: () => this.openInfoPanel("achievements") },
         { label: "Return to Main Menu", onClick: () => this.returnToTitle() },
       ]);
+    } else if (kind === "debug") {
+      this.openDebugModal(true);
     } else if (kind === "inventory") {
       const items = Config.DEFAULT_WEAPONS.map((wId) => {
         const def = Config.WEAPON_DEFS[wId];
@@ -1264,19 +1341,267 @@ class MoonriseGame {
     );
   }
 
+  openDebugModal(inGameplay = false) {
+    const reopen = () => this.openDebugModal(inGameplay);
+    const items = [
+      { type: "kv", key: "CONTROL OPTIMIZATION", val: "Saved live to browser" },
+      {
+        label: `Touch Controls: ${this.save.touchMode.toUpperCase()}`,
+        right: "AUTO / ON / OFF",
+        desc: "Force ON to test touch controls on desktop.",
+        onClick: () => {
+          const modes = ["auto", "on", "off"];
+          this.save.touchMode = modes[(modes.indexOf(this.save.touchMode) + 1) % modes.length];
+          this.save.saveSettings();
+          this.input.applyControlSettings(this.save);
+          Sfx.play("ui_blip", 0.35);
+          reopen();
+        },
+      },
+      {
+        label: `Joystick Mode: ${this.save.joyMode.toUpperCase()}`,
+        right: "FOLLOW / FLOATING / FIXED",
+        desc: "FOLLOW slides base with thumb for instant 180° turns.",
+        onClick: () => {
+          const modes = ["follow", "floating", "fixed"];
+          this.save.joyMode = modes[(modes.indexOf(this.save.joyMode) + 1) % modes.length];
+          this.save.saveSettings();
+          this.input.applyControlSettings(this.save);
+          Sfx.play("ui_blip", 0.35);
+          reopen();
+        },
+      },
+      {
+        label: `Joystick Deadzone: ${Math.round(this.save.joyDeadzone * 100)}%`,
+        right: "TAP TO CYCLE",
+        desc: "Lower = snappier response; higher = prevents thumb drift.",
+        onClick: () => {
+          const steps = [0.06, 0.1, 0.12, 0.18, 0.24];
+          const idx = steps.findIndex((v) => Math.abs(v - this.save.joyDeadzone) < 0.015);
+          this.save.joyDeadzone = steps[(idx + 1) % steps.length];
+          this.save.saveSettings();
+          this.input.applyControlSettings(this.save);
+          Sfx.play("ui_blip", 0.35);
+          reopen();
+        },
+      },
+      {
+        label: `Touch Button Scale: ${Math.round(this.save.btnScale * 100)}%`,
+        right: "85% – 130%",
+        desc: "Adjust control ergonomics for phone vs tablet.",
+        onClick: () => {
+          const steps = [0.85, 1.0, 1.15, 1.3];
+          const idx = steps.findIndex((v) => Math.abs(v - this.save.btnScale) < 0.03);
+          this.save.btnScale = steps[(idx + 1) % steps.length];
+          this.save.saveSettings();
+          this.input.applyControlSettings(this.save);
+          Sfx.play("ui_blip", 0.35);
+          reopen();
+        },
+      },
+      {
+        label: `Touch Opacity: ${Math.round(this.save.touchOpacity * 100)}%`,
+        right: "55% – 100%",
+        onClick: () => {
+          const steps = [0.55, 0.75, 0.9, 1.0];
+          const idx = steps.findIndex((v) => Math.abs(v - this.save.touchOpacity) < 0.04);
+          this.save.touchOpacity = steps[(idx + 1) % steps.length];
+          this.save.saveSettings();
+          this.input.applyControlSettings(this.save);
+          Sfx.play("ui_blip", 0.35);
+          reopen();
+        },
+      },
+      {
+        label: `Hold-to-Attack & Input Buffer: ${this.save.holdToAttack ? "ON" : "OFF"}`,
+        desc: "Hold FIRE/SPEAR/F/Space/Click for continuous attacks.",
+        onClick: () => {
+          this.save.holdToAttack = !this.save.holdToAttack;
+          this.save.saveSettings();
+          this.input.applyControlSettings(this.save);
+          Sfx.play("ui_blip", 0.35);
+          reopen();
+        },
+      },
+      {
+        label: `Auto-Aim Lock-On: ${this.save.autoAim ? "ON" : "OFF"}`,
+        desc: "Highlights & tracks nearest hostile in weapon range.",
+        onClick: () => {
+          this.save.autoAim = !this.save.autoAim;
+          this.save.saveSettings();
+          Sfx.play("ui_blip", 0.35);
+          reopen();
+        },
+      },
+      {
+        label: `Haptic Feedback: ${this.save.haptics ? "ON" : "OFF"}`,
+        desc: "Micro-vibrations on attacks, hits, and harvesting (Android).",
+        onClick: () => {
+          this.save.haptics = !this.save.haptics;
+          this.save.saveSettings();
+          this.input.applyControlSettings(this.save);
+          this.input.haptic(14);
+          Sfx.play("ui_blip", 0.35);
+          reopen();
+        },
+      },
+      {
+        label: "Reset Control Tuning to Defaults",
+        onClick: () => {
+          this.save.resetControlDefaults();
+          this.input.applyControlSettings(this.save);
+          Sfx.play("ui_blip", 0.35);
+          reopen();
+        },
+      },
+      { type: "kv", key: "DEBUG DIAGNOSTICS", val: "Zero overhead when OFF" },
+      {
+        label: `Live Telemetry HUD (FPS & Inputs): ${this.debug.showHud ? "ON" : "OFF"}`,
+        right: "F3",
+        onClick: () => {
+          this.save.debugHud = !this.debug.showHud;
+          this.save.saveSettings();
+          this.debug.setHudVisible(this.save.debugHud);
+          Sfx.play("ui_blip", 0.35);
+          reopen();
+        },
+      },
+      {
+        label: `World Hitboxes & Colliders: ${this.debug.showHitboxes ? "ON" : "OFF"}`,
+        desc: "Draws player box, spear swing, hurtboxes, walls & aim ray.",
+        onClick: () => {
+          this.debug.showHitboxes = !this.debug.showHitboxes;
+          Sfx.play("ui_blip", 0.35);
+          reopen();
+        },
+      },
+      {
+        label: `Weapon / Trap / AI Range Rings: ${this.debug.showRanges ? "ON" : "OFF"}`,
+        onClick: () => {
+          this.debug.showRanges = !this.debug.showRanges;
+          Sfx.play("ui_blip", 0.35);
+          reopen();
+        },
+      },
+      {
+        label: `Touch Zone & Pointer Visualizer: ${this.debug.showTouchZones ? "ON" : "OFF"}`,
+        desc: "Draws joystick capture box, deadzone ring & active touch IDs.",
+        onClick: () => {
+          this.debug.setTouchOverlayVisible(!this.debug.showTouchZones);
+          Sfx.play("ui_blip", 0.35);
+          reopen();
+        },
+      },
+    ];
+
+    if (inGameplay) {
+      items.push(
+        { type: "kv", key: "SANDBOX TEST TOOLS", val: `Act ${this.act} Day ${this.day}` },
+        {
+          label: `God Mode (Invincible): ${this.player.godMode ? "ON" : "OFF"}`,
+          onClick: () => {
+            this.player.godMode = !this.player.godMode;
+            Sfx.play("ui_blip", 0.35);
+            reopen();
+          },
+        },
+        {
+          label: "Full Heal Player & Farmhouse",
+          onClick: () => {
+            this.player.heal(999);
+            if (!this.world.house.isFallen) this.world.house.repair(999);
+            Sfx.play("upgrade", 0.4);
+            reopen();
+          },
+        },
+        {
+          label: "Grant Test Supplies (+20P, +10S, +30 Arrows)",
+          onClick: () => {
+            this.stockpile.add("plank", 20);
+            this.stockpile.add("scrap", 10);
+            this.bag.add("arrow", 30);
+            Sfx.play("pickup", 0.45);
+            reopen();
+          },
+        },
+        {
+          label: "Skip to Dusk (15s remaining)",
+          disabled: this.prePauseState !== STATE.DAY,
+          onClick: () => {
+            this.phaseTimer = Math.min(this.phaseTimer, 15);
+            this.closeModal();
+          },
+        },
+        {
+          label: "Start Night Wave Immediately",
+          disabled: this.prePauseState !== STATE.DAY,
+          onClick: () => {
+            this.closeModal();
+            this.startNightCombat();
+          },
+        },
+        {
+          label: "Complete Night → Advance to Next Day",
+          disabled: this.prePauseState !== STATE.NIGHT,
+          onClick: () => {
+            this.closeModal();
+            this.onNightSurvived();
+          },
+        },
+        {
+          label: "Jump to Act 2 (Day 4, Valley Unlocked)",
+          onClick: () => {
+            this.act = 2;
+            this.world.act1FogVisible = false;
+            this.stockpile.add("plank", 20);
+            this.stockpile.add("scrap", 10);
+            this.closeModal();
+            this.startDay(4, false);
+          },
+        },
+        {
+          label: "Spawn Test Enemy (Zombie + Raider)",
+          onClick: () => {
+            this.enemies.push(new Enemy("zombie", this.player.x + 85, this.player.y, false));
+            this.enemies.push(new Enemy("raider", this.player.x - 85, this.player.y, false));
+            this.closeModal();
+            this.ui.showToast("Spawned test Zombie & Raider", 1.5, "#ffae88");
+          },
+        },
+        {
+          label: "Spawn Test Ghost & Tameable Dog",
+          onClick: () => {
+            this.ghosts.push(new Ghost(this.player.x + 90, this.player.y - 40, "scythe"));
+            this.dogs.push(new Dog(this.player.x + 36, this.player.y + 12, true));
+            this.closeModal();
+            this.ui.showToast("Spawned Ghost & Tameable Dog nearby", 1.8, "#a8ecff");
+          },
+        }
+      );
+    }
+
+    this.ui.openModal(
+      "DEBUG & CONTROLS",
+      "Tune touch responsiveness or inspect live hitboxes",
+      "Shortcut: F3 or ` (backquote) | Tap DBG in HUD",
+      items
+    );
+  }
+
   openInfoPanel(kind) {
     if (kind === "controls") {
       this.ui.openModal("CONTROLS", "Mobile Touch & Desktop Keyboard", "Both control schemes work simultaneously", [
-        { type: "kv", key: "Move", val: "Left Virtual Joystick / WASD / Arrows" },
-        { type: "kv", key: "Primary Weapon", val: "FIRE button / Click / F" },
-        { type: "kv", key: "Quick Spear Melee", val: "SPEAR button / Space" },
-        { type: "kv", key: "Doors, Gates, Chop, Search", val: "Tap or Hold ACT / E" },
+        { type: "kv", key: "Move", val: "Left Dynamic Joystick / WASD / Arrows" },
+        { type: "kv", key: "Primary Attack (Tap or Hold)", val: "FIRE button / Click / F" },
+        { type: "kv", key: "Quick Spear (Tap or Hold)", val: "SPEAR button / Space" },
+        { type: "kv", key: "Quick Weapon Swap", val: "SWAP button / Tab / V" },
+        { type: "kv", key: "Doors, Gates, Tame, Chop, Search", val: "Tap or Hold ACT / E" },
         { type: "kv", key: "Reload Bow", val: "RLD button / R" },
         { type: "kv", key: "Shockwave Stun", val: "SHOCK button / Q" },
         { type: "kv", key: "Recall Home (+Heal)", val: "HOME button / B" },
         { type: "kv", key: "Traps", val: "Bottom Trap Slots / Keys 1–3" },
         { type: "kv", key: "Upgrade / Repair", val: "Upgrade button near walls / U" },
-        { type: "kv", key: "Bag / Craft / Pause", val: "Top-right buttons / I, C, Esc" },
+        { type: "kv", key: "Bag / Craft / Debug / Pause", val: "Top-right buttons / I, C, F3, Esc" },
       ]);
     } else if (kind === "settings") {
       const volPct = Math.round(this.save.masterVolume * 100);
@@ -1302,10 +1627,16 @@ class MoonriseGame {
             const modes = ["auto", "on", "off"];
             this.save.touchMode = modes[(modes.indexOf(this.save.touchMode) + 1) % modes.length];
             this.save.saveSettings();
-            this.input.setTouchMode(this.save.touchMode);
+            this.input.applyControlSettings(this.save);
             Sfx.play("ui_blip", 0.35);
             this.openInfoPanel("settings");
           },
+        },
+        {
+          label: "Control Tuning & Debug Tools",
+          right: `${this.save.joyMode.toUpperCase()} / ${Math.round(this.save.btnScale * 100)}%`,
+          desc: "Joystick mode, deadzone, button scale, auto-aim & overlays.",
+          onClick: () => this.openDebugModal(!this.infoReturnToTitle),
         },
         {
           label: `Screen Shake: ${this.save.screenShake ? "ON" : "OFF"}`,
@@ -1372,6 +1703,18 @@ class MoonriseGame {
   }
 
   handleKeyDown(e) {
+    if (e.code === "F3" || e.code === "Backquote") {
+      e.preventDefault();
+      if (this.ui.isModalOpen()) {
+        this.closeModal();
+      } else if (this.state === STATE.DAY || this.state === STATE.NIGHT) {
+        this.openGameplayModal("debug");
+      } else {
+        this.infoReturnToTitle = this.state === STATE.TITLE;
+        this.openDebugModal(false);
+      }
+      return;
+    }
     if (this.ui.isCardsOpen()) {
       if (e.code === "Escape") this.ui.skipCards();
       else if (e.code === "Space" || e.code === "Enter") this.ui.advanceCard();
@@ -1403,11 +1746,18 @@ class MoonriseGame {
       case "KeyC":
         this.openGameplayModal("crafting");
         break;
+      case "Tab":
+      case "KeyV":
+        e.preventDefault();
+        this.swapWeapon();
+        break;
       case "Space":
         e.preventDefault();
+        this.input.queueSpearBuffer();
         this.triggerMeleeOrClearIntruders();
         break;
       case "KeyF":
+        this.input.queuePrimaryBuffer();
         this.handlePrimaryAttack();
         break;
       case "KeyR":
@@ -1447,6 +1797,7 @@ class MoonriseGame {
 
   // ==================== UPDATE LOOP ====================
   update(dt) {
+    this.debug.recordFrame(dt);
     this.ui.stepTimers(dt);
 
     if (this.nightIntro.active) {
@@ -1467,10 +1818,24 @@ class MoonriseGame {
     }
     if (this.shakeTimer > 0) this.shakeTimer = Math.max(0, this.shakeTimer - dt);
 
-    if (this.state !== STATE.DAY && this.state !== STATE.NIGHT) return;
+    if (this.state !== STATE.DAY && this.state !== STATE.NIGHT) {
+      this.debug.updateTelemetry(dt, this);
+      return;
+    }
 
     if (this.shockCd > 0) this.shockCd = Math.max(0, this.shockCd - dt);
     if (this.recallCd > 0) this.recallCd = Math.max(0, this.recallCd - dt);
+
+    // Step input buffers & continuous hold-to-attack
+    this.input.stepBuffers(dt);
+    if (this.input.wantsPrimaryAttack()) {
+      this.handlePrimaryAttack(null, true);
+    } else if (this.mousePrimaryHeld && this.save.holdToAttack && !this.input.isTouchControlsVisible()) {
+      this.handlePrimaryAttack(this._aimDirTo(this.mouseWorldPt), true);
+    }
+    if (this.input.wantsSpearAttack()) {
+      this.triggerMeleeOrClearIntruders();
+    }
 
     for (const s of this.world.structures) {
       if (s.flashTimer > 0) s.flashTimer = Math.max(0, s.flashTimer - dt);
@@ -1677,6 +2042,7 @@ class MoonriseGame {
     this.fx.update(dt);
     this._updateCamera();
     this._syncHudAndTouch();
+    this.debug.updateTelemetry(dt, this);
   }
 
   _stepHoldGather(dt) {
@@ -1790,6 +2156,7 @@ class MoonriseGame {
   _onPlayerDamaged(dmg) {
     if (this.player.takeDamage(dmg)) {
       Sfx.play("player_hit", 0.5);
+      this.input.haptic(22);
       this.addShake(0.16, 2.8);
       this.fx.spawnSparks(this.player.x, this.player.y - 8, "#ff4842", 6);
       if (this.player.dead) this.onPlayerDied();
@@ -1798,6 +2165,7 @@ class MoonriseGame {
 
   _onHostileHit(x, y, killed, fromBow) {
     Sfx.play("hit", killed ? 0.5 : 0.4);
+    this.input.haptic(killed ? 16 : 8);
     this.fx.spawnSparks(x, y, "#f54842", killed ? 9 : 5);
     this.hitStop = 0.03;
     if (killed) {
@@ -1850,6 +2218,7 @@ class MoonriseGame {
     // Dynamic interact label & prompt
     let interactLabel = "ACT";
     let interactSub = "TAP/HOLD";
+    let interactIsHold = false;
     let prompt = "";
     if (this.player.insideHouse) {
       interactLabel = "EXIT";
@@ -1863,13 +2232,19 @@ class MoonriseGame {
       interactLabel = "GATE";
       interactSub = nearGate.gateOpen ? "SHUT" : "OPEN";
       prompt = nearGate.gateOpen ? "Tap GATE (E) to shut perimeter gate" : "Tap GATE (E) to open gate";
+    } else if (tameDog && tamedDogs.length < Config.DOG_MAX_TAMED) {
+      interactLabel = "TAME";
+      interactSub = "DOG";
+      prompt = "Tap TAME (E) to befriend stray dog";
     } else if (nearWreck) {
       interactLabel = "SEARCH";
       interactSub = "HOLD";
+      interactIsHold = true;
       prompt = "Hold SEARCH (Hold E) to scavenge wreck";
     } else if (nearTree) {
       interactLabel = "CHOP";
       interactSub = "HOLD";
+      interactIsHold = true;
       prompt = "Hold CHOP (Hold E) to chop tree for planks";
     } else if (this.trapMode) {
       prompt = "Tap Place Trap or tap map ground to place";
@@ -1949,6 +2324,7 @@ class MoonriseGame {
       recallCd: this.recallCd,
       interactLabel,
       interactSub,
+      interactIsHold,
       canTameDog: Boolean(tameDog) && tamedDogs.length < Config.DOG_MAX_TAMED,
       canUpgrade: Boolean(nearUpgrade) && !this.player.insideHouse,
       upgradeLabel: nearUpgrade && nearUpgrade.kind === "house" ? "Upgrade House" : "Upgrade / Repair",
@@ -2027,13 +2403,15 @@ class MoonriseGame {
     drawables.sort((a, b) => a.sortY - b.sortY);
     for (const item of drawables) item.draw();
 
-    // 4. Projectiles & FX
+    // 4. Projectiles, Auto-Aim Lock Reticle & FX
     for (const a of this.arrows) a.draw(ctx);
     for (const b of this.boomerangs) b.draw(ctx);
+    this._drawAutoAimReticle(ctx);
     this.fx.draw(ctx);
 
-    // 5. Act 1 Fog border
+    // 5. Act 1 Fog border & Optional Debug World Overlay
     this.world.drawAct1Fog(ctx);
+    this.debug.drawWorldOverlay(ctx, this);
 
     ctx.restore();
 
@@ -2042,6 +2420,34 @@ class MoonriseGame {
 
     // 7. Yellow BASE directional arrow when exploring far from farmhouse
     this._drawBaseTrackerArrow(ctx, cw, ch);
+
+    // 8. Optional Touch Zone & Active Pointer Visualizer
+    this.debug.drawTouchOverlay(this.input);
+  }
+
+  _drawAutoAimReticle(ctx) {
+    if (!this.save.autoAim || this.player.insideHouse || this.player.dead) return;
+    if (this.state !== STATE.DAY && this.state !== STATE.NIGHT) return;
+    const w = this.player.activeWeapon;
+    if (w !== "bow" && w !== "boomerang") return;
+    const range = w === "boomerang" ? Config.BOOMERANG_RANGE : Config.BOW_RANGE;
+    const target = this.player.findAimTarget(this.getAllHostiles(), range);
+    if (!target) return;
+
+    const cx = Math.round(target.x);
+    const cy = Math.round(target.y - 8);
+    const r = 9;
+    ctx.save();
+    ctx.strokeStyle = "rgba(255, 224, 96, 0.85)";
+    ctx.lineWidth = 1;
+    // Crisp 4-corner pixel brackets
+    ctx.beginPath();
+    ctx.moveTo(cx - r, cy - r + 3); ctx.lineTo(cx - r, cy - r); ctx.lineTo(cx - r + 3, cy - r);
+    ctx.moveTo(cx + r - 3, cy - r); ctx.lineTo(cx + r, cy - r); ctx.lineTo(cx + r, cy - r + 3);
+    ctx.moveTo(cx - r, cy + r - 3); ctx.lineTo(cx - r, cy + r); ctx.lineTo(cx - r + 3, cy + r);
+    ctx.moveTo(cx + r - 3, cy + r); ctx.lineTo(cx + r, cy + r); ctx.lineTo(cx + r, cy + r - 3);
+    ctx.stroke();
+    ctx.restore();
   }
 
   _drawTimeTint(ctx, cw, ch) {
