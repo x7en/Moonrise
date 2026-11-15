@@ -8,16 +8,16 @@ var red_blend: float = 0.0
 var moon_progress: float = 1.0  # 0 = hidden under horizon, 1 = up in the sky
 var cloud_speed_scale: float = 1.0
 
-var _sky_top: ColorRect = null
-var _sky_mid: ColorRect = null
-var _sky_low: ColorRect = null
+var _sky_top: ColorRect
+var _sky_mid: ColorRect
+var _sky_low: ColorRect
 var _stars: Array[Dictionary] = []
-var _moon_holder: Control = null
-var _moon_base: TextureRect = null
-var _moon_red: TextureRect = null
-var _moon_glow: TextureRect = null
+var _moon_holder: Control
+var _moon_base: TextureRect
+var _moon_red: TextureRect
+var _moon_glow: TextureRect
 var _cloud_layers: Array[Dictionary] = []
-var _silhouette: Control = null
+var _silhouette: Control
 var _time: float = 0.0
 var _view_size: Vector2 = Vector2(640.0, 360.0)
 
@@ -78,7 +78,7 @@ func build(view_size: Vector2 = Config.VIEW_SIZE) -> void:
 	_moon_glow = TextureRect.new()
 	_moon_glow.position = Vector2(-24.0, -24.0)
 	_moon_glow.size = Vector2(176.0, 176.0)
-	_moon_glow.texture = SpriteFactory.get_radial_light_texture(128)
+	_moon_glow.texture = Art.get_radial_light_texture(128)
 	_moon_glow.stretch_mode = TextureRect.STRETCH_SCALE
 	_moon_glow.modulate = Color(0.86, 0.88, 1.0, 0.14)
 	_moon_holder.add_child(_moon_glow)
@@ -119,15 +119,15 @@ func configure_for_night(
 ) -> void:
 	is_blood_mode = is_blood
 	if _moon_base != null:
-		_moon_base.texture = SpriteFactory.tex("sky/moon")
+		_moon_base.texture = Art.tex("sky/moon")
 	if _moon_red != null:
-		_moon_red.texture = SpriteFactory.tex("sky/blood_moon")
+		_moon_red.texture = Art.tex("sky/blood_moon")
 	red_blend = 1.0 if (is_blood and not start_white_turn_red) else 0.0
 
 
 func set_red_moon_frame(_frame_idx: int) -> void:
 	if _moon_red != null:
-		_moon_red.texture = SpriteFactory.tex("sky/blood_moon")
+		_moon_red.texture = Art.tex("sky/blood_moon")
 
 
 func update_sky(delta: float) -> void:
@@ -141,7 +141,7 @@ func update_sky(delta: float) -> void:
 		_sky_low.color = Color(0.13, 0.09, 0.18).lerp(Color(0.40, 0.08, 0.10), red_blend)
 
 	for s in _stars:
-		var node := s["node"] as ColorRect
+		var node = s["node"]
 		var pulse := 0.45 + 0.55 * sin(_time * float(s["spd"]) + float(s["phase"]))
 		node.modulate.a = pulse * (1.0 - red_blend * 0.45)
 
@@ -166,14 +166,14 @@ func update_sky(delta: float) -> void:
 	for layer in _cloud_layers:
 		var spd := float(layer["speed"]) * cloud_speed_scale
 		var w := float(layer["width"])
-		var a := layer["a"] as TextureRect
-		var b := layer["b"] as TextureRect
+		var a = layer["a"]
+		var b = layer["b"]
 		var x := fposmod(float(layer["offset"]) + _time * spd, w)
 
 		a.position.x = floorf(-x)
 		b.position.x = floorf(w - x)
 
-		var tint := (layer["base_color"] as Color).lerp(layer["blood_color"] as Color, red_blend)
+		var tint = layer["base_color"].lerp(layer["blood_color"], red_blend)
 		a.modulate = tint
 		b.modulate = tint
 
@@ -181,7 +181,7 @@ func update_sky(delta: float) -> void:
 func _add_cloud_layer(idx: int, speed_px: float, y_pos: float) -> void:
 	var strip_w := int(_view_size.x)
 	var strip_h := 86
-	var cloud_tex := SpriteFactory.tex("sky/clouds_%d" % (clampi(idx, 0, 2) + 1))
+	var cloud_tex := Art.tex("sky/clouds_%d" % (clampi(idx, 0, 2) + 1))
 
 	var a := TextureRect.new()
 	a.texture = cloud_tex
@@ -198,7 +198,7 @@ func _add_cloud_layer(idx: int, speed_px: float, y_pos: float) -> void:
 	add_child(b)
 
 	# tuned by eye so the white cloud art looks moody instead of pitch black
-	var shade: float = [0.46, 0.54, 0.36][clampi(idx, 0, 2)]
+	var shade = [0.46, 0.54, 0.36][clampi(idx, 0, 2)]
 	var night_col := Color(shade * 0.85, shade * 0.84, shade * 1.15, 0.88)
 	var blood_col := Color(shade * 1.32, shade * 0.44, shade * 0.46, 0.92)
 

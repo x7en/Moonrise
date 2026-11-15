@@ -1,4 +1,4 @@
-class_name SpriteData
+class_name Sprites
 extends RefCounted
 
 # [frames, w, h] for horizontal sprite sheets

@@ -1,7 +1,5 @@
-class_name Inventory
+class_name Bag
 extends RefCounted
-
-# simple item counter used for both the player's backpack and the house stockpile
 
 const RESOURCE_KEYS: Array[String] = [
 	"plank",
@@ -16,8 +14,8 @@ var capacity: int = -1  # -1 = unlimited (stockpile)
 var stacks: Dictionary = {}
 
 
-func _init(p_capacity: int = -1) -> void:
-	capacity = p_capacity
+func _init(cap: int = -1) -> void:
+	capacity = cap
 	clear()
 
 
@@ -67,7 +65,7 @@ func remove(item_id: String, amount: int) -> int:
 	return taken
 
 
-func can_afford(cost: Dictionary, extra: Inventory = null) -> bool:
+func can_afford(cost: Dictionary, extra: Bag = null) -> bool:
 	for key in cost.keys():
 		var item_id := String(key)
 		var need := int(cost[key])
@@ -77,8 +75,8 @@ func can_afford(cost: Dictionary, extra: Inventory = null) -> bool:
 	return true
 
 
-func missing_for(cost: Dictionary, extra: Inventory = null) -> Dictionary:
-	var missing: Dictionary = {}
+func missing_for(cost: Dictionary, extra: Bag = null) -> Dictionary:
+	var missing = {}
 	for key in cost.keys():
 		var item_id := String(key)
 		var need := int(cost[key])
@@ -88,7 +86,7 @@ func missing_for(cost: Dictionary, extra: Inventory = null) -> Dictionary:
 	return missing
 
 
-func spend(cost: Dictionary, extra: Inventory = null) -> bool:
+func spend(cost: Dictionary, extra: Bag = null) -> bool:
 	if not can_afford(cost, extra):
 		return false
 
@@ -102,8 +100,8 @@ func spend(cost: Dictionary, extra: Inventory = null) -> bool:
 	return true
 
 
-func transfer_resources_to(target: Inventory) -> Dictionary:
-	var moved: Dictionary = {"plank": 0, "scrap": 0}
+func transfer_resources_to(target: Bag) -> Dictionary:
+	var moved = {"plank": 0, "scrap": 0}
 	for res_id in ["plank", "scrap"]:
 		var amt := count(res_id)
 		if amt > 0:

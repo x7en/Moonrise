@@ -15,7 +15,7 @@ var _next_player: int = 0
 
 func _ready() -> void:
 	for i in range(POOL_SIZE):
-		var p: AudioStreamPlayer = AudioStreamPlayer.new()
+		var p = AudioStreamPlayer.new()
 		p.name = "SfxPlayer_%d" % i
 		add_child(p)
 		_players.append(p)
@@ -33,9 +33,9 @@ func toggle_mute() -> bool:
 func play(sound_name: String, volume_db: float = -8.0) -> void:
 	if muted or not _streams.has(sound_name) or _players.is_empty():
 		return
-	var player: AudioStreamPlayer = _players[_next_player]
+	var player = _players[_next_player]
 	_next_player = (_next_player + 1) % _players.size()
-	player.stream = _streams[sound_name] as AudioStreamWAV
+	player.stream = _streams[sound_name]
 	player.volume_db = volume_db
 	player.play()
 
@@ -66,7 +66,7 @@ func _build_sounds() -> void:
 
 
 func _make_wav(samples: PackedByteArray) -> AudioStreamWAV:
-	var wav: AudioStreamWAV = AudioStreamWAV.new()
+	var wav = AudioStreamWAV.new()
 	wav.format = AudioStreamWAV.FORMAT_8_BITS
 	wav.mix_rate = SAMPLE_RATE
 	wav.stereo = false
@@ -85,80 +85,80 @@ func _make_sweep(
 	noise_mix: float,
 	gain: float
 ) -> AudioStreamWAV:
-	var count: int = maxi(1, int(duration * float(SAMPLE_RATE)))
-	var data: PackedByteArray = PackedByteArray()
+	var count = maxi(1, int(duration * float(SAMPLE_RATE)))
+	var data = PackedByteArray()
 	data.resize(count)
-	var phase: float = 0.0
-	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	var phase = 0.0
+	var rng = RandomNumberGenerator.new()
 	rng.seed = int(freq_start * 100.0) + count
 
 	for i in range(count):
-		var t: float = float(i) / float(count)
-		var freq: float = lerpf(freq_start, freq_end, t)
+		var t = float(i) / float(count)
+		var freq = lerpf(freq_start, freq_end, t)
 		phase += TAU * freq / float(SAMPLE_RATE)
-		var sq: float = 1.0 if sin(phase) >= 0.0 else -1.0
-		var nz: float = rng.randf_range(-1.0, 1.0)
-		var env: float = minf(1.0, t * 20.0) * (1.0 - t)
+		var sq = 1.0 if sin(phase) >= 0.0 else -1.0
+		var nz = rng.randf_range(-1.0, 1.0)
+		var env = minf(1.0, t * 20.0) * (1.0 - t)
 		data[i] = _to_signed_byte((sq * (1.0 - noise_mix) + nz * noise_mix) * env * gain)
 
 	return _make_wav(data)
 
 
 func _make_notes(freqs: Array, note_len: float, gain: float) -> AudioStreamWAV:
-	var note_samples: int = maxi(1, int(note_len * float(SAMPLE_RATE)))
-	var total: int = note_samples * freqs.size()
-	var data: PackedByteArray = PackedByteArray()
+	var note_samples = maxi(1, int(note_len * float(SAMPLE_RATE)))
+	var total = note_samples * freqs.size()
+	var data = PackedByteArray()
 	data.resize(total)
-	var phase: float = 0.0
+	var phase = 0.0
 
 	for n_idx in range(freqs.size()):
-		var freq: float = float(freqs[n_idx])
+		var freq = float(freqs[n_idx])
 		for j in range(note_samples):
-			var lt: float = float(j) / float(note_samples)
+			var lt = float(j) / float(note_samples)
 			phase += TAU * freq / float(SAMPLE_RATE)
-			var sq: float = 1.0 if sin(phase) >= 0.0 else -1.0
-			var env: float = minf(1.0, lt * 18.0) * (1.0 - lt * 0.75)
+			var sq = 1.0 if sin(phase) >= 0.0 else -1.0
+			var env = minf(1.0, lt * 18.0) * (1.0 - lt * 0.75)
 			data[n_idx * note_samples + j] = _to_signed_byte(sq * env * gain)
 
 	return _make_wav(data)
 
 
 func _make_bounce(duration: float) -> AudioStreamWAV:
-	var count: int = maxi(1, int(duration * float(SAMPLE_RATE)))
-	var data: PackedByteArray = PackedByteArray()
+	var count = maxi(1, int(duration * float(SAMPLE_RATE)))
+	var data = PackedByteArray()
 	data.resize(count)
-	var phase: float = 0.0
+	var phase = 0.0
 
 	for i in range(count):
-		var t: float = float(i) / float(count)
-		var freq: float = 240.0 + sin(t * PI) * 520.0 + sin(t * TAU * 8.0) * 35.0
+		var t = float(i) / float(count)
+		var freq = 240.0 + sin(t * PI) * 520.0 + sin(t * TAU * 8.0) * 35.0
 		phase += TAU * freq / float(SAMPLE_RATE)
-		var wave: float = (1.0 if sin(phase) >= 0.0 else -1.0) * 0.65 + sin(phase * 0.5) * 0.35
-		var env: float = minf(1.0, t * 14.0) * (1.0 - t * 0.85)
+		var wave = (1.0 if sin(phase) >= 0.0 else -1.0) * 0.65 + sin(phase * 0.5) * 0.35
+		var env = minf(1.0, t * 14.0) * (1.0 - t * 0.85)
 		data[i] = _to_signed_byte(wave * env * 0.42)
 
 	return _make_wav(data)
 
 
 func _make_blood_moon(duration: float) -> AudioStreamWAV:
-	var count: int = maxi(1, int(duration * float(SAMPLE_RATE)))
-	var data: PackedByteArray = PackedByteArray()
+	var count = maxi(1, int(duration * float(SAMPLE_RATE)))
+	var data = PackedByteArray()
 	data.resize(count)
-	var p1: float = 0.0
-	var p2: float = 0.0
-	var rng: RandomNumberGenerator = RandomNumberGenerator.new()
+	var p1 = 0.0
+	var p2 = 0.0
+	var rng = RandomNumberGenerator.new()
 	rng.seed = 666
 
 	for i in range(count):
-		var t: float = float(i) / float(count)
-		var f1: float = lerpf(98.0, 74.0, t)
-		var f2: float = lerpf(146.0, 108.0, t)
+		var t = float(i) / float(count)
+		var f1 = lerpf(98.0, 74.0, t)
+		var f2 = lerpf(146.0, 108.0, t)
 		p1 += TAU * f1 / float(SAMPLE_RATE)
 		p2 += TAU * f2 / float(SAMPLE_RATE)
-		var s1: float = 1.0 if sin(p1) >= 0.0 else -1.0
-		var s2: float = 1.0 if sin(p2) >= 0.0 else -1.0
-		var rumble: float = rng.randf_range(-1.0, 1.0) * 0.18
-		var env: float = minf(1.0, t * 6.0) * (1.0 - maxf(0.0, (t - 0.55) / 0.45))
+		var s1 = 1.0 if sin(p1) >= 0.0 else -1.0
+		var s2 = 1.0 if sin(p2) >= 0.0 else -1.0
+		var rumble = rng.randf_range(-1.0, 1.0) * 0.18
+		var env = minf(1.0, t * 6.0) * (1.0 - maxf(0.0, (t - 0.55) / 0.45))
 		data[i] = _to_signed_byte((s1 * 0.5 + s2 * 0.35 + rumble) * env * 0.48)
 
 	return _make_wav(data)

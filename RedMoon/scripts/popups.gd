@@ -1,17 +1,15 @@
-class_name ToastLayer
+class_name Popups
 extends CanvasLayer
-
-# little slide-in achievement popups in the bottom right corner
 
 const TOAST_WIDTH := 224.0
 const TOAST_HEIGHT := 36.0
 const HOLD_SECONDS := 3.4
 
 var _queue: Array[Dictionary] = []
-var _active_panel: PanelContainer = null
-var _title_lbl: Label = null
-var _desc_lbl: Label = null
-var _icon_rect: TextureRect = null
+var _active_panel: PanelContainer
+var _title_lbl: Label
+var _desc_lbl: Label
+var _icon_rect: TextureRect
 var _timer: float = 0.0
 var _showing: bool = false
 
@@ -54,10 +52,10 @@ func _pop_next() -> void:
 	if _queue.is_empty():
 		return
 
-	var item := _queue.pop_front() as Dictionary
+	var item = _queue.pop_front()
 	_title_lbl.text = String(item["title"])
 	_desc_lbl.text = String(item["desc"])
-	_icon_rect.texture = SpriteFactory.get_icon_texture(String(item.get("icon", "trophy")))
+	_icon_rect.texture = Art.get_icon_texture(String(item.get("icon", "trophy")))
 
 	_showing = true
 	_timer = HOLD_SECONDS
@@ -103,10 +101,10 @@ func _build_panel() -> void:
 	hbox.add_child(vbox)
 
 	_title_lbl = Label.new()
-	SpriteFactory.style_label(_title_lbl, "bold", 8, Color(1.0, 0.88, 0.45))
+	Art.style_label(_title_lbl, "bold", 8, Color(1.0, 0.88, 0.45))
 	vbox.add_child(_title_lbl)
 
 	_desc_lbl = Label.new()
 	_desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	SpriteFactory.style_label(_desc_lbl, "body", 8, Color(0.90, 0.90, 0.94))
+	Art.style_label(_desc_lbl, "body", 8, Color(0.90, 0.90, 0.94))
 	vbox.add_child(_desc_lbl)

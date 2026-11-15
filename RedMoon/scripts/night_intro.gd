@@ -1,7 +1,5 @@
-class_name MoonriseCutscene
+class_name NightIntro
 extends CanvasLayer
-
-# short skippable moonrise intro before each night starts
 
 signal finished()
 
@@ -9,12 +7,12 @@ const TOTAL_DURATION := 7.0
 
 var active: bool = false
 
-var _root: Control = null
-var _sky: MoonSky = null
-var _title_label: Label = null
-var _narration_label: Label = null
-var _skip_label: Label = null
-var _flash: ColorRect = null
+var _root: Control
+var _sky: MoonSky
+var _title_label: Label
+var _narration_label: Label
+var _skip_label: Label
+var _flash: ColorRect
 
 var _elapsed: float = 0.0
 var _night_num: int = 1
@@ -29,7 +27,7 @@ func _ready() -> void:
 	_root = Control.new()
 	_root.position = Vector2.ZERO
 	_root.size = Config.VIEW_SIZE
-	_root.theme = SpriteFactory.get_game_theme()
+	_root.theme = Art.get_game_theme()
 	add_child(_root)
 
 	_sky = MoonSky.new()
@@ -40,7 +38,7 @@ func _ready() -> void:
 	_title_label.position = Vector2(0.0, 12.0)
 	_title_label.size = Vector2(Config.VIEW_SIZE.x, 32.0)
 	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	SpriteFactory.style_label(_title_label, "display", 16, Color(0.96, 0.94, 0.90))
+	Art.style_label(_title_label, "display", 16, Color(0.96, 0.94, 0.90))
 	_root.add_child(_title_label)
 
 	var text_band := ColorRect.new()
@@ -54,7 +52,7 @@ func _ready() -> void:
 	_narration_label.size = Vector2(Config.VIEW_SIZE.x - 80.0, 26.0)
 	_narration_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_narration_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	SpriteFactory.style_label(_narration_label, "bold", 8, Color(0.95, 0.90, 0.86))
+	Art.style_label(_narration_label, "bold", 8, Color(0.95, 0.90, 0.86))
 	_root.add_child(_narration_label)
 
 	_skip_label = Label.new()
@@ -62,7 +60,7 @@ func _ready() -> void:
 	_skip_label.size = Vector2(182.0, 12.0)
 	_skip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_skip_label.text = "[Space / Enter / Esc] Skip"
-	SpriteFactory.style_label(_skip_label, "body", 8, Color(0.72, 0.70, 0.78))
+	Art.style_label(_skip_label, "body", 8, Color(0.72, 0.70, 0.78))
 	_root.add_child(_skip_label)
 
 	_flash = ColorRect.new()
@@ -89,19 +87,19 @@ func start_moonrise(night_num: int, is_blood: bool, instant_skip: bool = false) 
 	if _is_early_blood_twist:
 		_title_label.text = "NIGHT 3"
 		_narration_label.text = "Two nights early... WAIT. The moon is turning red!"
-		SpriteFactory.style_label(_title_label, "display", 16, Color(0.98, 0.94, 0.90))
+		Art.style_label(_title_label, "display", 16, Color(0.98, 0.94, 0.90))
 	elif night_num == 7 and is_blood:
 		_title_label.text = "NIGHT 7 - THE FINAL BLOOD MOON"
 		_narration_label.text = "The sky bleeds crimson. Hold the line until dawn."
-		SpriteFactory.style_label(_title_label, "display", 16, Color(1.0, 0.36, 0.34))
+		Art.style_label(_title_label, "display", 16, Color(1.0, 0.36, 0.34))
 	elif is_blood:
 		_title_label.text = "NIGHT %d - BLOOD MOON" % night_num
 		_narration_label.text = "The Blood Moon rises. They are coming from every side."
-		SpriteFactory.style_label(_title_label, "display", 16, Color(1.0, 0.36, 0.34))
+		Art.style_label(_title_label, "display", 16, Color(1.0, 0.36, 0.34))
 	else:
 		_title_label.text = "NIGHT %d" % night_num
 		_narration_label.text = "Night falls over the valley. Close the door and stand ready."
-		SpriteFactory.style_label(_title_label, "display", 16, Color(0.92, 0.94, 1.0))
+		Art.style_label(_title_label, "display", 16, Color(0.92, 0.94, 1.0))
 
 	if instant_skip:
 		skip_now()
@@ -130,7 +128,7 @@ func _process(delta: float) -> void:
 
 			if t_red > 0.35:
 				_title_label.text = "NIGHT 3 - BLOOD MOON!"
-				SpriteFactory.style_label(_title_label, "display", 16, Color(1.0, 0.30, 0.28))
+				Art.style_label(_title_label, "display", 16, Color(1.0, 0.30, 0.28))
 				_narration_label.text = "The Blood Moon came early! Brace the walls!"
 
 			if _elapsed > 2.4 and _elapsed < 3.1:
@@ -149,13 +147,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventKey:
-		var ke := event as InputEventKey
+		var ke = event
 		if ke.pressed and not ke.echo:
 			if ke.keycode in [KEY_SPACE, KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE]:
 				get_viewport().set_input_as_handled()
 				skip_now()
 	elif event is InputEventMouseButton:
-		var mb := event as InputEventMouseButton
+		var mb = event
 		if mb.pressed:
 			get_viewport().set_input_as_handled()
 			skip_now()

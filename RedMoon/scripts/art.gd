@@ -1,7 +1,7 @@
-class_name SpriteFactory
+class_name Art
 extends RefCounted
 
-# keeps loaded textures/fonts/spriteframes cached so we arent hitting disk mid-wave
+# keep textures/fonts in memory so we dont hit disk mid-wave
 static var _tex_cache: Dictionary = {}
 static var _frames_cache: Dictionary = {}
 static var _silhouette_cache: Dictionary = {}
@@ -18,10 +18,10 @@ static func tex(key: String) -> Texture2D:
 	if _tex_cache.has(key):
 		return _tex_cache[key] as Texture2D
 
-	var res_path := SpriteData.path(key)
-	var loaded: Texture2D = null
+	var res_path := Sprites.path(key)
+	var loaded = null
 	if ResourceLoader.exists(res_path):
-		loaded = load(res_path) as Texture2D
+		loaded = load(res_path)
 
 	if loaded == null:
 		loaded = _make_placeholder(key)
@@ -82,7 +82,7 @@ static func make_static_sprite(key: String, feet_origin: bool = true) -> Sprite2
 	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 
 	if feet_origin:
-		var dims: Array = SpriteData.STATIC.get(
+		var dims: Array = Sprites.STATIC.get(
 			key, [loaded_tex.get_width(), loaded_tex.get_height()]
 		)
 		sprite.offset = Vector2(-floorf(float(int(dims[0])) * 0.5), -float(int(dims[1])))
@@ -91,7 +91,7 @@ static func make_static_sprite(key: String, feet_origin: bool = true) -> Sprite2
 
 
 static func feet_offset_for_animated(key: String, x_shift: float = 0.0) -> Vector2:
-	var info: Array = SpriteData.ANIMATED.get(key, [1, 16, 16])
+	var info: Array = Sprites.ANIMATED.get(key, [1, 16, 16])
 	return Vector2(-floorf(float(info[1]) * 0.5) + x_shift, -float(info[2]))
 
 
@@ -117,13 +117,13 @@ static func _load_pixel_font(res_path: String) -> Font:
 	if not ResourceLoader.exists(res_path):
 		return ThemeDB.fallback_font
 
-	var loaded := load(res_path) as Font
+	var loaded = load(res_path)
 	if loaded == null:
 		return ThemeDB.fallback_font
 
 	# force pixel crispness, godot 4 loves blurring pixel fonts by default
 	if loaded is FontFile:
-		var ff := loaded as FontFile
+		var ff = loaded
 		ff.antialiasing = TextServer.FONT_ANTIALIASING_NONE
 		ff.hinting = TextServer.HINTING_NONE
 		ff.subpixel_positioning = TextServer.SUBPIXEL_POSITIONING_DISABLED
@@ -152,7 +152,7 @@ static func style_label(
 	lbl.add_theme_constant_override("outline_size", 1)
 
 
-static func get_game_theme(_unused_path: String = "") -> Theme:
+static func get_game_theme() -> Theme:
 	if _theme_cache != null:
 		return _theme_cache
 
@@ -224,8 +224,8 @@ static func get_player_frames(swing_time: float = 0.3) -> SpriteFrames:
 		_add_strip_animation(frames, "idle_" + dir_name, "player/idle_" + dir_name, 6.0, true)
 		_add_strip_animation(frames, "run_" + dir_name, "player/run_" + dir_name, 10.0, true)
 
-		var punch_key: String = "player/punch_" + dir_name
-		var punch_info: Array = SpriteData.ANIMATED.get(punch_key, [4, 16, 16])
+		var punch_key = "player/punch_" + dir_name
+		var punch_info: Array = Sprites.ANIMATED.get(punch_key, [4, 16, 16])
 		var punch_fps := float(punch_info[0]) / maxf(swing_time, 0.05)
 		_add_strip_animation(frames, "punch_" + dir_name, punch_key, punch_fps, false)
 
@@ -252,7 +252,7 @@ static func get_enemy_frames(enemy_type: String) -> SpriteFrames:
 		_add_strip_animation(frames, "walk_" + dir_name, walk_key, walk_fps, true)
 
 		var attack_key := "enemies/%s/attack_%s" % [enemy_type, dir_name]
-		var attack_info: Array = SpriteData.ANIMATED.get(attack_key, [4, 16, 16])
+		var attack_info: Array = Sprites.ANIMATED.get(attack_key, [4, 16, 16])
 		var attack_fps := float(attack_info[0]) / 0.35
 		_add_strip_animation(frames, "attack_" + dir_name, attack_key, attack_fps, false)
 
@@ -368,7 +368,7 @@ static func make_panel_style(
 	fallback_border: Color = Color(0.84, 0.36, 0.34, 1.0)
 ) -> StyleBox:
 	if ResourceLoader.exists(tex_path):
-		var t := load(tex_path) as Texture2D
+		var t = load(tex_path)
 		if t != null:
 			var sb := StyleBoxTexture.new()
 			sb.texture = t
@@ -424,7 +424,7 @@ static func get_icon_texture(icon_id: String) -> Texture2D:
 		return loaded
 
 	# only two things still drawn in code because i never found matching sprites for em
-	var result: Texture2D = null
+	var result = null
 	if icon_id == "scrap":
 		result = _make_scrap_icon()
 	elif icon_id == "watchtower":
@@ -482,7 +482,7 @@ static func _add_strip_animation(
 	fps: float,
 	should_loop: bool
 ) -> void:
-	var info: Array = SpriteData.ANIMATED.get(key, [1, 16, 16])
+	var info: Array = Sprites.ANIMATED.get(key, [1, 16, 16])
 	var frame_count := maxi(1, int(info[0]))
 	var frame_w := maxi(1, int(info[1]))
 	var frame_h := maxi(1, int(info[2]))
@@ -509,12 +509,12 @@ static func _add_strip_animation(
 static func _make_placeholder(key: String) -> ImageTexture:
 	var width := 16
 	var height := 16
-	if SpriteData.STATIC.has(key):
-		var dims: Array = SpriteData.STATIC[key]
+	if Sprites.STATIC.has(key):
+		var dims: Array = Sprites.STATIC[key]
 		width = maxi(2, int(dims[0]))
 		height = maxi(2, int(dims[1]))
-	elif SpriteData.ANIMATED.has(key):
-		var anim_dims: Array = SpriteData.ANIMATED[key]
+	elif Sprites.ANIMATED.has(key):
+		var anim_dims: Array = Sprites.ANIMATED[key]
 		width = maxi(2, int(anim_dims[1]))
 		height = maxi(2, int(anim_dims[2]))
 

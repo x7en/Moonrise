@@ -1,18 +1,16 @@
-class_name StoryCard
+class_name IntroCards
 extends CanvasLayer
-
-# little fullscreen slides for the intro and the night 3 map-expansion twist
 
 signal sequence_finished(was_skipped: bool)
 
 var active: bool = false
 
-var _root: Control = null
-var _title_lbl: Label = null
-var _body_lbl: Label = null
-var _prompt_lbl: Label = null
-var _skip_lbl: Label = null
-var _art_holder: Control = null
+var _root: Control
+var _title_lbl: Label
+var _body_lbl: Label
+var _prompt_lbl: Label
+var _skip_lbl: Label
+var _art_holder: Control
 
 var _cards: Array[Dictionary] = []
 var _index: int = 0
@@ -68,7 +66,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventKey:
-		var ke := event as InputEventKey
+		var ke = event
 		if not ke.pressed or ke.echo:
 			return
 
@@ -82,7 +80,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_advance()
 
 	elif event is InputEventMouseButton:
-		var mb := event as InputEventMouseButton
+		var mb = event
 		if mb.pressed and _ready_timer <= 0.0:
 			get_viewport().set_input_as_handled()
 			_advance()
@@ -108,10 +106,10 @@ func _render_current() -> void:
 	_ready_timer = 0.25
 
 	var card := _cards[_index]
-	var accent := card.get("accent", Color(0.95, 0.90, 0.85)) as Color
+	var accent = card.get("accent", Color(0.95, 0.90, 0.85))
 
 	_title_lbl.text = String(card.get("title", ""))
-	SpriteFactory.style_label(_title_lbl, "display", 16, accent)
+	Art.style_label(_title_lbl, "display", 16, accent)
 	_body_lbl.text = String(card.get("body", ""))
 	_prompt_lbl.text = (
 		"[Space / Enter] Continue (%d/%d)" % [_index + 1, _cards.size()]
@@ -134,13 +132,13 @@ func _render_card_art(art_kind: String) -> void:
 
 	match art_kind:
 		"blood_moon":
-			tex_rect.texture = SpriteFactory.tex("sky/blood_moon")
+			tex_rect.texture = Art.tex("sky/blood_moon")
 		"house":
-			tex_rect.texture = SpriteFactory.get_shaded_house_texture(1, false)
+			tex_rect.texture = Art.get_shaded_house_texture(1, false)
 		"rubble":
-			tex_rect.texture = SpriteFactory.tex("props/rubble")
+			tex_rect.texture = Art.tex("props/rubble")
 		_:
-			tex_rect.texture = SpriteFactory.tex("sky/moon")
+			tex_rect.texture = Art.tex("sky/moon")
 
 	_art_holder.add_child(tex_rect)
 
@@ -149,7 +147,7 @@ func _build_ui() -> void:
 	_root = Control.new()
 	_root.position = Vector2.ZERO
 	_root.size = Config.VIEW_SIZE
-	_root.theme = SpriteFactory.get_game_theme()
+	_root.theme = Art.get_game_theme()
 	add_child(_root)
 
 	var bg := ColorRect.new()
@@ -178,7 +176,7 @@ func _build_ui() -> void:
 	_title_lbl.position = Vector2(84.0, 36.0)
 	_title_lbl.size = Vector2(Config.VIEW_SIZE.x - 168.0, 28.0)
 	_title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	SpriteFactory.style_label(_title_lbl, "display", 16, Color(0.98, 0.88, 0.78))
+	Art.style_label(_title_lbl, "display", 16, Color(0.98, 0.88, 0.78))
 	_root.add_child(_title_lbl)
 
 	_body_lbl = Label.new()
@@ -187,14 +185,14 @@ func _build_ui() -> void:
 	_body_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_body_lbl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
 	_body_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	SpriteFactory.style_label(_body_lbl, "body", 8, Color(0.92, 0.90, 0.94))
+	Art.style_label(_body_lbl, "body", 8, Color(0.92, 0.90, 0.94))
 	_root.add_child(_body_lbl)
 
 	_prompt_lbl = Label.new()
 	_prompt_lbl.position = Vector2(84.0, Config.VIEW_SIZE.y - 56.0)
 	_prompt_lbl.size = Vector2(Config.VIEW_SIZE.x - 168.0, 16.0)
 	_prompt_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	SpriteFactory.style_label(_prompt_lbl, "bold", 8, Color(1.0, 0.86, 0.48))
+	Art.style_label(_prompt_lbl, "bold", 8, Color(1.0, 0.86, 0.48))
 	_root.add_child(_prompt_lbl)
 
 	_skip_lbl = Label.new()
@@ -202,7 +200,7 @@ func _build_ui() -> void:
 	_skip_lbl.size = Vector2(170.0, 14.0)
 	_skip_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_skip_lbl.text = "[Esc] Skip Intro"
-	SpriteFactory.style_label(_skip_lbl, "body", 8, Color(0.68, 0.66, 0.74))
+	Art.style_label(_skip_lbl, "body", 8, Color(0.68, 0.66, 0.74))
 	_root.add_child(_skip_lbl)
 
 
@@ -218,7 +216,7 @@ static func get_opening_cards() -> Array[Dictionary]:
 		{
 			"title": "THE TWO RINGS",
 			"body": "Two weathered rings of timber surround the house.\n"
-			+ "Gather planks by day, mend the gaps, and fortify the outer line.",
+			+ "Gather planks by day, patch the gaps, and strengthen the outer fence.",
 			"art": "house",
 			"accent": Color(1.0, 0.88, 0.64),
 		},
@@ -237,7 +235,7 @@ static func get_world_expanded_cards() -> Array[Dictionary]:
 	return [
 		{
 			"title": "WORLD EXPANDED!",
-			"body": "The Blood Moon struck two nights early — and you survived it.\n"
+			"body": "The Blood Moon struck two nights early - and you survived it.\n"
 			+ "The road out of the yard is open! Explore the full 2400x1350 valley\n"
 			+ "for scrap, ruins, traps, and stronger walls.\n\n"
 			+ "The real Blood Moon arrives on Night 7.",

@@ -1,8 +1,6 @@
 class_name Watchtower
 extends Node2D
 
-# auto-shooting archer tower, you can build up to 2 around the yard
-
 signal fire_requested(origin: Vector2, target: Node)
 signal destroyed(tower: Watchtower)
 
@@ -12,9 +10,9 @@ var attack_range: float = 120.0
 var fire_timer: float = 0.0
 var footprint_rect: Rect2 = Rect2()
 
-var _sprite: Sprite2D = null
-var _hp_fill: ColorRect = null
-var _hp_holder: Node2D = null
+var _sprite: Sprite2D
+var _hp_fill: ColorRect
+var _hp_holder: Node2D
 
 
 func setup(world_pos: Vector2) -> void:
@@ -26,13 +24,13 @@ func setup(world_pos: Vector2) -> void:
 	add_to_group("watchtowers")
 
 	var shadow := Sprite2D.new()
-	shadow.texture = SpriteFactory.get_blob_shadow(22, 8)
+	shadow.texture = Art.get_blob_shadow(22, 8)
 	shadow.position = Vector2(0.0, 2.0)
 	shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(shadow)
 
 	_sprite = Sprite2D.new()
-	_sprite.texture = SpriteFactory.get_icon_texture("watchtower")
+	_sprite.texture = Art.get_icon_texture("watchtower")
 	_sprite.centered = false
 	_sprite.offset = Vector2(-10.0, -34.0)
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -96,13 +94,13 @@ func step_tower(delta: float, enemies: Array) -> void:
 	if fire_timer > 0.0:
 		return
 
-	var best: Node = null
+	var best = null
 	var best_d := attack_range
 
 	for enemy in enemies:
 		if not is_instance_valid(enemy) or not enemy.is_alive():
 			continue
-		var d := position.distance_to(enemy.position)
+		var d = position.distance_to(enemy.position)
 		if d <= best_d:
 			best_d = d
 			best = enemy

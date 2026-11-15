@@ -1,11 +1,11 @@
-class_name EconomyController
+class_name Shop
 extends RefCounted
 
-# crafting, upgrades, trap placement checks, and day-start snapshots
+# upgrades, trap placement checks, and saving/reloading the start of a day
 
 
 func compute_ring_stats(fences: Array[Structure]) -> Dictionary:
-	var stats: Dictionary = {}
+	var stats = {}
 	for r in [1, 2, 3]:
 		stats[r] = {
 			"built": false,
@@ -16,7 +16,7 @@ func compute_ring_stats(fences: Array[Structure]) -> Dictionary:
 			"repair_planks": 0,
 		}
 	for f in fences:
-		var d: Dictionary = stats[f.ring] as Dictionary
+		var d = stats[f.ring]
 		if f.is_built:
 			d["built"] = true
 			d["level"] = maxi(int(d["level"]), f.level)
@@ -25,9 +25,9 @@ func compute_ring_stats(fences: Array[Structure]) -> Dictionary:
 			d["hp"] = int(d["hp"]) + f.hp
 			d["max_hp"] = int(d["max_hp"]) + f.max_hp
 	for r in [1, 2, 3]:
-		var d: Dictionary = stats[r] as Dictionary
+		var d = stats[r]
 		if bool(d["built"]):
-			var missing: int = int(d["max_hp"]) - int(d["hp"])
+			var missing = int(d["max_hp"]) - int(d["hp"])
 			if missing > 0:
 				d["repair_planks"] = clampi(ceili(float(missing) / 16.0), 1, 10)
 	return stats
@@ -36,9 +36,9 @@ func compute_ring_stats(fences: Array[Structure]) -> Dictionary:
 # returns { sfx, message, achievement, spawn_watchtower } for whichever upgrade button was clicked
 func execute_action(
 	action_id: String,
-	payload: Dictionary,
-	bag: Inventory,
-	stockpile: Inventory,
+	data: Dictionary,
+	bag: Bag,
+	stockpile: Bag,
 	house: Structure,
 	fences: Array[Structure],
 	player: Player,
@@ -46,12 +46,12 @@ func execute_action(
 	act: int,
 	watchtower_count: int
 ) -> Dictionary:
-	var res: Dictionary = {"sfx": "", "message": "", "achievement": "", "spawn_watchtower": false}
-	var cost: Dictionary = payload.get("cost", {}) as Dictionary
+	var res = {"sfx": "", "message": "", "achievement": "", "spawn_watchtower": false}
+	var cost = data.get("cost", {})
 
 	match action_id:
 		"house_rebuild":
-			var rb_cost: Dictionary = (
+			var rb_cost = (
 				Config.COST_HOUSE_REBUILD_ACT1 if act == 1 else Config.COST_HOUSE_REBUILD
 			)
 			if bag.spend(rb_cost, stockpile):
@@ -65,7 +65,7 @@ func execute_action(
 				res["message"] = "House repaired to full HP."
 		"house_upgrade":
 			if bag.spend(cost, stockpile):
-				var lv: int = int(payload["level"])
+				var lv = int(data["level"])
 				house.set_level(lv, true)
 				res["sfx"] = "upgrade"
 				res["message"] = "House upgraded to Level %d!" % lv
@@ -73,7 +73,7 @@ func execute_action(
 					res["achievement"] = "house_level_3"
 		"unlock_fence_layer":
 			if bag.spend(cost, stockpile):
-				var r_unlock: int = int(payload["ring"])
+				var r_unlock = int(data["ring"])
 				for f in fences:
 					if f.ring == r_unlock and not f.is_built:
 						f.build_from_foundation()
@@ -81,7 +81,7 @@ func execute_action(
 				res["message"] = "Fence Layer %d unlocked & built (with gate)!" % r_unlock
 		"upgrade_gear":
 			if bag.spend(cost, stockpile):
-				var next_tier: int = int(payload["tier"])
+				var next_tier = int(data["tier"])
 				upgrades["gear_tier"] = next_tier
 				player.apply_upgrade_stats(upgrades)
 				player.mag = player.mag_max
@@ -89,7 +89,7 @@ func execute_action(
 				res["message"] = "Weapons & Gear upgraded to Tier %d!" % next_tier
 		"buy_arrows":
 			if bag.spend(cost, stockpile):
-				var space: int = maxi(0, player.reserve_max - bag.count("arrow"))
+				var space = maxi(0, player.reserve_max - bag.count("arrow"))
 				bag.add("arrow", mini(Config.BUY_ARROWS_AMOUNT, space))
 				res["sfx"] = "pickup"
 				res["message"] = "+%d Arrows added to quiver." % mini(Config.BUY_ARROWS_AMOUNT, space)
@@ -100,7 +100,7 @@ func execute_action(
 				res["message"] = "Watchtower constructed!"
 		"fence_repair_ring":
 			if bag.spend(cost, stockpile):
-				var r_rep: int = int(payload["ring"])
+				var r_rep = int(data["ring"])
 				for f in fences:
 					if f.ring == r_rep and f.is_built:
 						f.set_hp(f.max_hp)
@@ -108,8 +108,8 @@ func execute_action(
 				res["message"] = "Entire Fence Ring %d repaired!" % r_rep
 		"fence_upgrade_ring":
 			if bag.spend(cost, stockpile):
-				var r_u: int = int(payload["ring"])
-				var lv_all: int = int(payload["level"])
+				var r_u = int(data["ring"])
+				var lv_all = int(data["level"])
 				for f in fences:
 					if f.ring == r_u and f.is_built:
 						f.set_level(lv_all, true)
@@ -118,7 +118,7 @@ func execute_action(
 				res["achievement"] = "metal_fences" if lv_all >= 3 else "fence_upgraded"
 		"fence_spike_ring":
 			if bag.spend(cost, stockpile):
-				var r_sp: int = int(payload["ring"])
+				var r_sp = int(data["ring"])
 				for f in fences:
 					if f.ring == r_sp and f.is_built:
 						f.spiked = true
@@ -128,19 +128,19 @@ func execute_action(
 	return res
 
 
-func make_day_snapshot(
+func save_day(
 	act: int,
 	day: int,
 	player: Player,
-	bag: Inventory,
-	stockpile: Inventory,
+	bag: Bag,
+	stockpile: Bag,
 	upgrades: Dictionary,
 	house: Structure,
 	fences: Array[Structure]
 ) -> Dictionary:
 	var f_snaps: Array[Dictionary] = []
 	for f in fences:
-		f_snaps.append(f.to_snapshot())
+		f_snaps.append(f.save_state())
 	return {
 		"act": act,
 		"day": day,
@@ -148,30 +148,30 @@ func make_day_snapshot(
 		"bag": bag.to_dict(),
 		"stockpile": stockpile.to_dict(),
 		"upgrades": upgrades.duplicate(true),
-		"house": house.to_snapshot() if house != null else {},
+		"house": house.save_state() if house != null else {},
 		"fences": f_snaps,
 	}
 
 
-func apply_day_snapshot(
+func load_day(
 	snap: Dictionary,
-	bag: Inventory,
-	stockpile: Inventory,
+	bag: Bag,
+	stockpile: Bag,
 	player: Player,
 	house: Structure,
 	fences: Array[Structure]
 ) -> Dictionary:
-	bag.from_dict(snap["bag"] as Dictionary)
-	stockpile.from_dict(snap["stockpile"] as Dictionary)
-	var up: Dictionary = (snap["upgrades"] as Dictionary).duplicate(true)
+	bag.from_dict(snap["bag"])
+	stockpile.from_dict(snap["stockpile"])
+	var up = snap["upgrades"].duplicate(true)
 	player.reset_for_new_game(Config.HOUSE_DOOR)
 	player.hp = int(snap["hp"])
 	player.apply_upgrade_stats(up)
 	if house != null:
-		house.apply_snapshot(snap["house"] as Dictionary)
-	var f_snaps: Array = snap["fences"] as Array
+		house.load_state(snap["house"])
+	var f_snaps: Array = snap["fences"]
 	for i in range(mini(fences.size(), f_snaps.size())):
-		fences[i].apply_snapshot(f_snaps[i] as Dictionary)
+		fences[i].load_state(f_snaps[i])
 	return up
 
 
@@ -180,16 +180,16 @@ func step_piles_and_deposit(
 	tree: SceneTree,
 	player: Player,
 	house: Structure,
-	bag: Inventory,
-	stockpile: Inventory,
+	bag: Bag,
+	stockpile: Bag,
 	sfx: Sfx,
-	effects: WorldEffects
+	effects: Fx
 ) -> bool:
-	var picked_plank: bool = false
+	var picked_plank = false
 	if house != null and not house.is_fallen and bag.used_capacity() > 0:
 		if house.distance_from_point(player.position) <= 24.0 or player.inside_house:
-			var moved: Dictionary = bag.transfer_resources_to(stockpile)
-			var total_m: int = int(moved["plank"]) + int(moved["scrap"])
+			var moved = bag.transfer_resources_to(stockpile)
+			var total_m = int(moved["plank"]) + int(moved["scrap"])
 			if total_m > 0:
 				sfx.play("dropoff", -8.0)
 				effects.spawn_floating_text(
@@ -200,17 +200,17 @@ func step_piles_and_deposit(
 	for node in tree.get_nodes_in_group("piles"):
 		if not is_instance_valid(node) or not (node is Pile):
 			continue
-		var pile: Pile = node as Pile
-		var room: int = (
+		var pile = node
+		var room = (
 			player.reserve_max - bag.count("arrow")
 			if pile.item_type == "arrow"
 			else bag.remaining_capacity()
 		)
-		var taken: int = pile.try_pickup(player.position, room)
+		var taken = pile.try_pickup(player.position, room)
 		if taken > 0:
 			bag.add(pile.item_type, taken)
 			sfx.play("pickup", -8.0)
-			var lbl: String = "+%d %s" % [taken, pile.item_type.capitalize()]
+			var lbl = "+%d %s" % [taken, pile.item_type.capitalize()]
 			effects.spawn_floating_text(player.position, lbl, Color(1.0, 0.92, 0.56))
 			if pile.item_type == "plank":
 				picked_plank = true
@@ -221,8 +221,8 @@ func can_place_trap_at(
 	t_key: String,
 	place_pos: Vector2,
 	player: Player,
-	bag: Inventory,
-	stockpile: Inventory,
+	bag: Bag,
+	stockpile: Bag,
 	traps: Array,
 	structures: Array
 ) -> Dictionary:
@@ -231,13 +231,13 @@ func can_place_trap_at(
 	if traps.size() >= Config.MAX_TRAPS:
 		return {"ok": false, "reason": "Max %d traps reached!" % Config.MAX_TRAPS}
 	if bag.count(t_key) <= 0:
-		var cost: Dictionary = (Config.TRAPS[t_key] as Dictionary)["cost"] as Dictionary
+		var cost = (Config.TRAPS[t_key])["cost"]
 		if not bag.can_afford(cost, stockpile):
-			return {"ok": false, "reason": "Need %s." % Inventory.format_cost(cost)}
+			return {"ok": false, "reason": "Need %s." % Bag.format_cost(cost)}
 	for s in structures:
 		if not is_instance_valid(s) or not (s is Structure):
 			continue
-		var st: Structure = s as Structure
+		var st = s
 		if st.is_standing() and st.footprint_rect.grow(3.0).has_point(place_pos):
 			return {"ok": false, "reason": "Blocked by structure."}
 	for ex in traps:
@@ -250,17 +250,17 @@ func can_place_trap_at(
 func try_place_trap_at(
 	t_key: String, place_pos: Vector2, main_node: Node
 ) -> bool:
-	var player: Player = main_node.get("_player") as Player
-	var bag: Inventory = main_node.get("bag") as Inventory
-	var stockpile: Inventory = main_node.get("stockpile") as Inventory
-	var traps: Array = main_node.get("traps") as Array
-	var structures: Array = main_node.get("structures") as Array
-	var entities_layer: Node2D = main_node.get("_entities_layer") as Node2D
-	var hud: Hud = main_node.get("_hud") as Hud
-	var sfx: Sfx = main_node.get("_sfx") as Sfx
-	var effects: WorldEffects = main_node.get("_effects") as WorldEffects
+	var player = main_node.get("_player")
+	var bag = main_node.get("bag")
+	var stockpile = main_node.get("stockpile")
+	var traps: Array = main_node.get("traps")
+	var structures: Array = main_node.get("structures")
+	var entities_layer = main_node.get("_entities_layer")
+	var hud = main_node.get("_hud")
+	var sfx = main_node.get("_sfx")
+	var effects = main_node.get("_effects")
 
-	var check: Dictionary = can_place_trap_at(
+	var check = can_place_trap_at(
 		t_key, place_pos, player, bag, stockpile, traps, structures
 	)
 	if not bool(check["ok"]):
@@ -270,16 +270,16 @@ func try_place_trap_at(
 	if bag.count(t_key) > 0:
 		bag.remove(t_key, 1)
 	else:
-		var cost: Dictionary = (Config.TRAPS[t_key] as Dictionary)["cost"] as Dictionary
+		var cost = (Config.TRAPS[t_key])["cost"]
 		if not bag.spend(cost, stockpile):
 			return false
 
-	var trap: Trap = Trap.new()
+	var trap = Trap.new()
 	trap.setup(t_key, place_pos)
 	trap.triggered.connect(func(tr: Trap, en: Node) -> void:
 		sfx.play("trap_trigger", -7.0)
 		if is_instance_valid(en):
-			var ep: Vector2 = (en as Node2D).position
+			var ep = en.position
 			if tr.trap_type == "trap_snare":
 				effects.spawn_sparks(ep, Color(0.95, 0.85, 0.35, 1.0), 8)
 				effects.spawn_floating_text(ep, "SNARED!", Color(1.0, 0.88, 0.38))
@@ -290,16 +290,16 @@ func try_place_trap_at(
 	traps.append(trap)
 	sfx.play("fence_rebuilt", -8.0)
 	effects.spawn_sparks(place_pos, Color(0.86, 0.82, 0.64, 1.0), 5)
-	var t_label: String = String((Config.TRAPS[t_key] as Dictionary)["label"])
+	var t_label = String((Config.TRAPS[t_key])["label"])
 	effects.spawn_floating_text(place_pos, "%s Set!" % t_label, Color(0.62, 0.96, 0.68))
 	return true
 
 
 func compute_trap_place_pos(trap_mode_active: bool, main_node: Node) -> Vector2:
-	var player: Player = main_node.get("_player") as Player
+	var player = main_node.get("_player")
 	if trap_mode_active and DisplayServer.get_name() != "headless":
-		var mw: Vector2 = (main_node as Node2D).get_global_mouse_position()
-		var delta_v: Vector2 = mw - player.position
+		var mw = main_node.get_global_mouse_position()
+		var delta_v = mw - player.position
 		if delta_v.length() > Config.TRAP_PLACE_RANGE:
 			mw = player.position + delta_v.normalized() * Config.TRAP_PLACE_RANGE
 		return mw.round()
@@ -309,30 +309,30 @@ func compute_trap_place_pos(trap_mode_active: bool, main_node: Node) -> Vector2:
 func update_trap_preview(
 	trap_mode_active: bool, selected_idx: int, main_node: Node
 ) -> void:
-	var effects: WorldEffects = main_node.get("_effects") as WorldEffects
-	var player: Player = main_node.get("_player") as Player
-	var upgrade_ui: UpgradeUI = main_node.get("_upgrade_ui") as UpgradeUI
+	var effects = main_node.get("_effects")
+	var player = main_node.get("_player")
+	var upgrade_ui = main_node.get("_upgrade_ui")
 	if not trap_mode_active or upgrade_ui.is_open() or player.inside_house:
 		effects.set_trap_preview(false)
 		return
 	var keys: Array[String] = ["trap_spike", "trap_snare", "trap_lure"]
-	var t_key: String = keys[clampi(selected_idx - 1, 0, 2)]
-	var spec: Dictionary = Config.TRAPS[t_key] as Dictionary
-	var place_pos: Vector2 = compute_trap_place_pos(trap_mode_active, main_node)
-	var check: Dictionary = can_place_trap_at(
+	var t_key = keys[clampi(selected_idx - 1, 0, 2)]
+	var info = Config.TRAPS[t_key]
+	var place_pos = compute_trap_place_pos(trap_mode_active, main_node)
+	var check = can_place_trap_at(
 		t_key,
 		place_pos,
 		player,
-		main_node.get("bag") as Inventory,
-		main_node.get("stockpile") as Inventory,
-		main_node.get("traps") as Array,
-		main_node.get("structures") as Array
+		main_node.get("bag"),
+		main_node.get("stockpile"),
+		main_node.get("traps"),
+		main_node.get("structures")
 	)
 	effects.set_trap_preview(
 		true,
 		place_pos,
-		float(spec.get("radius", 13.0)),
-		float(spec.get("attract_radius", 0.0)),
+		float(info.get("radius", 13.0)),
+		float(info.get("attract_radius", 0.0)),
 		bool(check["ok"]),
 		t_key
 	)
@@ -340,18 +340,18 @@ func update_trap_preview(
 
 func grant_prop_loot(
 	prop: Dictionary,
-	world_builder: WorldBuilder,
+	world_builder: MapGen,
 	player: Player,
-	bag: Inventory,
-	stockpile: Inventory,
+	bag: Bag,
+	stockpile: Bag,
 	sfx: Sfx,
-	effects: WorldEffects
+	effects: Fx
 ) -> void:
 	world_builder.mark_prop_searched(int(prop["id"]))
-	var sg: int = int(prop["loot_scrap"])
-	var pg: int = int(prop["loot_plank"])
-	var sa: int = bag.add("scrap", sg)
-	var pa: int = bag.add("plank", pg)
+	var sg = int(prop["loot_scrap"])
+	var pg = int(prop["loot_plank"])
+	var sa = bag.add("scrap", sg)
+	var pa = bag.add("plank", pg)
 	if sa < sg:
 		stockpile.add("scrap", sg - sa)
 	if pa < pg:
@@ -365,7 +365,7 @@ func grant_prop_loot(
 
 
 func handle_settings_action(
-	action_id: String, settings: SettingsStore, upgrade_ui: UpgradeUI
+	action_id: String, settings: SaveData, upgrade_ui: Menus
 ) -> bool:
 	match action_id:
 		"show_controls":

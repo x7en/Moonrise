@@ -1,7 +1,5 @@
-class_name SettingsStore
+class_name SaveData
 extends RefCounted
-
-# saves settings and unlocked achievements to user://
 
 const SETTINGS_PATH := "user://settings.cfg"
 const ACHIEVEMENTS_PATH := "user://achievements.cfg"
@@ -98,7 +96,7 @@ func load_all() -> void:
 
 
 func save_settings() -> void:
-	var cfg: ConfigFile = ConfigFile.new()
+	var cfg = ConfigFile.new()
 	cfg.set_value("story", "intro_seen", intro_seen)
 	cfg.set_value("story", "play_intro", play_intro)
 	cfg.set_value("display", "fullscreen", fullscreen)
@@ -119,9 +117,9 @@ func apply_display_and_audio() -> void:
 	)
 	if DisplayServer.get_name() != "headless":
 		DisplayServer.window_set_mode(target_mode)
-	var bus_idx: int = AudioServer.get_bus_index("Master")
+	var bus_idx = AudioServer.get_bus_index("Master")
 	if bus_idx >= 0:
-		var clamped_vol: float = clampf(master_volume, 0.0, 1.0)
+		var clamped_vol = clampf(master_volume, 0.0, 1.0)
 		AudioServer.set_bus_volume_db(bus_idx, linear_to_db(maxf(0.0001, clamped_vol)))
 		AudioServer.set_bus_mute(bus_idx, clamped_vol <= 0.001)
 
@@ -139,7 +137,7 @@ func is_unlocked(ach_id: String) -> bool:
 
 
 func get_unlocked_count() -> int:
-	var total: int = 0
+	var total = 0
 	for key in ACHIEVEMENT_DEFS.keys():
 		if is_unlocked(String(key)):
 			total += 1
@@ -147,7 +145,7 @@ func get_unlocked_count() -> int:
 
 
 func _load_settings() -> void:
-	var cfg: ConfigFile = ConfigFile.new()
+	var cfg = ConfigFile.new()
 	if cfg.load(SETTINGS_PATH) != OK:
 		return
 	intro_seen = bool(cfg.get_value("story", "intro_seen", false))
@@ -159,16 +157,16 @@ func _load_settings() -> void:
 
 func _load_achievements() -> void:
 	unlocked.clear()
-	var cfg: ConfigFile = ConfigFile.new()
+	var cfg = ConfigFile.new()
 	if cfg.load(ACHIEVEMENTS_PATH) != OK:
 		return
 	for key in ACHIEVEMENT_DEFS.keys():
-		var k: String = String(key)
+		var k = String(key)
 		unlocked[k] = bool(cfg.get_value("unlocked", k, false))
 
 
 func _save_achievements() -> void:
-	var cfg: ConfigFile = ConfigFile.new()
+	var cfg = ConfigFile.new()
 	for key in unlocked.keys():
 		cfg.set_value("unlocked", String(key), bool(unlocked[key]))
 	cfg.save(ACHIEVEMENTS_PATH)

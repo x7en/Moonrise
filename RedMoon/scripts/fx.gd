@@ -1,7 +1,5 @@
-class_name WorldEffects
+class_name Fx
 extends Node2D
-
-# sparks, floating popups, shockwave rings, meteor shadows, trap ghost, and f8 hitboxes
 
 signal meteor_impacted(impact_pos: Vector2)
 
@@ -10,7 +8,7 @@ var _sparks: Array[Dictionary] = []
 var _rings: Array[Dictionary] = []
 var _meteors: Array[Dictionary] = []
 var _debug_structures: Array = []
-var _debug_player: Node2D = null
+var _debug_player: Node2D
 var _debug_enemies: Array = []
 var _trap_preview: Dictionary = {"active": false}
 
@@ -68,7 +66,7 @@ func spawn_floating_text(pos: Vector2, text: String, col: Color) -> void:
 	lbl.size = Vector2(72.0, 12.0)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.z_index = 20
-	SpriteFactory.style_label(lbl, "bold", 8, col)
+	Art.style_label(lbl, "bold", 8, col)
 	add_child(lbl)
 
 	var tw := create_tween()
@@ -105,8 +103,8 @@ func _process(delta: float) -> void:
 		if float(sp["life"]) <= 0.0:
 			_sparks.remove_at(i)
 		else:
-			sp["pos"] = (sp["pos"] as Vector2) + (sp["vel"] as Vector2) * delta
-			sp["vel"] = (sp["vel"] as Vector2) * 0.90
+			sp["pos"] = sp["pos"] + sp["vel"] * delta
+			sp["vel"] = sp["vel"] * 0.90
 		dirty = true
 		i -= 1
 
@@ -128,7 +126,7 @@ func _process(delta: float) -> void:
 		mt["timer"] = float(mt["timer"]) - delta
 		dirty = true
 		if float(mt["timer"]) <= 0.0:
-			var pos := mt["pos"] as Vector2
+			var pos = mt["pos"]
 			_meteors.remove_at(m_idx)
 			spawn_sparks(pos, Color(1.0, 0.48, 0.20, 1.0), 14)
 			spawn_ring(pos, Config.METEOR_RADIUS + 6.0, Color(1.0, 0.36, 0.18, 0.9))
@@ -142,32 +140,32 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	for sp in _sparks:
 		var a := clampf(float(sp["life"]) / float(sp["max_life"]), 0.0, 1.0)
-		var col := sp["col"] as Color
+		var col = sp["col"]
 		col.a *= a
-		draw_rect(Rect2((sp["pos"] as Vector2) - Vector2(1.0, 1.0), Vector2(2.0, 2.0)), col)
+		draw_rect(Rect2(sp["pos"] - Vector2(1.0, 1.0), Vector2(2.0, 2.0)), col)
 
 	for rg in _rings:
 		var a := clampf(float(rg["life"]) / float(rg["max_life"]), 0.0, 1.0)
-		var col := rg["col"] as Color
+		var col = rg["col"]
 		col.a *= a
-		draw_arc(rg["pos"] as Vector2, float(rg["r"]), 0.0, TAU, 28, col, 1.5)
+		draw_arc(rg["pos"], float(rg["r"]), 0.0, TAU, 28, col, 1.5)
 
 	for mt in _meteors:
-		var pos := mt["pos"] as Vector2
+		var pos = mt["pos"]
 		var t := 1.0 - clampf(float(mt["timer"]) / float(mt["total"]), 0.0, 1.0)
 		var shadow_r := lerpf(Config.METEOR_RADIUS * 1.15, 5.0, t)
 
 		draw_circle(pos, shadow_r, Color(0.10, 0.04, 0.08, 0.40 + t * 0.35))
 		draw_arc(pos, Config.METEOR_RADIUS, 0.0, TAU, 24, Color(1.0, 0.32, 0.22, 0.85), 1.0)
 
-		var rock_pos := pos + Vector2(-42.0, -96.0) * (1.0 - t)
+		var rock_pos = pos + Vector2(-42.0, -96.0) * (1.0 - t)
 		draw_line(
 			rock_pos + Vector2(-8.0, -18.0), rock_pos, Color(1.0, 0.52, 0.20, 0.85), 2.0
 		)
 		draw_circle(rock_pos, 3.0, Color(1.0, 0.88, 0.56, 1.0))
 
 	if bool(_trap_preview.get("active", false)):
-		var tp := _trap_preview["pos"] as Vector2
+		var tp = _trap_preview["pos"]
 		var ok := bool(_trap_preview["valid"])
 		var tint := Color(0.35, 0.96, 0.50, 0.72) if ok else Color(1.0, 0.28, 0.28, 0.72)
 		var extra_r := float(_trap_preview["extra_r"])
@@ -177,7 +175,7 @@ func _draw() -> void:
 		draw_circle(tp, float(_trap_preview["trigger_r"]), Color(tint.r, tint.g, tint.b, 0.18))
 		draw_arc(tp, float(_trap_preview["trigger_r"]), 0.0, TAU, 20, tint, 1.0)
 
-		var icon_tex := SpriteFactory.get_icon_texture(String(_trap_preview["icon_key"]))
+		var icon_tex := Art.get_icon_texture(String(_trap_preview["icon_key"]))
 		if icon_tex != null:
 			var sz := icon_tex.get_size()
 			draw_texture(icon_tex, tp - sz * 0.5, Color(tint.r, tint.g, tint.b, 0.85))
@@ -190,7 +188,7 @@ func _draw_debug_colliders() -> void:
 	for s in _debug_structures:
 		if not is_instance_valid(s) or not (s is Structure):
 			continue
-		var st := s as Structure
+		var st = s
 		var col := (
 			Color(0.25, 0.95, 0.45, 0.90) if st.is_standing() else Color(0.5, 0.5, 0.6, 0.35)
 		)
@@ -207,7 +205,7 @@ func _draw_debug_colliders() -> void:
 	for e in _debug_enemies:
 		if is_instance_valid(e) and e.is_alive():
 			draw_rect(
-				Rect2((e as Node2D).position + Vector2(-5.0, -10.0), Vector2(10.0, 10.0)),
+				Rect2(e.position + Vector2(-5.0, -10.0), Vector2(10.0, 10.0)),
 				Color(1.0, 0.30, 0.30, 0.95),
 				false,
 				1.0

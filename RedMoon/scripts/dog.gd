@@ -1,8 +1,6 @@
 class_name Dog
 extends CharacterBody2D
 
-# stray dog you can tame once the map opens up
-
 signal tamed(dog: Dog)
 signal attacked_enemy(enemy: Node)
 
@@ -14,7 +12,7 @@ var max_hp: int = 20
 var guard_anchor: Vector2 = Vector2.ZERO
 var tame_progress: float = 0.0
 
-var _sprite: AnimatedSprite2D = null
+var _sprite: AnimatedSprite2D
 var _attack_cd: float = 0.0
 var _facing: String = "down"
 
@@ -47,7 +45,7 @@ func setup(spawn_pos: Vector2) -> bool:
 	add_child(col)
 
 	var shadow := Sprite2D.new()
-	shadow.texture = SpriteFactory.get_blob_shadow(12, 5)
+	shadow.texture = Art.get_blob_shadow(12, 5)
 	shadow.position = Vector2(0.0, 1.0)
 	shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(shadow)
@@ -106,20 +104,20 @@ func step_dog(
 		_play_anim("idle")
 		return
 
-	var target_enemy: Node = null
+	var target_enemy = null
 	var origin := guard_anchor if mode == Mode.GUARD else player_pos
 	var best_d := Config.DOG_GUARD_RANGE
 
 	for enemy in enemies:
 		if not is_instance_valid(enemy) or not enemy.is_alive():
 			continue
-		var d := enemy.position.distance_to(origin)
+		var d = enemy.position.distance_to(origin)
 		if d < best_d:
 			best_d = d
 			target_enemy = enemy
 
 	if target_enemy != null:
-		var to_e: Vector2 = target_enemy.position - position
+		var to_e = target_enemy.position - position
 		if to_e.length() <= 14.0:
 			velocity = Vector2.ZERO
 			if _attack_cd <= 0.0:
@@ -172,7 +170,7 @@ func _load_dog_frames() -> SpriteFrames:
 			if not ResourceLoader.exists(full_path):
 				continue
 
-			var strip_tex := load(full_path) as Texture2D
+			var strip_tex = load(full_path)
 			if strip_tex == null:
 				continue
 

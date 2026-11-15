@@ -1,7 +1,7 @@
 class_name Enemy
 extends CharacterBody2D
 
-# zombie / raider / brute ai — walks to house, chews fences, chases player if provoked
+# zombie / raider / brute ai - walks to house, chews fences, chases player if provoked
 
 signal structure_damaged(structure: Node, damage: int, enemy: Enemy)
 signal player_damaged(damage: int, enemy: Enemy)
@@ -36,13 +36,13 @@ var state: State = State.WALK_TO_TARGET
 var facing: String = "down"
 
 var _base_tint: Color = Color.WHITE
-var _sprite: AnimatedSprite2D = null
-var _shadow: Sprite2D = null
-var _hp_holder: Node2D = null
-var _hp_fill: ColorRect = null
+var _sprite: AnimatedSprite2D
+var _shadow: Sprite2D
+var _hp_holder: Node2D
+var _hp_fill: ColorRect
 
-var _target_struct: Node = null
-var _target_lure: Node = null
+var _target_struct: Node
+var _target_lure: Node
 var _attack_timer: float = 0.0
 var _player_windup: float = 0.0
 var _player_cd: float = 0.0
@@ -61,8 +61,8 @@ var _wander_wait: float = 0.0
 var _was_bow_kill: bool = false
 
 
-func setup(p_type: String, spawn_pos: Vector2, day_wanderer: bool = false) -> void:
-	enemy_type = p_type
+func setup(kind: String, spawn_pos: Vector2, day_wanderer: bool = false) -> void:
+	enemy_type = kind
 	position = spawn_pos.round()
 	_last_pos = position
 	is_day_wanderer = day_wanderer
@@ -70,34 +70,34 @@ func setup(p_type: String, spawn_pos: Vector2, day_wanderer: bool = false) -> vo
 	_wander_target = position
 	_detour_sign = 1.0 if (randi() % 2 == 0) else -1.0
 
-	var spec: Dictionary = Config.ENEMY_TYPES.get(p_type, Config.ENEMY_TYPES["zombie"]) as Dictionary
-	hp = int(spec["hits"])
+	var info = Config.ENEMY_TYPES.get(kind, Config.ENEMY_TYPES["zombie"])
+	hp = int(info["hits"])
 	max_hp = hp
-	speed = float(spec["speed"])
-	struct_dmg = int(spec["struct_dmg"])
-	attack_interval = float(spec["attack_interval"])
-	player_dmg = int(spec["player_dmg"])
+	speed = float(info["speed"])
+	struct_dmg = int(info["struct_dmg"])
+	attack_interval = float(info["attack_interval"])
+	player_dmg = int(info["player_dmg"])
 	aggro_radius = (
-		Config.DAY_WANDERER_AGGRO if day_wanderer else float(spec["aggro_radius"])
+		Config.DAY_WANDERER_AGGRO if day_wanderer else float(info["aggro_radius"])
 	)
-	_base_tint = spec["tint"] as Color
+	_base_tint = info["tint"]
 	state = State.WANDER if day_wanderer else State.WALK_TO_TARGET
 
-	# Layer 3 = Enemies (bit 4); mask = Layer 1 Solids (1) | Layer 2 Player (2).
+	# layer 3 = enemies, collide with walls (1) and player (2)
 	collision_layer = 4
 	collision_mask = 1 | 2
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 	add_to_group("enemies")
 
-	var col: CollisionShape2D = CollisionShape2D.new()
-	var sh: RectangleShape2D = RectangleShape2D.new()
+	var col = CollisionShape2D.new()
+	var sh = RectangleShape2D.new()
 	sh.size = Vector2(10.0, 10.0)
 	col.shape = sh
 	col.position = Vector2(0.0, -5.0)
 	add_child(col)
 
 	_shadow = Sprite2D.new()
-	_shadow.texture = SpriteFactory.get_blob_shadow(12, 5)
+	_shadow.texture = Art.get_blob_shadow(12, 5)
 	_shadow.position = Vector2(0.0, 1.0)
 	_shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(_shadow)
@@ -105,8 +105,8 @@ func setup(p_type: String, spawn_pos: Vector2, day_wanderer: bool = false) -> vo
 	_sprite = AnimatedSprite2D.new()
 	_sprite.centered = false
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_sprite.sprite_frames = SpriteFactory.get_enemy_frames(enemy_type)
-	_sprite.offset = SpriteFactory.feet_offset_for_animated("enemies/%s/walk_down" % enemy_type)
+	_sprite.sprite_frames = Art.get_enemy_frames(enemy_type)
+	_sprite.offset = Art.feet_offset_for_animated("enemies/%s/walk_down" % enemy_type)
 	_sprite.modulate = _base_tint
 	_sprite.play(&"walk_down")
 	add_child(_sprite)
@@ -114,7 +114,7 @@ func setup(p_type: String, spawn_pos: Vector2, day_wanderer: bool = false) -> vo
 	_hp_holder = Node2D.new()
 	_hp_holder.position = Vector2(0.0, -21.0)
 	_hp_holder.visible = false
-	var bg: ColorRect = ColorRect.new()
+	var bg = ColorRect.new()
 	bg.position = Vector2(-7.0, 0.0)
 	bg.size = Vector2(14.0, 3.0)
 	bg.color = Color(0.08, 0.06, 0.10, 0.88)
@@ -177,7 +177,7 @@ func take_hit(dmg: int, push_dir: Vector2, from_bow: bool = false) -> bool:
 		return true
 
 	if push_dir.length_squared() > 0.001:
-		var kb_dist: float = Config.KNOCKBACK * (0.45 if from_bow else 1.0)
+		var kb_dist = Config.KNOCKBACK * (0.45 if from_bow else 1.0)
 		_kb_vel = push_dir.normalized() * (kb_dist / 0.16)
 		_kb_timer = 0.16
 		state = State.KNOCKBACK
@@ -233,10 +233,10 @@ func step_enemy(
 			state = State.WANDER if is_day_wanderer else State.WALK_TO_TARGET
 		return
 
-	# Check player aggro while player is outside.
-	var dist_player: float = position.distance_to(player_pos)
+	# aggro on player if they wander too close while outside
+	var dist_player = position.distance_to(player_pos)
 	if not player_inside:
-		var trigger_aggro: bool = (
+		var trigger_aggro = (
 			state != State.CHASE_PLAYER
 			and state != State.ATTACK_PLAYER
 			and dist_player <= aggro_radius
@@ -288,13 +288,13 @@ func _step_wander(delta: float, world_bounds: Rect2) -> void:
 		_wander_wait -= delta
 		velocity = Vector2.ZERO
 		return
-	var to_t: Vector2 = _wander_target - position
+	var to_t = _wander_target - position
 	if to_t.length() <= 6.0:
 		_wander_wait = randf_range(0.9, 2.2)
-		var ang: float = randf_range(0.0, TAU)
+		var ang = randf_range(0.0, TAU)
 		_wander_target = wander_home + Vector2(cos(ang), sin(ang)) * randf_range(18.0, 56.0)
 		return
-	var dir: Vector2 = to_t.normalized()
+	var dir = to_t.normalized()
 	_move_solid(dir * (speed * 0.55), [], world_bounds)
 	_play_walk(dir)
 
@@ -309,8 +309,8 @@ func _step_chase_player(
 	if player_inside:
 		state = State.WANDER if is_day_wanderer else State.WALK_TO_TARGET
 		return
-	var to_p: Vector2 = player_pos - position
-	var dist: float = to_p.length()
+	var to_p = player_pos - position
+	var dist = to_p.length()
 	if dist > Config.ENEMY_LEASH_RADIUS:
 		_leash_timer += delta
 		if _leash_timer >= Config.ENEMY_LEASH_TIME:
@@ -327,7 +327,7 @@ func _step_chase_player(
 		_play_attack(facing)
 		return
 
-	var dir: Vector2 = to_p.normalized() if dist > 0.1 else Vector2.DOWN
+	var dir = to_p.normalized() if dist > 0.1 else Vector2.DOWN
 	_move_solid(dir * speed, all_enemies, world_bounds)
 	_play_walk(dir)
 
@@ -359,12 +359,12 @@ func _step_attack_structure(delta: float) -> void:
 			_target_lure.take_lure_damage(struct_dmg)
 		return
 
-	var still_blocks: bool = false
+	var still_blocks = false
 	if is_instance_valid(_target_struct):
 		if _target_struct is Structure:
-			still_blocks = (_target_struct as Structure).is_blocking()
+			still_blocks = _target_struct.is_blocking()
 		elif _target_struct is Watchtower:
-			still_blocks = (_target_struct as Watchtower).is_standing()
+			still_blocks = _target_struct.is_standing()
 	if not still_blocks:
 		_target_struct = null
 		state = State.WALK_TO_TARGET
@@ -375,7 +375,7 @@ func _step_attack_structure(delta: float) -> void:
 		_attack_timer = attack_interval
 		_play_attack(facing)
 		structure_damaged.emit(_target_struct, struct_dmg, self)
-		if _target_struct is Structure and (_target_struct as Structure).spiked:
+		if _target_struct is Structure and _target_struct.spiked:
 			take_hit(1, Vector2.ZERO, false)
 
 
@@ -416,20 +416,20 @@ func _step_walk_to_target(
 			return
 
 	# if already pressed up against a fence or tower, stop and chew it
-	var blocker: Node = _find_adjacent_blocker(structures, watchtowers)
+	var blocker = _find_adjacent_blocker(structures, watchtowers)
 	if blocker != null:
 		_target_struct = blocker
 		_target_lure = null
 		_attack_timer = 0.35
-		var t_pos: Vector2 = (
-			blocker.target_center if blocker is Structure else (blocker as Node2D).position
+		var t_pos = (
+			blocker.target_center if blocker is Structure else blocker.position
 		)
 		facing = _vec_to_dir(t_pos - position)
 		state = State.ATTACK_STRUCTURE
 		return
 
 	# head for open door, otherwise house, otherwise player if house is gone
-	var goal: Vector2 = Config.HOUSE_CENTER
+	var goal = Config.HOUSE_CENTER
 	if house != null and house.is_standing():
 		if house.is_door_open() and position.distance_to(Config.HOUSE_DOOR_STEP) < 110.0:
 			goal = Config.HOUSE_DOOR_STEP
@@ -438,11 +438,11 @@ func _step_walk_to_target(
 	elif not player_inside:
 		goal = player_pos
 
-	var to_goal: Vector2 = goal - position
-	var desired_dir: Vector2 = to_goal.normalized() if to_goal.length() > 1.0 else Vector2.DOWN
+	var to_goal = goal - position
+	var desired_dir = to_goal.normalized() if to_goal.length() > 1.0 else Vector2.DOWN
 
 	# simple stuck check: if barely moving, either chew a nearby fence or sidestep around a tree
-	var moved_px: float = position.distance_to(_last_pos)
+	var moved_px = position.distance_to(_last_pos)
 	if moved_px < 4.0 * delta:
 		_stuck_timer += delta
 	else:
@@ -450,7 +450,7 @@ func _step_walk_to_target(
 	_last_pos = position
 
 	if _stuck_timer > 0.7:
-		var near_b: Node = _find_adjacent_blocker(structures, watchtowers, 20.0)
+		var near_b = _find_adjacent_blocker(structures, watchtowers, 20.0)
 		if near_b != null:
 			_target_struct = near_b
 			_attack_timer = 0.30
@@ -468,15 +468,15 @@ func _step_walk_to_target(
 func _move_solid(move_vel: Vector2, all_enemies: Array, world_bounds: Rect2) -> void:
 	# gentle push away from nearby zombies so they dont stack into one ugly blob
 	var sep := Vector2.ZERO
-	var sep_r: float = Config.ENEMY_SEPARATION_RADIUS
-	var sep_r_sq: float = sep_r * sep_r
+	var sep_r = Config.ENEMY_SEPARATION_RADIUS
+	var sep_r_sq = sep_r * sep_r
 	for other in all_enemies:
 		if other == self or not is_instance_valid(other) or not other.is_alive():
 			continue
-		var diff: Vector2 = position - (other as Node2D).position
-		var d_sq: float = diff.length_squared()
+		var diff = position - other.position
+		var d_sq = diff.length_squared()
 		if d_sq > 0.01 and d_sq < sep_r_sq:
-			var d: float = sqrt(d_sq)
+			var d = sqrt(d_sq)
 			sep += (diff / d) * ((sep_r - d) / sep_r) * 34.0
 	velocity = move_vel + sep
 	move_and_slide()
@@ -489,15 +489,15 @@ func _clamp_to_bounds(world_bounds: Rect2) -> void:
 
 
 func _find_lure(traps: Array) -> Trap:
-	var best: Trap = null
-	var best_d: float = 999999.0
+	var best = null
+	var best_d = 999999.0
 	for t in traps:
 		if not is_instance_valid(t) or not (t is Trap):
 			continue
-		var trap_node: Trap = t as Trap
+		var trap_node = t
 		if trap_node.trap_type != "trap_lure" or not trap_node.is_active():
 			continue
-		var d: float = position.distance_to(trap_node.position)
+		var d = position.distance_to(trap_node.position)
 		if d <= trap_node.attract_radius and d < best_d:
 			best_d = d
 			best = trap_node
@@ -509,26 +509,26 @@ func _find_adjacent_blocker(
 	watchtowers: Array,
 	extra_reach: float = 0.0
 ) -> Node:
-	var best: Node = null
-	var best_d: float = 999999.0
+	var best = null
+	var best_d = 999999.0
 	for s in structures:
 		if not is_instance_valid(s) or not (s is Structure):
 			continue
-		var st: Structure = s as Structure
+		var st = s
 		if not st.is_blocking():
 			continue
-		var d: float = st.distance_from_point(position)
-		var limit: float = (11.0 if st.kind == Structure.Kind.HOUSE else 12.0) + extra_reach
+		var d = st.distance_from_point(position)
+		var limit = (11.0 if st.kind == Structure.Kind.HOUSE else 12.0) + extra_reach
 		if d <= limit and d < best_d:
 			best_d = d
 			best = st
 	for wt in watchtowers:
 		if not is_instance_valid(wt) or not (wt is Watchtower):
 			continue
-		var tower: Watchtower = wt as Watchtower
+		var tower = wt
 		if not tower.is_standing():
 			continue
-		var d_wt: float = position.distance_to(tower.position)
+		var d_wt = position.distance_to(tower.position)
 		if d_wt <= 18.0 + extra_reach and d_wt < best_d:
 			best_d = d_wt
 			best = tower
@@ -542,10 +542,10 @@ func _enter_dying() -> void:
 	collision_mask = 0
 	if _hp_holder != null:
 		_hp_holder.visible = false
-	var anim: String = "death_left" if facing == "left" else "death_right"
+	var anim = "death_left" if facing == "left" else "death_right"
 	if _sprite != null:
 		_sprite.modulate = _base_tint
-		_sprite.offset = SpriteFactory.feet_offset_for_animated(
+		_sprite.offset = Art.feet_offset_for_animated(
 			"enemies/%s/%s" % [enemy_type, anim]
 		)
 		_sprite.play(anim)
@@ -565,18 +565,18 @@ func _step_death_or_dissolve(delta: float) -> void:
 
 func _play_walk(dir: Vector2) -> void:
 	facing = _vec_to_dir(dir)
-	var anim: String = "walk_" + facing
+	var anim = "walk_" + facing
 	if _sprite != null and (_sprite.animation != anim or not _sprite.is_playing()):
-		_sprite.offset = SpriteFactory.feet_offset_for_animated(
+		_sprite.offset = Art.feet_offset_for_animated(
 			"enemies/%s/%s" % [enemy_type, anim]
 		)
 		_sprite.play(anim)
 
 
 func _play_attack(dir_name: String) -> void:
-	var anim: String = "attack_" + dir_name
+	var anim = "attack_" + dir_name
 	if _sprite != null:
-		_sprite.offset = SpriteFactory.feet_offset_for_animated(
+		_sprite.offset = Art.feet_offset_for_animated(
 			"enemies/%s/%s" % [enemy_type, anim]
 		)
 		_sprite.play(anim)

@@ -123,7 +123,7 @@ const INTRUDER_HOUSE_DPS := 3.0
 const INTRUDER_PLAYER_DMG := 10
 const INTRUDER_PLAYER_INTERVAL := 1.2
 
-# ring 1 starts built, rings 2 & 3 unlock later — bumped ring 1 size up to fit the 160x120 cottage
+# ring 1 starts built, rings 2 & 3 unlock later - bumped ring 1 size up to fit the 160x120 cottage
 const FENCE_GATE_WIDTH := 30.0
 const FENCE_RINGS := [
 	{"ring": 1, "half_extents": Vector2(114.0, 78.0), "gate_offset_x": 0.0, "built_at_start": true},
@@ -253,7 +253,7 @@ const METEOR_PLAYER_DMG := 15
 const METEOR_STRUCT_DMG := 20
 
 
-# ambient light colors
+# day/night tint colors
 const TINT_DAY := Color(1.0, 1.0, 1.0)
 const TINT_DUSK := Color(0.86, 0.67, 0.59)
 const TINT_NIGHT := Color(0.24, 0.28, 0.52)

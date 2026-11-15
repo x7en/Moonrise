@@ -34,36 +34,36 @@ var footprint_rect: Rect2 = Rect2()
 var visual_rect: Rect2 = Rect2()
 var segment_length: float = 48.0
 
-var _house_sprite: Sprite2D = null
-var _damage_overlay: Sprite2D = null
-var _cracks_overlay: Node2D = null
-var _cast_shadow: Polygon2D = null
-var _chimney_smoke: CPUParticles2D = null
-var _damage_smoke: CPUParticles2D = null
-var _damage_flames: CPUParticles2D = null
+var _house_sprite: Sprite2D
+var _damage_overlay: Sprite2D
+var _cracks_overlay: Node2D
+var _cast_shadow: Polygon2D
+var _chimney_smoke: CPUParticles2D
+var _damage_smoke: CPUParticles2D
+var _damage_flames: CPUParticles2D
 var _window_lights: Array[PointLight2D] = []
 var _occluder: LightOccluder2D = null
-var _rubble_node: Node2D = null
-var _intruder_marks: Node2D = null
+var _rubble_node: Node2D
+var _intruder_marks: Node2D
 
 var _fence_sprites: Array[Sprite2D] = []
-var _gate_closed_node: Node2D = null
-var _gate_open_node: Node2D = null
+var _gate_closed_node: Node2D
+var _gate_open_node: Node2D
 var _gate_closed_sprites: Array[Sprite2D] = []
 var _gate_open_sprites: Array[Sprite2D] = []
-var _ghost_rect: ColorRect = null
-var _spike_bar: Node2D = null
-var _ruin_node: Node2D = null
-var _hover_outline: Line2D = null
+var _ghost_rect: ColorRect
+var _spike_bar: Node2D
+var _ruin_node: Node2D
+var _hover_outline: Line2D
 
-var _body: StaticBody2D = null
-var _collider: CollisionShape2D = null
-var _door_body: StaticBody2D = null
-var _door_collider: CollisionShape2D = null
+var _body: StaticBody2D
+var _collider: CollisionShape2D
+var _door_body: StaticBody2D
+var _door_collider: CollisionShape2D
 
-var _hp_bar_holder: Node2D = null
-var _hp_bar_fill: ColorRect = null
-var _hp_bar_label: Label = null
+var _hp_bar_holder: Node2D
+var _hp_bar_fill: ColorRect
+var _hp_bar_label: Label
 var _house_bar_fade_timer: float = 0.0
 
 var _flash_timer: float = 0.0
@@ -95,18 +95,18 @@ func setup_house(decals_layer: Node2D) -> void:
 	_build_house_nodes(decals_layer)
 
 
-func setup_fence_segment(idx: int, seg_spec: Dictionary, decals_layer: Node2D) -> void:
-	is_gate = bool(seg_spec.get("is_gate", false))
+func setup_fence_segment(idx: int, seg: Dictionary, decals_layer: Node2D) -> void:
+	is_gate = bool(seg.get("is_gate", false))
 	name = (
-		"FenceGate_R%d" % int(seg_spec["ring"])
+		"FenceGate_R%d" % int(seg["ring"])
 		if is_gate
-		else "Fence_R%d_%d" % [int(seg_spec["ring"]), idx]
+		else "Fence_R%d_%d" % [int(seg["ring"]), idx]
 	)
 	kind = Kind.FENCE
-	ring = int(seg_spec["ring"])
+	ring = int(seg["ring"])
 	slot_index = idx
-	is_horizontal = bool(seg_spec["horizontal"])
-	is_built = bool(seg_spec["built"])
+	is_horizontal = bool(seg["horizontal"])
+	is_built = bool(seg["built"])
 	gate_open = false
 	level = 1
 	spiked = false
@@ -115,7 +115,7 @@ func setup_fence_segment(idx: int, seg_spec: Dictionary, decals_layer: Node2D) -
 	reach = Config.FENCE_REACH
 	active_in_game = true
 
-	var seg_rect: Rect2 = seg_spec["rect"] as Rect2
+	var seg_rect = seg["rect"]
 	footprint_rect = seg_rect
 	visual_rect = seg_rect.grow(3.0)
 	target_center = seg_rect.get_center()
@@ -180,13 +180,13 @@ func is_door_open() -> bool:
 
 
 func distance_from_point(world_point: Vector2) -> float:
-	var cx: float = clampf(world_point.x, footprint_rect.position.x, footprint_rect.end.x)
-	var cy: float = clampf(world_point.y, footprint_rect.position.y, footprint_rect.end.y)
+	var cx = clampf(world_point.x, footprint_rect.position.x, footprint_rect.end.x)
+	var cy = clampf(world_point.y, footprint_rect.position.y, footprint_rect.end.y)
 	return world_point.distance_to(Vector2(cx, cy))
 
 
 func is_within_attack_reach(enemy_pos: Vector2) -> bool:
-	var margin: float = 11.0 if kind == Kind.HOUSE else 12.0
+	var margin = 11.0 if kind == Kind.HOUSE else 12.0
 	return distance_from_point(enemy_pos) <= margin
 
 
@@ -236,7 +236,7 @@ func build_from_foundation() -> void:
 func heal(amount: int) -> int:
 	if amount <= 0 or hp >= max_hp or not is_built or is_fallen:
 		return 0
-	var before: int = hp
+	var before = hp
 	hp = mini(max_hp, hp + amount)
 	if kind == Kind.HOUSE:
 		_house_bar_fade_timer = 4.0
@@ -341,7 +341,7 @@ func update_lighting(is_night: bool, is_dusk: bool, is_blood: bool, intruder_cou
 			_cast_shadow.scale = Vector2(1.0, 1.0)
 			_cast_shadow.color = Color(0.08, 0.06, 0.12, 0.34)
 	for i in range(_window_lights.size()):
-		var light: PointLight2D = _window_lights[i]
+		var light = _window_lights[i]
 		light.visible = (is_night or is_dusk) and not is_fallen
 		if is_blood:
 			light.color = Color(1.0, 0.56, 0.34, 1.0)
@@ -359,13 +359,13 @@ func get_tooltip_text() -> String:
 	if not is_built:
 		return ""
 	if is_gate:
-		var g_state: String = "OPEN" if gate_open else "CLOSED"
+		var g_state = "OPEN" if gate_open else "CLOSED"
 		return "Ring %d Gate [%s] - %d/%d HP (Lv %d)" % [ring, g_state, hp, max_hp, level]
-	var spk: String = " [Spiked]" if spiked else ""
+	var spk = " [Spiked]" if spiked else ""
 	return "Fence Ring %d (Lv %d) - %d/%d HP%s" % [ring, level, hp, max_hp, spk]
 
 
-func to_snapshot() -> Dictionary:
+func save_state() -> Dictionary:
 	return {
 		"hp": hp,
 		"max_hp": max_hp,
@@ -379,7 +379,7 @@ func to_snapshot() -> Dictionary:
 	}
 
 
-func apply_snapshot(snap: Dictionary) -> void:
+func load_state(snap: Dictionary) -> void:
 	level = int(snap.get("level", 1))
 	is_built = bool(snap.get("is_built", true))
 	gate_open = bool(snap.get("gate_open", false))
@@ -406,13 +406,13 @@ func refresh_visuals() -> void:
 
 
 func _refresh_house_visuals() -> void:
-	var standing: bool = not is_fallen
+	var standing = not is_fallen
 	if _house_sprite != null:
 		_house_sprite.visible = standing
-		_house_sprite.texture = SpriteFactory.get_shaded_house_texture(level, is_door_open())
+		_house_sprite.texture = Art.get_shaded_house_texture(level, is_door_open())
 	if _damage_overlay != null:
 		_damage_overlay.visible = standing
-		var dmg_ratio: float = 1.0 - (float(hp) / float(maxi(1, max_hp)))
+		var dmg_ratio = 1.0 - (float(hp) / float(maxi(1, max_hp)))
 		_damage_overlay.modulate.a = clampf(dmg_ratio * 0.36, 0.0, 0.36)
 	if _rubble_node != null:
 		_rubble_node.visible = is_fallen
@@ -421,7 +421,7 @@ func _refresh_house_visuals() -> void:
 	if _collider != null and not _is_crumbling:
 		_collider.set_deferred("disabled", is_fallen)
 
-	var frac: float = float(hp) / float(maxi(1, max_hp))
+	var frac = float(hp) / float(maxi(1, max_hp))
 	if _cracks_overlay != null:
 		_cracks_overlay.visible = standing and frac <= 0.75
 	if _chimney_smoke != null:
@@ -448,8 +448,8 @@ func _refresh_house_visuals() -> void:
 func _refresh_fence_visuals() -> void:
 	# hide rings 2 & 3 until you pay to build them
 	visible = is_built
-	var standing: bool = is_built and hp > 0
-	var blocking: bool = standing and not (is_gate and gate_open)
+	var standing = is_built and hp > 0
+	var blocking = standing and not (is_gate and gate_open)
 	if _collider != null:
 		_collider.set_deferred("disabled", not blocking)
 
@@ -461,12 +461,12 @@ func _refresh_fence_visuals() -> void:
 		if _gate_closed_node != null:
 			_gate_closed_node.visible = standing and not gate_open
 			for gs in _gate_closed_sprites:
-				gs.texture = SpriteFactory.tex("fences/%s/gate_h" % folder)
+				gs.texture = Art.tex("fences/%s/gate_h" % folder)
 				gs.modulate = lv_tint
 		if _gate_open_node != null:
 			_gate_open_node.visible = standing and gate_open
 			for os in _gate_open_sprites:
-				os.texture = SpriteFactory.tex("fences/%s/gate_v" % folder)
+				os.texture = Art.tex("fences/%s/gate_v" % folder)
 				os.modulate = lv_tint
 	else:
 		var orient := "h" if is_horizontal else "v"
@@ -474,7 +474,7 @@ func _refresh_fence_visuals() -> void:
 		for spr in _fence_sprites:
 			spr.visible = standing
 			if standing:
-				spr.texture = SpriteFactory.tex(tex_key)
+				spr.texture = Art.tex(tex_key)
 				spr.modulate = lv_tint
 
 	if _ghost_rect != null:
@@ -485,10 +485,10 @@ func _refresh_fence_visuals() -> void:
 		_spike_bar.visible = blocking and spiked
 
 	if _hp_bar_holder != null and _hp_bar_fill != null:
-		var show_bar: bool = standing and hp < max_hp
+		var show_bar = standing and hp < max_hp
 		_hp_bar_holder.visible = show_bar
 		if show_bar:
-			var frac: float = float(hp) / float(maxi(1, max_hp))
+			var frac = float(hp) / float(maxi(1, max_hp))
 			_hp_bar_fill.size.x = maxf(1.0, floorf(22.0 * frac))
 			if frac > 0.6:
 				_hp_bar_fill.color = Color(0.42, 0.86, 0.45, 1.0)
@@ -500,9 +500,9 @@ func _refresh_fence_visuals() -> void:
 
 func _step_crumble(delta: float) -> void:
 	_crumble_timer -= delta
-	var progress: float = 1.0 - clampf(_crumble_timer / 3.0, 0.0, 1.0)
+	var progress = 1.0 - clampf(_crumble_timer / 3.0, 0.0, 1.0)
 	if _house_sprite != null:
-		var shake_x: float = sin(progress * 90.0) * (1.0 - progress) * 4.0
+		var shake_x = sin(progress * 90.0) * (1.0 - progress) * 4.0
 		_house_sprite.position = Vector2(shake_x, progress * 16.0)
 		_house_sprite.scale = Vector2(1.0, maxf(0.15, 1.0 - progress * 0.85))
 		_house_sprite.modulate.a = clampf(1.0 - progress * 0.9, 0.1, 1.0)
@@ -519,14 +519,14 @@ func _step_crumble(delta: float) -> void:
 
 func _sync_door_collider() -> void:
 	if _door_collider != null:
-		var passable: bool = is_door_open() or is_fallen
+		var passable = is_door_open() or is_fallen
 		_door_collider.set_deferred("disabled", passable)
 
 
 func _build_house_nodes(decals_layer: Node2D) -> void:
-	var base_tex: Texture2D = SpriteFactory.get_shaded_house_texture(1, false)
-	var hw: float = float(base_tex.get_width()) * 0.5
-	var hh: float = float(base_tex.get_height())
+	var base_tex = Art.get_shaded_house_texture(1, false)
+	var hw = float(base_tex.get_width()) * 0.5
+	var hh = float(base_tex.get_height())
 
 	# fake angled drop shadow under the cottage
 	_cast_shadow = Polygon2D.new()
@@ -546,7 +546,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	add_child(_house_sprite)
 
 	_damage_overlay = Sprite2D.new()
-	_damage_overlay.texture = SpriteFactory.get_tinted_silhouette(
+	_damage_overlay.texture = Art.get_tinted_silhouette(
 		"house/lv1", Color(0.55, 0.0, 0.0, 1.0)
 	)
 	_damage_overlay.centered = false
@@ -562,7 +562,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 		[Vector2(-32.0, -34.0), Vector2(-26.0, -24.0), Vector2(-29.0, -14.0)],
 		[Vector2(24.0, -34.0), Vector2(30.0, -24.0), Vector2(26.0, -14.0)],
 	]:
-		var ln: Line2D = Line2D.new()
+		var ln = Line2D.new()
 		ln.width = 1.5
 		ln.default_color = Color(0.14, 0.10, 0.14, 0.9)
 		ln.points = PackedVector2Array(crack_pts)
@@ -573,14 +573,14 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_intruder_marks = Node2D.new()
 	_intruder_marks.visible = false
 	for pos in [Vector2(-34.0, -32.0), Vector2(28.0, -32.0), Vector2(-3.0, -62.0)]:
-		var sil: ColorRect = ColorRect.new()
-		sil.position = pos as Vector2
+		var sil = ColorRect.new()
+		sil.position = pos
 		sil.size = Vector2(7.0, 7.0)
 		sil.color = Color(0.88, 0.16, 0.16, 0.85)
 		_intruder_marks.add_child(sil)
 	add_child(_intruder_marks)
 
-	# chimney smoke — eyeballed these coords onto the right brick chimney
+	# chimney smoke - eyeballed these coords onto the right brick chimney
 	_chimney_smoke = _make_particles(Vector2(32.0, -109.0), Color(0.78, 0.80, 0.86, 0.55), 6, 1.8)
 	add_child(_chimney_smoke)
 	_damage_smoke = _make_particles(Vector2(0.0, -84.0), Color(0.28, 0.26, 0.30, 0.75), 10, 1.5)
@@ -592,18 +592,18 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 
 	# warm window glow + porch light at night
 	_window_lights.clear()
-	var light_tex: GradientTexture2D = SpriteFactory.get_radial_light_texture(128)
-	for spec in [
+	var light_tex = Art.get_radial_light_texture(128)
+	for info in [
 		{"pos": Vector2(-31.0, -29.0), "scale": 0.90, "energy": 0.72},
 		{"pos": Vector2(31.0, -29.0), "scale": 0.90, "energy": 0.72},
 		{"pos": Vector2(0.0, -58.0), "scale": 0.85, "energy": 0.65},
 		{"pos": Vector2(0.0, -12.0), "scale": 2.3, "energy": 0.54},
 	]:
-		var pl: PointLight2D = PointLight2D.new()
+		var pl = PointLight2D.new()
 		pl.texture = light_tex
-		pl.position = spec["pos"] as Vector2
-		pl.texture_scale = float(spec["scale"])
-		pl.energy = float(spec["energy"])
+		pl.position = info["pos"]
+		pl.texture_scale = float(info["scale"])
+		pl.energy = float(info["energy"])
 		pl.color = Color(1.0, 0.76, 0.38, 1.0)
 		pl.shadow_enabled = true
 		pl.visible = false
@@ -624,7 +624,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_body.collision_layer = 1
 	_body.collision_mask = 0
 	_collider = CollisionShape2D.new()
-	var rect_shape: RectangleShape2D = RectangleShape2D.new()
+	var rect_shape = RectangleShape2D.new()
 	rect_shape.size = Vector2(124.0, 46.0)
 	_collider.shape = rect_shape
 	_collider.position = Vector2(15.0, -25.0)
@@ -636,7 +636,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_door_body.collision_layer = 1
 	_door_body.collision_mask = 0
 	_door_collider = CollisionShape2D.new()
-	var door_shape: RectangleShape2D = RectangleShape2D.new()
+	var door_shape = RectangleShape2D.new()
 	door_shape.size = Vector2(20.0, 5.0)
 	_door_collider.shape = door_shape
 	_door_collider.position = Vector2(0.0, -2.0)
@@ -648,7 +648,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_hp_bar_holder.position = Vector2(0.0, -hh - 6.0)
 	_hp_bar_holder.z_index = 12
 	_hp_bar_holder.visible = false
-	var bar_bg: ColorRect = ColorRect.new()
+	var bar_bg = ColorRect.new()
 	bar_bg.position = Vector2(-29.0, 0.0)
 	bar_bg.size = Vector2(58.0, 7.0)
 	bar_bg.color = Color(0.08, 0.06, 0.10, 0.90)
@@ -662,7 +662,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_hp_bar_label.position = Vector2(-34.0, -10.0)
 	_hp_bar_label.size = Vector2(68.0, 10.0)
 	_hp_bar_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	SpriteFactory.style_label(_hp_bar_label, "bold", 8, Color.WHITE)
+	Art.style_label(_hp_bar_label, "bold", 8, Color.WHITE)
 	_hp_bar_holder.add_child(_hp_bar_label)
 	add_child(_hp_bar_holder)
 
@@ -674,7 +674,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_rubble_node.name = "HouseRubble"
 	_rubble_node.position = Config.HOUSE_CENTER
 	_rubble_node.visible = false
-	var stain: ColorRect = ColorRect.new()
+	var stain = ColorRect.new()
 	stain.position = Vector2(-46.0, -38.0)
 	stain.size = Vector2(92.0, 76.0)
 	stain.color = Color(0.14, 0.11, 0.14, 0.55)
@@ -687,10 +687,10 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 		{"key": "props/metal", "pos": Vector2(4.0, 10.0)},
 		{"key": "props/rubble", "pos": Vector2(-34.0, 14.0)},
 	]:
-		var rs: Sprite2D = Sprite2D.new()
-		rs.texture = SpriteFactory.tex(String(piece["key"]))
+		var rs = Sprite2D.new()
+		rs.texture = Art.tex(String(piece["key"]))
 		rs.centered = false
-		rs.position = piece["pos"] as Vector2
+		rs.position = piece["pos"]
 		rs.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		_rubble_node.add_child(rs)
 	decals_layer.add_child(_rubble_node)
@@ -701,9 +701,9 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 	_fence_sprites.clear()
 	_gate_closed_sprites.clear()
 	_gate_open_sprites.clear()
-	var half_l: float = segment_length * 0.5
-	var seg_w: float = footprint_rect.size.x
-	var seg_h: float = footprint_rect.size.y
+	var half_l = segment_length * 0.5
+	var seg_w = footprint_rect.size.x
+	var seg_h = footprint_rect.size.y
 
 	# collider matches the exact drawn fence rect
 	_body = StaticBody2D.new()
@@ -711,7 +711,7 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 	_body.collision_layer = 1
 	_body.collision_mask = 0
 	_collider = CollisionShape2D.new()
-	var rect_shape: RectangleShape2D = RectangleShape2D.new()
+	var rect_shape = RectangleShape2D.new()
 	rect_shape.size = Vector2(seg_w, seg_h)
 	_collider.shape = rect_shape
 	_collider.position = Vector2(0.0, -seg_h * 0.5)
@@ -722,7 +722,7 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 		# closed gate panels + posts + little gold latch so it actually looks like a gate
 		_gate_closed_node = Node2D.new()
 		for gx in [-16.0, 0.0]:
-			var gs: Sprite2D = Sprite2D.new()
+			var gs = Sprite2D.new()
 			gs.centered = false
 			gs.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			gs.position = Vector2(gx, -15.0)
@@ -730,17 +730,17 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 			_gate_closed_sprites.append(gs)
 		# side posts + little brass latch so the gate stands out from regular fence
 		for px in [-16.0, 14.0]:
-			var post: ColorRect = ColorRect.new()
+			var post = ColorRect.new()
 			post.position = Vector2(px, -16.0)
 			post.size = Vector2(2.0, 16.0)
 			post.color = Color(0.32, 0.20, 0.14, 1.0)
 			_gate_closed_node.add_child(post)
-		var latch_bg: ColorRect = ColorRect.new()
+		var latch_bg = ColorRect.new()
 		latch_bg.position = Vector2(-5.0, -9.0)
 		latch_bg.size = Vector2(10.0, 4.0)
 		latch_bg.color = Color(0.14, 0.10, 0.14, 1.0)
 		_gate_closed_node.add_child(latch_bg)
-		var latch_bar: ColorRect = ColorRect.new()
+		var latch_bar = ColorRect.new()
 		latch_bar.position = Vector2(-4.0, -8.0)
 		latch_bar.size = Vector2(8.0, 2.0)
 		latch_bar.color = Color(0.95, 0.78, 0.30, 1.0)
@@ -750,7 +750,7 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 		# swung-open gate doors on either side of the path
 		_gate_open_node = Node2D.new()
 		for ox in [-16.0, 13.0]:
-			var os: Sprite2D = Sprite2D.new()
+			var os = Sprite2D.new()
 			os.centered = false
 			os.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			os.position = Vector2(ox, -15.0)
@@ -759,26 +759,26 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 		_gate_open_node.visible = false
 		add_child(_gate_open_node)
 	elif is_horizontal:
-		var step: float = 16.0
-		var tile_count: int = maxi(1, ceili(segment_length / step))
+		var step = 16.0
+		var tile_count = maxi(1, ceili(segment_length / step))
 		for i in range(tile_count):
-			var x_pos: float = -half_l + float(i) * step
+			var x_pos = -half_l + float(i) * step
 			if x_pos + step > half_l:
 				x_pos = half_l - step
-			var spr: Sprite2D = Sprite2D.new()
+			var spr = Sprite2D.new()
 			spr.centered = false
 			spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			spr.position = Vector2(x_pos, -14.0)
 			add_child(spr)
 			_fence_sprites.append(spr)
 	else:
-		var step_v: float = 16.0
-		var tile_count_v: int = maxi(1, ceili(segment_length / step_v))
+		var step_v = 16.0
+		var tile_count_v = maxi(1, ceili(segment_length / step_v))
 		for i in range(tile_count_v):
-			var y_pos: float = -segment_length + float(i) * step_v
+			var y_pos = -segment_length + float(i) * step_v
 			if y_pos + step_v > 0.0:
 				y_pos = -step_v
-			var spr: Sprite2D = Sprite2D.new()
+			var spr = Sprite2D.new()
 			spr.centered = false
 			spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 			spr.position = Vector2(-4.0, y_pos)
@@ -795,10 +795,10 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 	# little metal spikes along the top once spiked fences are unlocked
 	_spike_bar = Node2D.new()
 	_spike_bar.visible = false
-	var spike_count: int = maxi(2, int(segment_length / 12.0))
+	var spike_count = maxi(2, int(segment_length / 12.0))
 	for s in range(spike_count):
-		var sp: ColorRect = ColorRect.new()
-		var frac: float = (float(s) + 0.5) / float(spike_count)
+		var sp = ColorRect.new()
+		var frac = (float(s) + 0.5) / float(spike_count)
 		if is_horizontal:
 			sp.position = Vector2(-half_l + frac * segment_length - 1.0, -15.0)
 			sp.size = Vector2(2.0, 4.0)
@@ -810,11 +810,11 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 	add_child(_spike_bar)
 
 	# tiny hp bar only shows up once the fence gets chewed
-	var bar_y: float = -19.0 if is_horizontal else (-segment_length - 6.0)
+	var bar_y = -19.0 if is_horizontal else (-segment_length - 6.0)
 	_hp_bar_holder = Node2D.new()
 	_hp_bar_holder.position = Vector2(0.0, bar_y)
 	_hp_bar_holder.visible = false
-	var fbg: ColorRect = ColorRect.new()
+	var fbg = ColorRect.new()
 	fbg.position = Vector2(-12.0, 0.0)
 	fbg.size = Vector2(24.0, 4.0)
 	fbg.color = Color(0.08, 0.06, 0.10, 0.85)
@@ -834,7 +834,7 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 	_ruin_node.position = target_center
 	_ruin_node.visible = false
 	var debris := Sprite2D.new()
-	debris.texture = SpriteFactory.tex("props/rubble")
+	debris.texture = Art.tex("props/rubble")
 	debris.centered = false
 	debris.offset = Vector2(-8.0, -7.0)
 	debris.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -845,7 +845,7 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 
 
 func _make_hover_outline(local_rect: Rect2) -> Line2D:
-	var ln: Line2D = Line2D.new()
+	var ln = Line2D.new()
 	ln.width = 1.0
 	ln.default_color = Color(1.0, 0.94, 0.52, 0.95)
 	ln.closed = true
@@ -866,7 +866,7 @@ func _make_particles(
 	amount_n: int,
 	lifetime_s: float
 ) -> CPUParticles2D:
-	var cp: CPUParticles2D = CPUParticles2D.new()
+	var cp = CPUParticles2D.new()
 	cp.position = pos
 	cp.amount = amount_n
 	cp.lifetime = lifetime_s

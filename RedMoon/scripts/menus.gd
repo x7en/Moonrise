@@ -1,20 +1,20 @@
-class_name UpgradeUI
+class_name Menus
 extends CanvasLayer
 
 # popup menus: backpack, house/fence upgrades, pause, settings, controls, achievements
 
-signal action_triggered(action_id: String, payload: Dictionary)
+signal action_triggered(action_id: String, data: Dictionary)
 signal menu_closed()
 
 var active_panel: String = ""  # "", "inventory", "structure", "pause", "info"
-var current_structure: Structure = null
+var current_structure: Structure
 
-var _dimmer: ColorRect = null
-var _panel: PanelContainer = null
-var _title_lbl: Label = null
-var _subtitle_lbl: Label = null
-var _list_box: VBoxContainer = null
-var _footer_lbl: Label = null
+var _dimmer: ColorRect
+var _panel: PanelContainer
+var _title_lbl: Label
+var _subtitle_lbl: Label
+var _list_box: VBoxContainer
+var _footer_lbl: Label
 var _buttons: Array[Button] = []
 var _selected_idx: int = 0
 
@@ -40,8 +40,8 @@ func close_all() -> void:
 
 
 func open_inventory(
-	bag: Inventory,
-	stockpile: Inventory,
+	bag: Bag,
+	stockpile: Bag,
 	player: Player,
 	upgrades: Dictionary
 ) -> void:
@@ -80,8 +80,8 @@ func open_inventory(
 
 func open_structure_menu(
 	st: Structure,
-	bag: Inventory,
-	stockpile: Inventory,
+	bag: Bag,
+	stockpile: Bag,
 	act: int,
 	upgrades: Dictionary,
 	ring_stats: Dictionary,
@@ -109,7 +109,7 @@ func open_pause_menu() -> void:
 	visible = true
 	_set_panel_size(300.0, 224.0)
 	_title_lbl.text = "PAUSED"
-	_subtitle_lbl.text = "Take a breath — the horde waits."
+	_subtitle_lbl.text = "Paused."
 	_clear_list()
 	_add_button("Resume", "resume", {}, true)
 	_add_button("Controls", "show_controls", {}, true)
@@ -121,7 +121,7 @@ func open_pause_menu() -> void:
 	_focus_index(0)
 
 
-func open_info_panel(kind: String, settings: SettingsStore) -> void:
+func open_info_panel(kind: String, settings: SaveData) -> void:
 	active_panel = "info"
 	current_structure = null
 	visible = true
@@ -137,29 +137,29 @@ func open_info_panel(kind: String, settings: SettingsStore) -> void:
 			["Door / Fence Gate / Search", "E Open-Close Door or Gate  |  Hold E Search"],
 			["Place Zombie Traps", "1 Spike  2 Snare  3 Lure  |  Click or T Place"],
 			["Upgrade House / Whole Ring", "U or Click House / Fence"],
-			["Inventory / Shockwave", "I Bag  |  Q Shockwave"],
+			["Bag / Shockwave", "I Bag  |  Q Shockwave"],
 			["Fullscreen / Mute / Pause", "F11 Fullscreen  |  M Mute  |  Esc Pause"],
 		]:
 			_add_info_row(String(row[0]), String(row[1]))
 	elif kind == "settings":
 		_title_lbl.text = "SETTINGS"
 		_subtitle_lbl.text = "Saved automatically"
-		var fs_txt: String = "ON" if settings.fullscreen else "OFF"
-		var vol_pct: int = roundi(settings.master_volume * 100.0)
-		var shake_txt: String = "ON" if settings.screen_shake else "OFF"
-		var intro_txt: String = "ON" if settings.play_intro else "OFF"
+		var fs_txt = "ON" if settings.fullscreen else "OFF"
+		var vol_pct = roundi(settings.master_volume * 100.0)
+		var shake_txt = "ON" if settings.screen_shake else "OFF"
+		var intro_txt = "ON" if settings.play_intro else "OFF"
 		_add_button("Fullscreen: %s" % fs_txt, "toggle_fullscreen", {}, true)
 		_add_button("Master Volume: %d%%" % vol_pct, "cycle_volume", {}, true)
 		_add_button("Screen Shake: %s" % shake_txt, "toggle_shake", {}, true)
 		_add_button("Play Story Intro: %s" % intro_txt, "toggle_intro", {}, true)
 	elif kind == "achievements":
 		_title_lbl.text = "ACHIEVEMENTS (%d/%d)" % [
-			settings.get_unlocked_count(), SettingsStore.ACHIEVEMENT_DEFS.size()
+			settings.get_unlocked_count(), SaveData.ACHIEVEMENT_DEFS.size()
 		]
 		_subtitle_lbl.text = "Persisted across runs"
-		for ach_id in SettingsStore.ACHIEVEMENT_DEFS.keys():
-			var d: Dictionary = SettingsStore.ACHIEVEMENT_DEFS[ach_id] as Dictionary
-			var done: bool = settings.is_unlocked(String(ach_id))
+		for ach_id in SaveData.ACHIEVEMENT_DEFS.keys():
+			var d = SaveData.ACHIEVEMENT_DEFS[ach_id]
+			var done = settings.is_unlocked(String(ach_id))
 			_add_info_row(("[X] " if done else "[ ] ") + String(d["title"]), String(d["desc"]), done)
 	elif kind == "credits":
 		_title_lbl.text = "CREDITS"
@@ -176,32 +176,32 @@ func open_info_panel(kind: String, settings: SettingsStore) -> void:
 
 func _build_house_menu(
 	house: Structure,
-	bag: Inventory,
-	stockpile: Inventory,
+	bag: Bag,
+	stockpile: Bag,
 	act: int,
 	upgrades: Dictionary,
 	ring_stats: Dictionary,
 	watchtower_count: int
 ) -> void:
-	var tot_p: int = bag.count("plank") + stockpile.count("plank")
-	var tot_s: int = bag.count("scrap") + stockpile.count("scrap")
+	var tot_p = bag.count("plank") + stockpile.count("plank")
+	var tot_s = bag.count("scrap") + stockpile.count("scrap")
 
 	if house.is_fallen:
 		_title_lbl.text = "HOUSE RUBBLE"
 		_subtitle_lbl.text = "Planks: %d  |  Scrap: %d" % [tot_p, tot_s]
-		var rb_cost: Dictionary = (
+		var rb_cost = (
 			Config.COST_HOUSE_REBUILD_ACT1 if act == 1 else Config.COST_HOUSE_REBUILD
 		)
 		_add_cost_button("Rebuild House (40%% HP)", "house_rebuild", {}, rb_cost, bag, stockpile)
 		return
 
-	_title_lbl.text = "HOMESTEAD (Lv %d - %d/%d HP)" % [house.level, house.hp, house.max_hp]
+	_title_lbl.text = "FARMHOUSE (Lv %d - %d/%d HP)" % [house.level, house.hp, house.max_hp]
 	_subtitle_lbl.text = "Available: %d planks, %d scrap" % [tot_p, tot_s]
 
 	if house.hp < house.max_hp:
-		var missing_hp: int = house.max_hp - house.hp
-		var planks_need: int = maxi(1, ceili(float(missing_hp) / float(Config.PLANK_HEAL)))
-		var rep_cost: Dictionary = {"plank": planks_need}
+		var missing_hp = house.max_hp - house.hp
+		var planks_need = maxi(1, ceili(float(missing_hp) / float(Config.PLANK_HEAL)))
+		var rep_cost = {"plank": planks_need}
 		_add_cost_button(
 			"Repair House (+%d HP)" % missing_hp,
 			"house_repair",
@@ -231,8 +231,8 @@ func _build_house_menu(
 		)
 
 	# outer fence rings (ring 2 then ring 3, each comes with its own gate)
-	var r2_built: bool = bool((ring_stats.get(2, {}) as Dictionary).get("built", false))
-	var r3_built: bool = bool((ring_stats.get(3, {}) as Dictionary).get("built", false))
+	var r2_built = bool((ring_stats.get(2, {})).get("built", false))
+	var r3_built = bool((ring_stats.get(3, {})).get("built", false))
 	if not r2_built:
 		_add_cost_button(
 			"Unlock Fence Layer 2 (Whole Ring + Gate)",
@@ -253,7 +253,7 @@ func _build_house_menu(
 		)
 
 	# bundled weapon + gear upgrade instead of cluttering the menu with 6 separate rows
-	var g_tier: int = int(upgrades.get("gear_tier", 1))
+	var g_tier = int(upgrades.get("gear_tier", 1))
 	if g_tier == 1:
 		_add_cost_button(
 			"Upgrade Gear -> Tier 2 (Pierce Bow, +DMG, +Spd)",
@@ -296,27 +296,27 @@ func _build_house_menu(
 # upgrades apply to the whole ring at once, per-segment clicking was way too tedious
 func _build_fence_menu(
 	seg: Structure,
-	bag: Inventory,
-	stockpile: Inventory,
+	bag: Bag,
+	stockpile: Bag,
 	ring_stats: Dictionary
 ) -> void:
-	var r: int = seg.ring
-	var r_info: Dictionary = ring_stats.get(r, {}) as Dictionary
-	var r_lv: int = int(r_info.get("level", seg.level))
-	var r_hp: int = int(r_info.get("hp", seg.hp))
-	var r_max: int = int(r_info.get("max_hp", seg.max_hp))
-	var r_spiked: bool = bool(r_info.get("spiked", seg.spiked))
-	var tot_p: int = bag.count("plank") + stockpile.count("plank")
-	var tot_s: int = bag.count("scrap") + stockpile.count("scrap")
+	var r = seg.ring
+	var r_info = ring_stats.get(r, {})
+	var r_lv = int(r_info.get("level", seg.level))
+	var r_hp = int(r_info.get("hp", seg.hp))
+	var r_max = int(r_info.get("max_hp", seg.max_hp))
+	var r_spiked = bool(r_info.get("spiked", seg.spiked))
+	var tot_p = bag.count("plank") + stockpile.count("plank")
+	var tot_s = bag.count("scrap") + stockpile.count("scrap")
 
 	_title_lbl.text = "FENCE LAYER %d (Lv %d)" % [r, r_lv]
 	_subtitle_lbl.text = (
 		"Whole Ring HP: %d/%d   |   Planks: %d, Scrap: %d" % [r_hp, r_max, tot_p, tot_s]
 	)
 
-	var ring_rep_planks: int = int(r_info.get("repair_planks", 0))
+	var ring_rep_planks = int(r_info.get("repair_planks", 0))
 	if ring_rep_planks > 0:
-		var rep_cost: Dictionary = {"plank": ring_rep_planks}
+		var rep_cost = {"plank": ring_rep_planks}
 		_add_cost_button(
 			"Repair Entire Layer %d" % r,
 			"fence_repair_ring",
@@ -327,7 +327,7 @@ func _build_fence_menu(
 		)
 
 	if r_lv == 1:
-		var lv2_cost: Dictionary = Config.COST_RING_LV2[r] as Dictionary
+		var lv2_cost = Config.COST_RING_LV2[r]
 		_add_cost_button(
 			"Upgrade Whole Layer %d -> Lv 2 (90 HP)" % r,
 			"fence_upgrade_ring",
@@ -337,7 +337,7 @@ func _build_fence_menu(
 			stockpile
 		)
 	elif r_lv == 2:
-		var lv3_cost: Dictionary = Config.COST_RING_LV3[r] as Dictionary
+		var lv3_cost = Config.COST_RING_LV3[r]
 		_add_cost_button(
 			"Upgrade Whole Layer %d -> Lv 3 Steel (140 HP)" % r,
 			"fence_upgrade_ring",
@@ -348,7 +348,7 @@ func _build_fence_menu(
 		)
 
 	if not r_spiked:
-		var spk_cost: Dictionary = Config.COST_RING_SPIKES[r] as Dictionary
+		var spk_cost = Config.COST_RING_SPIKES[r]
 		_add_cost_button(
 			"Add Spikes to Whole Layer %d (Hurts attackers)" % r,
 			"fence_spike_ring",
@@ -358,8 +358,8 @@ func _build_fence_menu(
 			stockpile
 		)
 
-	var r2_built: bool = bool((ring_stats.get(2, {}) as Dictionary).get("built", false))
-	var r3_built: bool = bool((ring_stats.get(3, {}) as Dictionary).get("built", false))
+	var r2_built = bool((ring_stats.get(2, {})).get("built", false))
+	var r3_built = bool((ring_stats.get(3, {})).get("built", false))
 	if r == 1 and not r2_built:
 		_add_cost_button(
 			"Unlock Fence Layer 2 (Whole Ring + Gate)",
@@ -383,56 +383,56 @@ func _build_fence_menu(
 func _add_cost_button(
 	label_txt: String,
 	action_id: String,
-	payload: Dictionary,
+	data: Dictionary,
 	cost: Dictionary,
-	bag: Inventory,
-	stockpile: Inventory
+	bag: Bag,
+	stockpile: Bag
 ) -> void:
-	var can_pay: bool = bag.can_afford(cost, stockpile)
-	var suffix: String = "  [%s]" % Inventory.format_cost(cost)
-	_add_button(label_txt + suffix, action_id, payload, can_pay)
+	var can_pay = bag.can_afford(cost, stockpile)
+	var suffix = "  [%s]" % Bag.format_cost(cost)
+	_add_button(label_txt + suffix, action_id, data, can_pay)
 
 
-func _add_button(label_txt: String, action_id: String, payload: Dictionary, enabled: bool) -> void:
-	var btn: Button = Button.new()
+func _add_button(label_txt: String, action_id: String, data: Dictionary, enabled: bool) -> void:
+	var btn = Button.new()
 	btn.text = label_txt
 	btn.disabled = not enabled
 	btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	btn.custom_minimum_size = Vector2(0.0, 20.0)
-	btn.pressed.connect(_on_btn_pressed.bind(action_id, payload))
+	btn.pressed.connect(_on_btn_pressed.bind(action_id, data))
 	_list_box.add_child(btn)
 	_buttons.append(btn)
 
 
 func _add_info_row(left_txt: String, right_txt: String, highlight: bool = false) -> void:
-	var row: HBoxContainer = HBoxContainer.new()
-	var l_lbl: Label = Label.new()
+	var row = HBoxContainer.new()
+	var l_lbl = Label.new()
 	l_lbl.text = left_txt
 	l_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	SpriteFactory.style_label(
+	Art.style_label(
 		l_lbl, "bold", 8, Color(1.0, 0.88, 0.45) if highlight else Color(0.95, 0.92, 0.88)
 	)
 	row.add_child(l_lbl)
 
-	var r_lbl: Label = Label.new()
+	var r_lbl = Label.new()
 	r_lbl.text = right_txt
 	r_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	SpriteFactory.style_label(r_lbl, "body", 8, Color(0.80, 0.84, 0.90))
+	Art.style_label(r_lbl, "body", 8, Color(0.80, 0.84, 0.90))
 	row.add_child(r_lbl)
 	_list_box.add_child(row)
 
 
-func _on_btn_pressed(action_id: String, payload: Dictionary) -> void:
+func _on_btn_pressed(action_id: String, data: Dictionary) -> void:
 	if action_id == "close" or action_id == "resume":
 		close_all()
 		return
-	action_triggered.emit(action_id, payload)
+	action_triggered.emit(action_id, data)
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not is_open() or not (event is InputEventKey):
 		return
-	var ke: InputEventKey = event as InputEventKey
+	var ke = event
 	if not ke.pressed or ke.echo:
 		return
 	if ke.keycode == KEY_ESCAPE or (active_panel == "inventory" and ke.keycode == KEY_I):
@@ -449,7 +449,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_focus_index((_selected_idx + 1) % _buttons.size())
 	elif ke.keycode in [KEY_ENTER, KEY_KP_ENTER, KEY_SPACE]:
 		get_viewport().set_input_as_handled()
-		var btn: Button = _buttons[_selected_idx]
+		var btn = _buttons[_selected_idx]
 		if not btn.disabled:
 			btn.pressed.emit()
 
@@ -486,29 +486,29 @@ func _build_shell() -> void:
 
 	_panel = PanelContainer.new()
 	_set_panel_size(388.0, 224.0)
-	_panel.theme = SpriteFactory.get_game_theme()
+	_panel.theme = Art.get_game_theme()
 	_panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_panel.add_theme_stylebox_override(
 		"panel",
-		SpriteFactory.make_panel_style("res://assets/ui/panel.png", 10.0, 12.0, 10.0)
+		Art.make_panel_style("res://assets/ui/panel.png", 10.0, 12.0, 10.0)
 	)
 	add_child(_panel)
 
-	var vbox: VBoxContainer = VBoxContainer.new()
+	var vbox = VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 5)
 	_panel.add_child(vbox)
 
 	_title_lbl = Label.new()
 	_title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	SpriteFactory.style_label(_title_lbl, "display", 16, Color(1.0, 0.88, 0.56))
+	Art.style_label(_title_lbl, "display", 16, Color(1.0, 0.88, 0.56))
 	vbox.add_child(_title_lbl)
 
 	_subtitle_lbl = Label.new()
 	_subtitle_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	SpriteFactory.style_label(_subtitle_lbl, "body", 8, Color(0.80, 0.82, 0.88))
+	Art.style_label(_subtitle_lbl, "body", 8, Color(0.80, 0.82, 0.88))
 	vbox.add_child(_subtitle_lbl)
 
-	var scroll: ScrollContainer = ScrollContainer.new()
+	var scroll = ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	vbox.add_child(scroll)
@@ -520,5 +520,5 @@ func _build_shell() -> void:
 
 	_footer_lbl = Label.new()
 	_footer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	SpriteFactory.style_label(_footer_lbl, "body", 8, Color(0.68, 0.66, 0.74))
+	Art.style_label(_footer_lbl, "body", 8, Color(0.68, 0.66, 0.74))
 	vbox.add_child(_footer_lbl)

@@ -1,7 +1,7 @@
 class_name Player
 extends CharacterBody2D
 
-# survivor controller — movement, spear poke, auto-aim bow, indoor healing, lantern
+# survivor controller - movement, spear poke, auto-aim bow, indoor healing, lantern
 
 signal spear_swung(hitbox: Rect2, facing_dir: Vector2, damage: int)
 signal bow_fired(origin: Vector2, target_dir: Vector2, damage: int, pierce: int)
@@ -33,10 +33,10 @@ var speed_mult: float = 1.0
 var bounce_cd_mult: float = 1.0
 var bounce_bonus_count: int = 0
 
-var _sprite: AnimatedSprite2D = null
-var _shadow: Sprite2D = null
-var _spear: Sprite2D = null
-var _lantern: PointLight2D = null
+var _sprite: AnimatedSprite2D
+var _shadow: Sprite2D
+var _spear: Sprite2D
+var _lantern: PointLight2D
 var _swing_timer: float = 0.0
 var _swing_cd: float = 0.0
 var _invuln_timer: float = 0.0
@@ -50,15 +50,15 @@ func _ready() -> void:
 	collision_mask = 1 | 4
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 
-	var col: CollisionShape2D = CollisionShape2D.new()
-	var sh: RectangleShape2D = RectangleShape2D.new()
+	var col = CollisionShape2D.new()
+	var sh = RectangleShape2D.new()
 	sh.size = Vector2(8.0, 8.0)
 	col.shape = sh
 	col.position = Vector2(0.0, -4.0)
 	add_child(col)
 
 	_shadow = Sprite2D.new()
-	_shadow.texture = SpriteFactory.get_blob_shadow(12, 5)
+	_shadow.texture = Art.get_blob_shadow(12, 5)
 	_shadow.position = Vector2(0.0, 1.0)
 	_shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(_shadow)
@@ -66,13 +66,13 @@ func _ready() -> void:
 	_sprite = AnimatedSprite2D.new()
 	_sprite.centered = false
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_sprite.sprite_frames = SpriteFactory.get_player_frames(Config.SWING_TIME)
-	_sprite.offset = SpriteFactory.feet_offset_for_animated("player/idle_down")
+	_sprite.sprite_frames = Art.get_player_frames(Config.SWING_TIME)
+	_sprite.offset = Art.feet_offset_for_animated("player/idle_down")
 	_sprite.play(&"idle_down")
 	add_child(_sprite)
 
 	_spear = Sprite2D.new()
-	_spear.texture = SpriteFactory.get_spear_texture()
+	_spear.texture = Art.get_spear_texture()
 	_spear.centered = false
 	_spear.offset = Vector2(-5.0, -3.0)
 	_spear.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -80,7 +80,7 @@ func _ready() -> void:
 	add_child(_spear)
 
 	_lantern = PointLight2D.new()
-	_lantern.texture = SpriteFactory.get_radial_light_texture(128)
+	_lantern.texture = Art.get_radial_light_texture(128)
 	_lantern.texture_scale = 0.85
 	_lantern.energy = 0.48
 	_lantern.color = Color(1.0, 0.82, 0.54, 1.0)
@@ -118,7 +118,7 @@ func reset_for_new_game(spawn_pos: Vector2) -> void:
 	_apply_visibility_and_collision()
 	if _sprite != null:
 		_sprite.modulate = Color.WHITE
-		_sprite.offset = SpriteFactory.feet_offset_for_animated("player/idle_down")
+		_sprite.offset = Art.feet_offset_for_animated("player/idle_down")
 		_sprite.play(&"idle_down")
 	if _spear != null:
 		_spear.visible = false
@@ -150,7 +150,7 @@ func step_player(
 	move_input: Vector2,
 	world_bounds: Rect2,
 	allow_move: bool,
-	inventory: Inventory
+	inventory: Bag
 ) -> void:
 	if _invuln_timer > 0.0:
 		_invuln_timer = maxf(0.0, _invuln_timer - delta)
@@ -196,10 +196,10 @@ func step_player(
 			_spear.visible = false
 
 	if allow_move and move_input.length_squared() > 0.01:
-		var move_dir: Vector2 = move_input.normalized()
+		var move_dir = move_input.normalized()
 		facing_vec = move_dir
 		facing = _vec_to_dir(move_dir)
-		var speed: float = Config.PLAYER_SPEED * speed_mult * (0.65 if _swing_timer > 0.0 else 1.0)
+		var speed = Config.PLAYER_SPEED * speed_mult * (0.65 if _swing_timer > 0.0 else 1.0)
 		velocity = move_dir * speed
 		move_and_slide()
 		position.x = clampf(position.x, world_bounds.position.x + 8.0, world_bounds.end.x - 8.0)
@@ -227,8 +227,8 @@ func try_swing() -> bool:
 	return true
 
 
-# shoots at the closest zombie in range — also works poking out from the house windows
-func try_fire_bow(enemies: Array, inventory: Inventory) -> bool:
+# shoots at the closest zombie in range - also works poking out from the house windows
+func try_fire_bow(enemies: Array, inventory: Bag) -> bool:
 	if dead or bow_cd > 0.0 or reload_timer > 0.0:
 		return false
 	active_weapon = "bow"
@@ -239,9 +239,9 @@ func try_fire_bow(enemies: Array, inventory: Inventory) -> bool:
 			bow_empty_clicked.emit()
 		return false
 
-	var origin: Vector2 = _get_bow_origin(enemies)
-	var target: Enemy = _find_auto_aim_target(origin, enemies)
-	var aim_dir: Vector2 = _dir_vector(facing)
+	var origin = _get_bow_origin(enemies)
+	var target = _find_auto_aim_target(origin, enemies)
+	var aim_dir = _dir_vector(facing)
 	if target != null:
 		aim_dir = (target.position + Vector2(0.0, -8.0) - origin).normalized()
 		facing = _vec_to_dir(aim_dir)
@@ -255,7 +255,7 @@ func try_fire_bow(enemies: Array, inventory: Inventory) -> bool:
 	return true
 
 
-func start_reload(inventory: Inventory) -> bool:
+func start_reload(inventory: Bag) -> bool:
 	if dead or reload_timer > 0.0 or mag >= mag_max or inventory.count("arrow") <= 0:
 		return false
 	reload_timer = bow_reload_time
@@ -277,14 +277,14 @@ func take_damage(amount: int) -> bool:
 		_apply_visibility_and_collision()
 		if _spear != null:
 			_spear.visible = false
-		var d_anim: String = "death_left" if facing == "left" else "death_right"
+		var d_anim = "death_left" if facing == "left" else "death_right"
 		_play_anim(d_anim)
 		died.emit()
 	return true
 
 
 func apply_upgrade_stats(upgrades: Dictionary) -> void:
-	var tier: int = clampi(int(upgrades.get("gear_tier", 1)), 1, 3)
+	var tier = clampi(int(upgrades.get("gear_tier", 1)), 1, 3)
 	if tier >= 3:
 		melee_damage = 2
 		speed_mult = 1.18
@@ -328,34 +328,34 @@ func _apply_visibility_and_collision() -> void:
 func _get_bow_origin(enemies: Array) -> Vector2:
 	if not inside_house:
 		return position + Vector2(0.0, -8.0)
-	# When inside the house, fire from whichever front window is closest to the nearest threat.
-	var left_win: Vector2 = Config.HOUSE_CENTER + Vector2(-22.0, 18.0)
-	var right_win: Vector2 = Config.HOUSE_CENTER + Vector2(22.0, 18.0)
-	var nearest: Enemy = _find_auto_aim_target(Config.HOUSE_CENTER, enemies)
+	# when hiding indoors, shoot out whichever window is closer to the zombie
+	var left_win = Config.HOUSE_CENTER + Vector2(-22.0, 18.0)
+	var right_win = Config.HOUSE_CENTER + Vector2(22.0, 18.0)
+	var nearest = _find_auto_aim_target(Config.HOUSE_CENTER, enemies)
 	if nearest != null and nearest.position.x < Config.HOUSE_CENTER.x:
 		return left_win
 	return right_win
 
 
 func _find_auto_aim_target(origin: Vector2, enemies: Array) -> Enemy:
-	var best: Enemy = null
-	var best_d: float = Config.BOW_RANGE
+	var best = null
+	var best_d = Config.BOW_RANGE
 	for e in enemies:
-		if not is_instance_valid(e) or not (e is Enemy) or not (e as Enemy).is_alive():
+		if not is_instance_valid(e) or not (e is Enemy) or not e.is_alive():
 			continue
-		var d: float = origin.distance_to((e as Node2D).position)
+		var d = origin.distance_to(e.position)
 		if d <= best_d:
 			best_d = d
-			best = e as Enemy
+			best = e
 	return best
 
 
 func _compute_swing_hitbox() -> Rect2:
-	var scale_mult: float = 1.0 + float(bounce_bonus_count) * Config.SWING_GROWTH_PER_BOUNCE
-	var box_size: Vector2 = Config.SWING_BOX * scale_mult
+	var scale_mult = 1.0 + float(bounce_bonus_count) * Config.SWING_GROWTH_PER_BOUNCE
+	var box_size = Config.SWING_BOX * scale_mult
 	if facing == "up" or facing == "down":
 		box_size = Vector2(box_size.y, box_size.x)
-	var center: Vector2 = (
+	var center = (
 		position + Vector2(0.0, -7.0) + _dir_vector(facing) * (Config.SWING_OFFSET * scale_mult)
 	)
 	return Rect2(center - box_size * 0.5, box_size)
@@ -364,9 +364,9 @@ func _compute_swing_hitbox() -> Rect2:
 func _update_spear_pose() -> void:
 	if _spear == null:
 		return
-	var progress: float = 1.0 - clampf(_swing_timer / maxf(0.01, Config.SWING_TIME), 0.0, 1.0)
-	var thrust: float = sin(progress * PI) * 9.0
-	var scale_mult: float = 1.0 + float(bounce_bonus_count) * Config.SWING_GROWTH_PER_BOUNCE
+	var progress = 1.0 - clampf(_swing_timer / maxf(0.01, Config.SWING_TIME), 0.0, 1.0)
+	var thrust = sin(progress * PI) * 9.0
+	var scale_mult = 1.0 + float(bounce_bonus_count) * Config.SWING_GROWTH_PER_BOUNCE
 	_spear.scale = Vector2(scale_mult, scale_mult)
 	match facing:
 		"right":
@@ -391,7 +391,7 @@ func _play_anim(anim_name: String) -> void:
 	if _sprite == null:
 		return
 	if _sprite.animation != anim_name or not _sprite.is_playing():
-		_sprite.offset = SpriteFactory.feet_offset_for_animated("player/" + anim_name)
+		_sprite.offset = Art.feet_offset_for_animated("player/" + anim_name)
 		_sprite.play(anim_name)
 
 
