@@ -89,6 +89,7 @@ func setup(kind: String, spawn_pos: Vector2, day_wanderer: bool = false) -> void
 	collision_mask = 1 | 2
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 	add_to_group("enemies")
+	add_to_group("hostiles")
 
 	var col = CollisionShape2D.new()
 	var sh = RectangleShape2D.new()
@@ -589,6 +590,7 @@ func _step_death_or_dissolve(delta: float) -> void:
 		_shadow.modulate.a = clampf(_death_timer / 0.45, 0.0, 1.0)
 	if _death_timer <= 0.0:
 		remove_from_group("enemies")
+		remove_from_group("hostiles")
 		queue_free()
 
 

@@ -9,6 +9,7 @@ const FENCE_THICKNESS := 10.0
 
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
 var search_props: Array[Dictionary] = []
+var choppable_trees: Array[Dictionary] = []
 var _act1_boundary_overlay: Node2D
 var _decals_layer: Node2D
 var _entities_layer: Node2D
@@ -119,6 +120,7 @@ func build_world(
 	_decals_layer = decals_layer
 	_entities_layer = entities_layer
 	search_props.clear()
+	choppable_trees.clear()
 
 	_build_ground(ground_layer)
 	_build_world_border_walls(entities_layer)
@@ -167,6 +169,36 @@ func mark_prop_searched(prop_id: int) -> void:
 			if is_instance_valid(node):
 				node.modulate = Color(0.68, 0.66, 0.68, 1.0)
 			return
+
+
+func find_nearest_tree(world_pos: Vector2, max_dist: float = 26.0) -> Dictionary:
+	var best = {}
+	var best_d = max_dist
+	for tr in choppable_trees:
+		if bool(tr["chopped"]):
+			continue
+		var d = world_pos.distance_to(tr["pos"])
+		if d <= best_d:
+			best_d = d
+			best = tr
+	return best
+
+
+func mark_tree_chopped(tree_id: int) -> bool:
+	for tr in choppable_trees:
+		if int(tr["id"]) == tree_id and not bool(tr["chopped"]):
+			tr["chopped"] = true
+			var node = tr["node"]
+			if is_instance_valid(node):
+				node.queue_free()
+			if _decals_layer != null:
+				var stump := ColorRect.new()
+				stump.position = tr["pos"] + Vector2(-4.0, -3.0)
+				stump.size = Vector2(8.0, 5.0)
+				stump.color = Color(0.46, 0.30, 0.18, 0.92)
+				_decals_layer.add_child(stump)
+			return true
+	return false
 
 
 func spawn_base_buildings(
@@ -426,17 +458,18 @@ func _build_nature_and_pois(decals_layer: Node2D, entities_layer: Node2D) -> voi
 		"nature/birch_2",
 		"nature/oak",
 	]
+	# bushes & grass tufts only (auto-generated stones removed)
 	var bush_keys: Array[String] = [
 		"nature/bush_1",
 		"nature/bush_2",
 		"nature/tuft",
-		"nature/rock",
 	]
 	var act1_zone = Config.ACT1_RECT.grow(-24.0)
 	var driveway_clear = Rect2(hc.x - 36.0, hc.y + 40.0, 72.0, 230.0)
+	var tree_id := 1
 
-	# dense starter forest ringing the yard inside Act 1 so day 1 doesn't feel bare
-	for _t1 in range(110):
+	# dense starter forest ringing the yard inside Act 1 so day 1 feels lush
+	for _t1 in range(150):
 		var tp1 = Vector2(
 			rng.randf_range(act1_zone.position.x, act1_zone.end.x),
 			rng.randf_range(act1_zone.position.y, act1_zone.end.y)
@@ -445,14 +478,16 @@ func _build_nature_and_pois(decals_layer: Node2D, entities_layer: Node2D) -> voi
 			continue
 		if absf(tp1.y - (hc.y + 230.0)) < 34.0:
 			continue
-		if _too_close(tp1, used_spots, 26.0):
+		if _too_close(tp1, used_spots, 23.0):
 			continue
 		used_spots.append(tp1)
 		var key_t1 = tree_keys[rng.randi() % tree_keys.size()]
-		_spawn_prop_node(entities_layer, key_t1, tp1, Vector2(10.0, 8.0))
+		var tn1 = _spawn_prop_node(entities_layer, key_t1, tp1, Vector2(10.0, 8.0))
+		choppable_trees.append({"id": tree_id, "node": tn1, "pos": tp1, "chopped": false})
+		tree_id += 1
 
 	# lush valley forest across the full map
-	for _t in range(360):
+	for _t in range(450):
 		var tp = Vector2(
 			rng.randf_range(36.0, Config.WORLD_SIZE.x - 36.0),
 			rng.randf_range(36.0, Config.WORLD_SIZE.y - 36.0)
@@ -461,11 +496,13 @@ func _build_nature_and_pois(decals_layer: Node2D, entities_layer: Node2D) -> voi
 			continue
 		if absf(tp.y - (hc.y + 230.0)) < 36.0:
 			continue
-		if _too_close(tp, used_spots, 26.0):
+		if _too_close(tp, used_spots, 23.0):
 			continue
 		used_spots.append(tp)
 		var key_t = tree_keys[rng.randi() % tree_keys.size()]
-		_spawn_prop_node(entities_layer, key_t, tp, Vector2(10.0, 8.0))
+		var tn = _spawn_prop_node(entities_layer, key_t, tp, Vector2(10.0, 8.0))
+		choppable_trees.append({"id": tree_id, "node": tn, "pos": tp, "chopped": false})
+		tree_id += 1
 
 	for _b in range(90):
 		var bp = Vector2(

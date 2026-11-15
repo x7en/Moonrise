@@ -71,7 +71,12 @@ func _ready() -> void:
 	_root.add_child(_flash)
 
 
-func start_moonrise(night_num: int, is_blood: bool, instant_skip: bool = false) -> void:
+func start_moonrise(
+	night_num: int,
+	is_blood: bool,
+	instant_skip: bool = false,
+	is_even: bool = false
+) -> void:
 	_night_num = night_num
 	_is_blood = is_blood
 	_is_early_blood_twist = (night_num == Config.WORLD_EXPAND_NIGHT and is_blood)
@@ -79,15 +84,15 @@ func start_moonrise(night_num: int, is_blood: bool, instant_skip: bool = false) 
 	active = true
 	visible = true
 
-	_sky.configure_for_night(night_num, is_blood, _is_early_blood_twist)
+	_sky.configure_for_night(night_num, is_blood, _is_early_blood_twist, is_even)
 	_sky.moon_progress = 0.0
 	_sky.red_blend = 1.0 if (is_blood and not _is_early_blood_twist) else 0.0
 	_flash.color.a = 0.0
 
 	if _is_early_blood_twist:
-		_title_label.text = "NIGHT 3 - EVEN MOON"
-		_narration_label.text = "Two nights early... WAIT. The Even Moon is burning scarlet!"
-		Art.style_label(_title_label, "display", 16, Config.EVEN_MOON_BANNER)
+		_title_label.text = "NIGHT 3"
+		_narration_label.text = "Two nights early... WAIT. The moon is turning red!"
+		Art.style_label(_title_label, "display", 16, Color(0.98, 0.94, 0.90))
 	elif night_num == 7 and is_blood:
 		_title_label.text = "NIGHT 7 - THE FINAL BLOOD MOON"
 		_narration_label.text = "The sky burns red. Hold the line until dawn."
@@ -96,10 +101,14 @@ func start_moonrise(night_num: int, is_blood: bool, instant_skip: bool = false) 
 		_title_label.text = "NIGHT %d - BLOOD MOON" % night_num
 		_narration_label.text = "The Blood Moon rises. They are coming from every side."
 		Art.style_label(_title_label, "display", 16, Color(1.0, 0.36, 0.24))
-	else:
+	elif is_even:
 		_title_label.text = "NIGHT %d - EVEN MOON" % night_num
 		_narration_label.text = "The crimson Even Moon rises over the valley. Stand ready."
 		Art.style_label(_title_label, "display", 16, Config.EVEN_MOON_BANNER)
+	else:
+		_title_label.text = "NIGHT %d" % night_num
+		_narration_label.text = "Night falls over the valley. Close the door and stand ready."
+		Art.style_label(_title_label, "display", 16, Color(0.92, 0.94, 1.0))
 
 	if instant_skip:
 		skip_now()

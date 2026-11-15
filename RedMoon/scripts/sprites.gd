@@ -4,6 +4,10 @@ extends RefCounted
 # [frames, w, h] for horizontal sprite sheets
 # had to measure these by hand since the pack strips have slightly different widths per dir
 const ANIMATED := {
+	"enemies/ghost/ghost_lunge_strip": [10, 120, 42],
+	"enemies/ghost/ghost_scythe_spike_strip": [10, 131, 87],
+	"enemies/ghost/ghost_scythe_strip": [10, 80, 50],
+
 	"enemies/raider/attack_down": [7, 15, 21],
 	"enemies/raider/attack_left": [7, 25, 19],
 	"enemies/raider/attack_right": [7, 25, 19],
@@ -109,6 +113,8 @@ const STATIC := {
 	"props/truck_scrap": [39, 20],
 	"props/van_blue": [43, 27],
 
+	"placeholders/boomerang_placeholder": [24, 24],
+
 	"sky/blood_moon": [32, 32],
 	"sky/clouds_1": [640, 86],
 	"sky/clouds_2": [640, 86],
@@ -136,7 +142,13 @@ const STATIC := {
 
 	"weapons/arrow": [16, 7],
 	"weapons/arrow_pierce": [16, 7],
+	"weapons/bat_plain": [36, 10],
+	"weapons/bat_red": [31, 12],
 	"weapons/bow": [16, 16],
+	"weapons/hammer_club": [33, 9],
+	"weapons/knife_a": [4, 10],
+	"weapons/knife_b": [6, 11],
+	"weapons/sword_steel": [39, 5],
 }
 
 

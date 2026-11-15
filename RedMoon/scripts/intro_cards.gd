@@ -81,9 +81,16 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	elif event is InputEventMouseButton:
 		var mb = event
-		if mb.pressed and _ready_timer <= 0.0:
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			get_viewport().set_input_as_handled()
-			_advance()
+			if _ready_timer <= 0.0:
+				_advance()
+	elif event is InputEventScreenTouch:
+		var st = event
+		if st.pressed:
+			get_viewport().set_input_as_handled()
+			if _ready_timer <= 0.0:
+				_advance()
 
 
 func _advance() -> void:
@@ -127,7 +134,7 @@ func _render_card_art(art_kind: String) -> void:
 	var tex_rect := TextureRect.new()
 	tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	tex_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	tex_rect.position = Vector2(272.0, 62.0)
+	tex_rect.position = Vector2(272.0, 68.0)
 	tex_rect.size = Vector2(96.0, 96.0)
 
 	match art_kind:
@@ -137,6 +144,21 @@ func _render_card_art(art_kind: String) -> void:
 			tex_rect.texture = Art.get_shaded_house_texture(1, false)
 		"rubble":
 			tex_rect.texture = Art.tex("props/rubble")
+		"bow":
+			tex_rect.texture = Art.get_icon_texture("bow")
+		"boomerang":
+			tex_rect.texture = Art.get_icon_texture("boomerang")
+		"trap_snare":
+			tex_rect.texture = Art.get_icon_texture("trap_snare")
+		"dog":
+			var dog_sheet := Art.tex("dog/idle_right")
+			if dog_sheet.get_width() >= 48:
+				var atlas := AtlasTexture.new()
+				atlas.atlas = dog_sheet
+				atlas.region = Rect2(0.0, 0.0, 48.0, float(dog_sheet.get_height()))
+				tex_rect.texture = atlas
+			else:
+				tex_rect.texture = Art.get_icon_texture("trophy")
 		_:
 			tex_rect.texture = Art.tex("sky/moon")
 			tex_rect.modulate = Config.EVEN_MOON_COLOR
@@ -200,7 +222,7 @@ func _build_ui() -> void:
 	_skip_lbl.position = Vector2(Config.VIEW_SIZE.x - 180.0, Config.VIEW_SIZE.y - 24.0)
 	_skip_lbl.size = Vector2(170.0, 14.0)
 	_skip_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_skip_lbl.text = "[Esc] Skip Intro"
+	_skip_lbl.text = "[Esc] Skip"
 	Art.style_label(_skip_lbl, "body", 8, Color(0.68, 0.66, 0.74))
 	_root.add_child(_skip_lbl)
 
@@ -242,5 +264,74 @@ static func get_world_expanded_cards() -> Array[Dictionary]:
 			+ "The real Blood Moon arrives on Night 7.",
 			"art": "world",
 			"accent": Color(0.55, 0.96, 0.62),
+		},
+		{
+			"title": "NEW: TAMING WILD DOGS",
+			"body": "Wild dogs now roam the valley! Only SOME stray dogs can be tamed.\n"
+			+ "Walk beside a friendly wild dog and click the [Tame] button.\n"
+			+ "Tamed dogs follow you (press G for Follow / Guard) and attack zombies,\n"
+			+ "but have low health - keep them backed up!",
+			"art": "dog",
+			"accent": Color(0.98, 0.88, 0.50),
+		},
+	]
+
+
+# spoiler-free step-by-step tutorial (skippable with Esc, replayable from Title & Pause menus)
+static func get_tutorial_cards() -> Array[Dictionary]:
+	return [
+		{
+			"title": "1. MOVE & MORNING GATHER",
+			"body": "Move with WASD or Arrow Keys.\n"
+			+ "Every morning your fence gate opens automatically (house door stays shut).\n"
+			+ "Step outside to grab planks, chop trees [Hold E] with your axe,\n"
+			+ "and search wrecks [Hold E]. Walk near the house to store loot.",
+			"art": "house",
+			"accent": Color(1.0, 0.88, 0.56),
+		},
+		{
+			"title": "2. ATTACKING & BOW",
+			"body": "Click or tap to attack with your currently equipped weapon.\n"
+			+ "Spear [Space] thrusts at nearby enemies with knockback.\n"
+			+ "Hunting Bow [F] auto-aims at nearby threats using limited arrows\n"
+			+ "with a short cooldown between shots. Press [R] to reload.",
+			"art": "bow",
+			"accent": Color(0.86, 0.94, 1.0),
+		},
+		{
+			"title": "3. BOOMERANG",
+			"body": "Equip the Boomerang to throw a spinning blade that auto-aims\n"
+			+ "at the closest foe (or throws forward if none are nearby).\n"
+			+ "It bounces back after its first hit, damaging foes on both legs,\n"
+			+ "then starts a short cooldown once you catch it.",
+			"art": "boomerang",
+			"accent": Color(0.68, 0.96, 0.82),
+		},
+		{
+			"title": "4. INVENTORY [I] & CRAFTING [C]",
+			"body": "Press [I] to pause and open Inventory: view weapons, ammo, and traps,\n"
+			+ "and switch weapons by clicking or pressing number keys [1-3].\n"
+			+ "Press [C] to pause and craft Bear Traps, Spike Traps, Lures,\n"
+			+ "and Arrows from your gathered resources.",
+			"art": "trap_snare",
+			"accent": Color(0.98, 0.84, 0.48),
+		},
+		{
+			"title": "5. BEAR TRAPS & RECALL [B]",
+			"body": "Press [1-3] (or click a bottom trap slot) and click ground to place.\n"
+			+ "Bear Traps deal damage and briefly immobilize zombies.\n"
+			+ "Press [B] anytime to teleport straight home and start healing!\n"
+			+ "Press [U] near your house or fences to repair and upgrade.",
+			"art": "trap_snare",
+			"accent": Color(0.62, 0.96, 0.68),
+		},
+		{
+			"title": "6. NIGHT SHELTER & BASE TRACKER",
+			"body": "Before dusk, shut your fence gate and house door with [E].\n"
+			+ "Watch the sky for the crimson Even Moon as night falls.\n"
+			+ "Whenever you explore within 50m of home, a yellow BASE arrow\n"
+			+ "shows the direction and distance back to safety.",
+			"art": "moon",
+			"accent": Config.EVEN_MOON_BANNER,
 		},
 	]

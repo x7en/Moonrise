@@ -5,6 +5,7 @@ extends CharacterBody2D
 
 signal spear_swung(hitbox: Rect2, facing_dir: Vector2, damage: int)
 signal bow_fired(origin: Vector2, target_dir: Vector2, damage: int, pierce: int)
+signal boomerang_thrown(origin: Vector2, target_dir: Vector2, damage: int)
 signal bow_empty_clicked()
 signal bow_reloaded()
 signal died()
@@ -16,9 +17,9 @@ var facing_vec: Vector2 = Vector2.DOWN
 var dead: bool = false
 var inside_house: bool = false
 var active_weapon: String = "bow"
-var unlocked_weapons: Array[String] = ["bow", "spear"]
+var unlocked_weapons: Array[String] = ["bow", "spear", "boomerang"]
 
-# bow stats
+# bow & boomerang stats
 var mag: int = Config.BOW_MAG
 var mag_max: int = Config.BOW_MAG
 var reserve_max: int = Config.BOW_RESERVE_MAX
@@ -27,6 +28,8 @@ var bow_damage: int = Config.BOW_DAMAGE
 var bow_pierce: int = 0
 var reload_timer: float = 0.0
 var bow_cd: float = 0.0
+var boomerang_cd: float = 0.0
+var boomerang_in_flight: bool = false
 
 # workshop upgrades
 var melee_damage: int = 1
@@ -115,6 +118,8 @@ func reset_for_new_game(spawn_pos: Vector2) -> void:
 	bow_pierce = 0
 	reload_timer = 0.0
 	bow_cd = 0.0
+	boomerang_cd = 0.0
+	boomerang_in_flight = false
 	_swing_timer = 0.0
 	_swing_cd = 0.0
 	_invuln_timer = 0.0
@@ -176,6 +181,8 @@ func step_player(
 		_swing_cd = maxf(0.0, _swing_cd - delta)
 	if bow_cd > 0.0:
 		bow_cd = maxf(0.0, bow_cd - delta)
+	if not boomerang_in_flight and boomerang_cd > 0.0:
+		boomerang_cd = maxf(0.0, boomerang_cd - delta)
 
 	# bow reload timer
 	if reload_timer > 0.0:
@@ -252,15 +259,39 @@ func unlock_weapon(weapon_id: String) -> bool:
 	return true
 
 
-# extensible dispatch so phase-2 thrown weapons plug into one branch here
+# extensible weapon dispatch for equipped primary left-click / tap
 func use_active_weapon(enemies: Array, inventory: Bag) -> bool:
 	match active_weapon:
 		"spear":
 			return try_swing()
 		"bow":
 			return try_fire_bow(enemies, inventory)
+		"boomerang":
+			return try_throw_boomerang(enemies)
 		_:
 			return try_swing()
+
+
+func try_throw_boomerang(enemies: Array) -> bool:
+	if dead or inside_house or boomerang_in_flight or boomerang_cd > 0.0:
+		return false
+	var origin := position + Vector2(0.0, -8.0)
+	var target := _find_auto_aim_target(origin, enemies, Config.BOOMERANG_RANGE)
+	var aim_dir := (
+		facing_vec.normalized() if facing_vec.length_squared() > 0.01 else _dir_vector(facing)
+	)
+	if target != null:
+		aim_dir = (target.position + Vector2(0.0, -8.0) - origin).normalized()
+		facing = _vec_to_dir(aim_dir)
+		facing_vec = aim_dir
+	boomerang_in_flight = true
+	boomerang_thrown.emit(origin, aim_dir, Config.BOOMERANG_DAMAGE)
+	return true
+
+
+func on_boomerang_caught() -> void:
+	boomerang_in_flight = false
+	boomerang_cd = Config.BOOMERANG_COOLDOWN
 
 
 func try_swing() -> bool:
@@ -385,11 +416,13 @@ func _get_bow_origin(enemies: Array) -> Vector2:
 	return right_win
 
 
-func _find_auto_aim_target(origin: Vector2, enemies: Array) -> Enemy:
+func _find_auto_aim_target(
+	origin: Vector2, enemies: Array, max_range: float = Config.BOW_RANGE
+) -> Node2D:
 	var best = null
-	var best_d = Config.BOW_RANGE
+	var best_d = max_range
 	for e in enemies:
-		if not is_instance_valid(e) or not (e is Enemy) or not e.is_alive():
+		if not is_instance_valid(e) or not e.has_method("is_alive") or not e.is_alive():
 			continue
 		var d = origin.distance_to(e.position)
 		if d <= best_d:
