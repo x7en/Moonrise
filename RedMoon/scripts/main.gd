@@ -4,6 +4,9 @@ extends Node2D
 
 enum GameState { TITLE, STORY, DAY, MOONRISE, NIGHT, PAUSED, GAME_OVER, VICTORY }
 
+const ENEMY_SCENE: PackedScene = preload("res://scenes/enemy.tscn")
+const ARROW_SCENE: PackedScene = preload("res://scenes/arrow.tscn")
+
 var state: GameState = GameState.TITLE
 var act: int = 1
 var day: int = 1
@@ -476,7 +479,7 @@ func _expand_to_act2() -> void:
 
 
 func _spawn_enemy(etype: String, pos: Vector2, is_wanderer: bool) -> Enemy:
-	var e = Enemy.new()
+	var e: Enemy = ENEMY_SCENE.instantiate() as Enemy
 	e.setup(etype, pos, is_wanderer)
 	e.structure_damaged.connect(_on_enemy_structure_damaged)
 	e.player_damaged.connect(_on_enemy_player_damaged)
@@ -678,7 +681,7 @@ func _on_watchtower_fire(origin: Vector2, target: Node2D) -> void:
 func _spawn_arrow(
 	origin: Vector2, dir: Vector2, dmg: int, max_range: float, pierce: int, from_player: bool
 ) -> void:
-	var arr = Arrow.new()
+	var arr: Arrow = ARROW_SCENE.instantiate() as Arrow
 	arr.setup(origin, dir, Config.ARROW_SPEED, dmg, max_range, pierce, from_player)
 	arr.hit_enemy.connect(func(e: Node2D, a: Arrow, fp: bool) -> void:
 		if is_instance_valid(e) and e.has_method("take_hit"):
@@ -889,35 +892,27 @@ func _rebuild_world_and_structures(seed_val: int) -> void:
 
 
 func _build_scene_tree() -> void:
-	_ground_layer = Node2D.new()
-	_decals_layer = Node2D.new()
-	_entities_layer = Node2D.new()
-	_entities_layer.y_sort_enabled = true
-	_fx = Fx.new()
-	_fx.z_index = 15
-	_tint = CanvasModulate.new()
+	_ground_layer = get_node("World/GroundLayer") as Node2D
+	_decals_layer = get_node("World/DecalsLayer") as Node2D
+	_entities_layer = get_node("Entities") as Node2D
+	_fx = get_node("Effects") as Fx
+	_tint = get_node("DayNightTint") as CanvasModulate
 	_tint.color = Config.TINT_DAY
-	_camera = Camera2D.new()
+	_camera = get_node("Camera2D") as Camera2D
 	_camera.enabled = true
-	_sfx = Sfx.new()
-	_hud = Hud.new()
-	_intro = IntroCards.new()
-	_night_intro = NightIntro.new()
-	_menus = Menus.new()
-	_popups = Popups.new()
-	for c in [
-		_ground_layer, _decals_layer, _entities_layer, _fx, _tint, _camera,
-		_sfx, _hud, _intro, _night_intro, _menus, _popups
-	]:
-		add_child(c)
-	_player = Player.new()
+	_sfx = get_node("Audio") as Sfx
+	_hud = get_node("UI") as Hud
+	_menus = get_node("Menus") as Menus
+	_night_intro = get_node("NightIntro") as NightIntro
+	_intro = get_node("IntroCards") as IntroCards
+	_popups = get_node("Popups") as Popups
+	_player = get_node("Entities/Player") as Player
 	_player.spear_swung.connect(_on_player_spear_swung)
 	_player.bow_fired.connect(_on_player_bow_fired)
 	_player.boomerang_thrown.connect(_on_player_boomerang_thrown)
 	_player.bow_empty_clicked.connect(func() -> void: _sfx.play("bow_empty", -8.0))
 	_player.bow_reloaded.connect(func() -> void: _sfx.play("bow_reload", -10.0))
 	_player.died.connect(_on_player_died)
-	_entities_layer.add_child(_player)
 
 
 func _open_tutorial_cards(from_title: bool) -> void:

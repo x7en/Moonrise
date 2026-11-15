@@ -32,58 +32,74 @@ func setup(kind: String, world_pos: Vector2) -> void:
 	max_hp = hp
 	attract_radius = float(info.get("attract_radius", 0.0))
 
-	var shadow := Sprite2D.new()
+	var shadow := get_node("Shadow") as Sprite2D
 	shadow.texture = Art.get_blob_shadow(18, 7)
-	shadow.position = Vector2(0.0, 4.0)
-	shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	add_child(shadow)
+
+	var sprite_node := get_node("Sprite") as Sprite2D
+	var anim_node := get_node("AnimSprite") as AnimatedSprite2D
+	var hp_bar_node := get_node("HpBar") as ColorRect
+	sprite_node.visible = false
+	anim_node.visible = false
+	hp_bar_node.visible = false
+	_sprite = null
+	_anim_sprite = null
+	_hp_bar = null
 
 	if kind == "trap_spike":
-		_anim_sprite = _build_sheet_anim(
+		_anim_sprite = anim_node
+		_anim_sprite.sprite_frames = _build_sheet_frames(
 			"traps/spike_sheet", 14, [3], [6, 8, 9, 10, 11, 13, 3], 18.0
 		)
+		_anim_sprite.position = Vector2.ZERO
 		_anim_sprite.scale = Vector2(0.75, 0.75)
-		add_child(_anim_sprite)
+		_anim_sprite.visible = true
+		_anim_sprite.play(&"idle")
 
 	elif kind == "trap_snare":
-		_anim_sprite = _build_sheet_anim("traps/snare_sheet", 4, [0], [1, 2, 3], 14.0)
+		_anim_sprite = anim_node
+		_anim_sprite.sprite_frames = _build_sheet_frames(
+			"traps/snare_sheet", 4, [0], [1, 2, 3], 14.0
+		)
+		_anim_sprite.position = Vector2.ZERO
 		_anim_sprite.scale = Vector2(0.75, 0.75)
-		add_child(_anim_sprite)
+		_anim_sprite.visible = true
+		_anim_sprite.play(&"idle")
 
 	elif kind == "trap_lure":
-		_sprite = Sprite2D.new()
+		_sprite = sprite_node
 		_sprite.texture = Art.tex("fences/wood/post")
 		_sprite.offset = Vector2(0.0, -7.0)
-		_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		add_child(_sprite)
+		_sprite.visible = true
 
-		_anim_sprite = _build_sheet_anim("traps/lure_fire", 3, [0, 1, 2], [0, 1, 2], 9.0, true)
+		_anim_sprite = anim_node
+		_anim_sprite.sprite_frames = _build_sheet_frames(
+			"traps/lure_fire", 3, [0, 1, 2], [0, 1, 2], 9.0, true
+		)
+		_anim_sprite.scale = Vector2.ONE
 		_anim_sprite.position = Vector2(0.0, -17.0)
-		add_child(_anim_sprite)
+		_anim_sprite.visible = true
+		_anim_sprite.play(&"idle")
 
 	else:
-		_sprite = Sprite2D.new()
+		_sprite = sprite_node
 		_sprite.texture = Art.get_icon_texture(kind)
-		_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		add_child(_sprite)
+		_sprite.offset = Vector2.ZERO
+		_sprite.visible = true
 
 	if kind == "trap_lure":
-		_hp_bar = ColorRect.new()
-		_hp_bar.position = Vector2(-9.0, -25.0)
-		_hp_bar.size = Vector2(18.0, 2.0)
-		_hp_bar.color = Color(0.95, 0.36, 0.28, 1.0)
+		_hp_bar = hp_bar_node
+		_hp_bar.size.x = 18.0
 		_hp_bar.visible = false
-		add_child(_hp_bar)
 
 
-func _build_sheet_anim(
+func _build_sheet_frames(
 	tex_key: String,
 	count: int,
 	idle_indices: Array,
 	spring_indices: Array,
 	fps: float,
 	loop_idle: bool = false
-) -> AnimatedSprite2D:
+) -> SpriteFrames:
 	var strip := Art.tex(tex_key)
 	var fw := floorf(float(strip.get_width()) / float(maxi(1, count)))
 	var fh := float(strip.get_height())
@@ -110,11 +126,7 @@ func _build_sheet_anim(
 		at2.region = Rect2(float(int(idx)) * fw, 0.0, fw, fh)
 		sf.add_frame(&"spring", at2)
 
-	var anim := AnimatedSprite2D.new()
-	anim.sprite_frames = sf
-	anim.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	anim.play(&"idle")
-	return anim
+	return sf
 
 
 func _draw() -> void:

@@ -1,0 +1,51 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/popups.gd" id="1_popups"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_toast"]
+content_margin_left = 6.0
+content_margin_top = 4.0
+content_margin_right = 6.0
+content_margin_bottom = 4.0
+bg_color = Color(0.1, 0.08, 0.14, 0.94)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.94, 0.72, 0.3, 1)
+
+[node name="Popups" type="CanvasLayer"]
+layer = 50
+script = ExtResource("1_popups")
+
+[node name="ToastPanel" type="PanelContainer" parent="."]
+visible = false
+custom_minimum_size = Vector2(224, 42)
+offset_left = 652.0
+offset_top = 48.0
+offset_right = 876.0
+offset_bottom = 90.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_toast")
+
+[node name="HBox" type="HBoxContainer" parent="ToastPanel"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="IconRect" type="TextureRect" parent="ToastPanel/HBox"]
+texture_filter = 1
+custom_minimum_size = Vector2(20, 20)
+layout_mode = 2
+stretch_mode = 5
+
+[node name="VBox" type="VBoxContainer" parent="ToastPanel/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="TitleLabel" type="Label" parent="ToastPanel/HBox/VBox"]
+layout_mode = 2
+
+[node name="DescLabel" type="Label" parent="ToastPanel/HBox/VBox"]
+layout_mode = 2
+autowrap_mode = 3

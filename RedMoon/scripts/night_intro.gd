@@ -24,51 +24,22 @@ func _ready() -> void:
 	layer = 40
 	visible = false
 
-	_root = Control.new()
-	_root.position = Vector2.ZERO
-	_root.size = Config.VIEW_SIZE
+	_root = get_node("Root") as Control
 	_root.theme = Art.get_game_theme()
-	add_child(_root)
 
-	_sky = MoonSky.new()
-	_root.add_child(_sky)
+	_sky = get_node("Root/Sky") as MoonSky
 	_sky.build(Config.VIEW_SIZE)
 
-	_title_label = Label.new()
-	_title_label.position = Vector2(0.0, 12.0)
-	_title_label.size = Vector2(Config.VIEW_SIZE.x, 32.0)
-	_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title_label = get_node("Root/TitleLabel") as Label
 	Art.style_label(_title_label, "display", 16, Color(0.96, 0.94, 0.90))
-	_root.add_child(_title_label)
 
-	var text_band := ColorRect.new()
-	text_band.position = Vector2(0.0, Config.VIEW_SIZE.y - 54.0)
-	text_band.size = Vector2(Config.VIEW_SIZE.x, 54.0)
-	text_band.color = Color(0.05, 0.04, 0.08, 0.80)
-	_root.add_child(text_band)
-
-	_narration_label = Label.new()
-	_narration_label.position = Vector2(40.0, Config.VIEW_SIZE.y - 46.0)
-	_narration_label.size = Vector2(Config.VIEW_SIZE.x - 80.0, 26.0)
-	_narration_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_narration_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_narration_label = get_node("Root/NarrationLabel") as Label
 	Art.style_label(_narration_label, "bold", 8, Color(0.95, 0.90, 0.86))
-	_root.add_child(_narration_label)
 
-	_skip_label = Label.new()
-	_skip_label.position = Vector2(Config.VIEW_SIZE.x - 190.0, Config.VIEW_SIZE.y - 16.0)
-	_skip_label.size = Vector2(182.0, 12.0)
-	_skip_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_skip_label.text = "[Space / Enter / Esc] Skip"
+	_skip_label = get_node("Root/SkipLabel") as Label
 	Art.style_label(_skip_label, "body", 8, Color(0.72, 0.70, 0.78))
-	_root.add_child(_skip_label)
 
-	_flash = ColorRect.new()
-	_flash.position = Vector2.ZERO
-	_flash.size = Config.VIEW_SIZE
-	_flash.color = Color(0.92, 0.14, 0.14, 0.0)
-	_flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(_flash)
+	_flash = get_node("Root/BloodFlash") as ColorRect
 
 
 func start_moonrise(

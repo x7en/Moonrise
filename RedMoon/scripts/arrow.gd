@@ -35,10 +35,8 @@ func setup(
 	rotation = dir_n.angle()
 	add_to_group("arrows")
 
-	_sprite = Sprite2D.new()
+	_sprite = get_node("Sprite") as Sprite2D
 	_sprite.texture = Art.tex("weapons/arrow_pierce" if pierce > 0 else "weapons/arrow")
-	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	add_child(_sprite)
 
 
 func step_arrow(delta: float, enemies: Array, world_bounds: Rect2) -> void:

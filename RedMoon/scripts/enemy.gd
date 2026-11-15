@@ -91,42 +91,19 @@ func setup(kind: String, spawn_pos: Vector2, day_wanderer: bool = false) -> void
 	add_to_group("enemies")
 	add_to_group("hostiles")
 
-	var col = CollisionShape2D.new()
-	var sh = RectangleShape2D.new()
-	sh.size = Vector2(10.0, 10.0)
-	col.shape = sh
-	col.position = Vector2(0.0, -5.0)
-	add_child(col)
-
-	_shadow = Sprite2D.new()
+	_shadow = get_node("Shadow") as Sprite2D
 	_shadow.texture = Art.get_blob_shadow(12, 5)
-	_shadow.position = Vector2(0.0, 1.0)
-	_shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	add_child(_shadow)
 
-	_sprite = AnimatedSprite2D.new()
-	_sprite.centered = false
-	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_sprite = get_node("Sprite") as AnimatedSprite2D
 	_sprite.sprite_frames = Art.get_enemy_frames(enemy_type)
 	_sprite.offset = Art.feet_offset_for_animated("enemies/%s/walk_down" % enemy_type)
 	_sprite.modulate = _base_tint
 	_sprite.play(&"walk_down")
-	add_child(_sprite)
 
-	_hp_holder = Node2D.new()
-	_hp_holder.position = Vector2(0.0, -21.0)
+	_hp_holder = get_node("HpBar") as Node2D
 	_hp_holder.visible = false
-	var bg = ColorRect.new()
-	bg.position = Vector2(-7.0, 0.0)
-	bg.size = Vector2(14.0, 3.0)
-	bg.color = Color(0.08, 0.06, 0.10, 0.88)
-	_hp_holder.add_child(bg)
-	_hp_fill = ColorRect.new()
-	_hp_fill.position = Vector2(-6.0, 1.0)
-	_hp_fill.size = Vector2(12.0, 1.0)
-	_hp_fill.color = Color(0.95, 0.30, 0.28, 1.0)
-	_hp_holder.add_child(_hp_fill)
-	add_child(_hp_holder)
+	_hp_fill = get_node("HpBar/Fill") as ColorRect
+	_hp_fill.size.x = 12.0
 
 
 func is_alive() -> bool:

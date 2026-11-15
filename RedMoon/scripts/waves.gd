@@ -3,6 +3,9 @@ extends RefCounted
 
 # builds night spawn queues, picks map edges, and formats the hud state dictionary
 
+const DOG_SCENE: PackedScene = preload("res://scenes/dog.tscn")
+const GHOST_SCENE: PackedScene = preload("res://scenes/ghost.tscn")
+
 
 func build_night_wave_queue(day: int, act: int) -> Array[Dictionary]:
 	var queue: Array[Dictionary] = []
@@ -286,7 +289,7 @@ func spawn_ghost_for(main_node: Node) -> Ghost:
 		return null
 	var pos := _pick_ghost_spawn_pos(player.position)
 	var variant := "scythe" if randf() < 0.65 else "lunge"
-	var g := Ghost.new()
+	var g: Ghost = GHOST_SCENE.instantiate() as Ghost
 	g.setup(pos, variant)
 	g.player_damaged.connect(func(dmg: int, _ghost: Node) -> void:
 		main_node.call("_on_ghost_player_damaged", dmg)
@@ -317,8 +320,9 @@ func spawn_dog_for(
 	start_hp: int = -1,
 	allow_tame: bool = false
 ) -> Dog:
-	var d = Dog.new()
+	var d: Dog = DOG_SCENE.instantiate() as Dog
 	if not d.setup(pos, allow_tame):
+		d.free()
 		return null
 	d.restore_state(start_mode, start_hp, pos)
 	var sfx = main_node.get("_sfx")

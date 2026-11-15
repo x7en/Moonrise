@@ -14,9 +14,13 @@ var _next_player: int = 0
 
 
 func _ready() -> void:
-	for i in range(POOL_SIZE):
+	_players.clear()
+	for child in get_children():
+		if child is AudioStreamPlayer:
+			_players.append(child as AudioStreamPlayer)
+	while _players.size() < POOL_SIZE:
 		var p = AudioStreamPlayer.new()
-		p.name = "SfxPlayer_%d" % i
+		p.name = "SfxPlayer_%d" % _players.size()
 		add_child(p)
 		_players.append(p)
 	_build_sounds()

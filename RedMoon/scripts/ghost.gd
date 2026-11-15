@@ -48,37 +48,21 @@ func setup(spawn_pos: Vector2, ghost_variant: String = "scythe") -> void:
 	add_to_group("ghosts")
 	add_to_group("hostiles")
 
-	_shadow = Sprite2D.new()
+	_shadow = get_node("Shadow") as Sprite2D
 	_shadow.texture = Art.get_blob_shadow(12, 5)
-	_shadow.position = Vector2(0.0, 2.0)
-	_shadow.modulate = Color(0.35, 0.96, 0.84, 0.40)
-	_shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	add_child(_shadow)
 
-	_sprite = AnimatedSprite2D.new()
-	_sprite.centered = false
-	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_sprite = get_node("Sprite") as AnimatedSprite2D
 	_sprite.scale = Vector2(Config.GHOST_SCALE, Config.GHOST_SCALE)
 	_sprite.sprite_frames = Art.get_ghost_frames(variant)
 	_apply_facing_offset(false)
-	_sprite.animation_finished.connect(_on_anim_finished)
+	if not _sprite.animation_finished.is_connected(_on_anim_finished):
+		_sprite.animation_finished.connect(_on_anim_finished)
 	_sprite.play(&"materialize")
-	add_child(_sprite)
 
-	_hp_holder = Node2D.new()
-	_hp_holder.position = Vector2(0.0, -24.0)
+	_hp_holder = get_node("HpBar") as Node2D
 	_hp_holder.visible = false
-	var bg := ColorRect.new()
-	bg.position = Vector2(-7.0, 0.0)
-	bg.size = Vector2(14.0, 3.0)
-	bg.color = Color(0.08, 0.06, 0.12, 0.88)
-	_hp_holder.add_child(bg)
-	_hp_fill = ColorRect.new()
-	_hp_fill.position = Vector2(-6.0, 1.0)
-	_hp_fill.size = Vector2(12.0, 1.0)
-	_hp_fill.color = Color(0.42, 0.96, 0.82, 1.0)
-	_hp_holder.add_child(_hp_fill)
-	add_child(_hp_holder)
+	_hp_fill = get_node("HpBar/Fill") as ColorRect
+	_hp_fill.size.x = 12.0
 
 
 func is_alive() -> bool:

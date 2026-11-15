@@ -1,0 +1,76 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/intro_cards.gd" id="1_intro_cards"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_card_frame"]
+bg_color = Color(0.09, 0.07, 0.13, 0.96)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.55, 0.3, 0.34, 1)
+
+[node name="IntroCards" type="CanvasLayer"]
+layer = 50
+visible = false
+script = ExtResource("1_intro_cards")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 640.0
+offset_bottom = 360.0
+
+[node name="Background" type="ColorRect" parent="Root"]
+layout_mode = 0
+offset_right = 640.0
+offset_bottom = 360.0
+color = Color(0.05, 0.04, 0.08, 0.96)
+
+[node name="CardFrame" type="PanelContainer" parent="Root"]
+layout_mode = 0
+offset_left = 64.0
+offset_top = 28.0
+offset_right = 576.0
+offset_bottom = 332.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_card_frame")
+
+[node name="ArtHolder" type="Control" parent="Root"]
+anchors_preset = 0
+offset_right = 640.0
+offset_bottom = 360.0
+mouse_filter = 2
+
+[node name="TitleLabel" type="Label" parent="Root"]
+layout_mode = 0
+offset_left = 84.0
+offset_top = 36.0
+offset_right = 556.0
+offset_bottom = 64.0
+horizontal_alignment = 1
+
+[node name="BodyLabel" type="Label" parent="Root"]
+layout_mode = 0
+offset_left = 96.0
+offset_top = 174.0
+offset_right = 544.0
+offset_bottom = 284.0
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="PromptLabel" type="Label" parent="Root"]
+layout_mode = 0
+offset_left = 84.0
+offset_top = 304.0
+offset_right = 556.0
+offset_bottom = 320.0
+horizontal_alignment = 1
+
+[node name="SkipLabel" type="Label" parent="Root"]
+layout_mode = 0
+offset_left = 460.0
+offset_top = 336.0
+offset_right = 630.0
+offset_bottom = 350.0
+text = "[Esc] Skip"
+horizontal_alignment = 2
