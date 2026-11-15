@@ -1,7 +1,7 @@
 class_name Trap
 extends Node2D
 
-signal triggered(trap: Trap, enemy: Node)
+signal triggered(trap: Trap, enemy: Node2D)
 signal broken(trap: Trap)
 
 var trap_type: String = "trap_spike"

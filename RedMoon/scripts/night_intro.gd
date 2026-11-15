@@ -151,18 +151,23 @@ func _process(delta: float) -> void:
 		skip_now()
 
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
 	if not active:
 		return
 
 	if event is InputEventKey:
-		var ke = event
+		var ke: InputEventKey = event as InputEventKey
 		if ke.pressed and not ke.echo:
 			if ke.keycode in [KEY_SPACE, KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE]:
 				get_viewport().set_input_as_handled()
 				skip_now()
 	elif event is InputEventMouseButton:
-		var mb = event
-		if mb.pressed:
+		var mb: InputEventMouseButton = event as InputEventMouseButton
+		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
+			get_viewport().set_input_as_handled()
+			skip_now()
+	elif event is InputEventScreenTouch:
+		var st: InputEventScreenTouch = event as InputEventScreenTouch
+		if st.pressed:
 			get_viewport().set_input_as_handled()
 			skip_now()

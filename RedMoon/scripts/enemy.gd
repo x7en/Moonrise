@@ -41,8 +41,8 @@ var _shadow: Sprite2D
 var _hp_holder: Node2D
 var _hp_fill: ColorRect
 
-var _target_struct: Node
-var _target_lure: Node
+var _target_struct: Node2D
+var _target_lure: Trap
 var _attack_timer: float = 0.0
 var _player_windup: float = 0.0
 var _player_cd: float = 0.0
@@ -392,9 +392,9 @@ func _step_attack_structure(delta: float) -> void:
 	var still_blocks = false
 	if is_instance_valid(_target_struct):
 		if _target_struct is Structure:
-			still_blocks = _target_struct.is_blocking()
+			still_blocks = (_target_struct as Structure).is_blocking()
 		elif _target_struct is Watchtower:
-			still_blocks = _target_struct.is_standing()
+			still_blocks = (_target_struct as Watchtower).is_standing()
 	if not still_blocks:
 		_target_struct = null
 		state = State.WALK_TO_TARGET
@@ -405,7 +405,7 @@ func _step_attack_structure(delta: float) -> void:
 		_attack_timer = attack_interval
 		_play_attack(facing)
 		structure_damaged.emit(_target_struct, struct_dmg, self)
-		if _target_struct is Structure and _target_struct.spiked:
+		if _target_struct is Structure and (_target_struct as Structure).spiked:
 			take_hit(1, Vector2.ZERO, false)
 
 
@@ -538,7 +538,7 @@ func _find_adjacent_blocker(
 	structures: Array,
 	watchtowers: Array,
 	extra_reach: float = 0.0
-) -> Node:
+) -> Node2D:
 	var best = null
 	var best_d = 999999.0
 	for s in structures:

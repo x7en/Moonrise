@@ -61,12 +61,12 @@ func _process(delta: float) -> void:
 		_prompt_lbl.visible = (_ready_timer <= 0.0) and (int(_blink_timer * 2.5) % 2 == 0)
 
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
 	if not active:
 		return
 
 	if event is InputEventKey:
-		var ke = event
+		var ke: InputEventKey = event as InputEventKey
 		if not ke.pressed or ke.echo:
 			return
 
@@ -80,13 +80,13 @@ func _unhandled_input(event: InputEvent) -> void:
 			_advance()
 
 	elif event is InputEventMouseButton:
-		var mb = event
+		var mb: InputEventMouseButton = event as InputEventMouseButton
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			get_viewport().set_input_as_handled()
 			if _ready_timer <= 0.0:
 				_advance()
 	elif event is InputEventScreenTouch:
-		var st = event
+		var st: InputEventScreenTouch = event as InputEventScreenTouch
 		if st.pressed:
 			get_viewport().set_input_as_handled()
 			if _ready_timer <= 0.0:

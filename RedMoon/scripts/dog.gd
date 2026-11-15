@@ -2,7 +2,7 @@ class_name Dog
 extends CharacterBody2D
 
 signal tamed(dog: Dog)
-signal attacked_enemy(enemy: Node)
+signal attacked_enemy(enemy: Node2D)
 signal died(dog: Dog)
 
 enum Mode { STRAY, FOLLOW, GUARD }
@@ -136,7 +136,7 @@ func take_damage(dmg: int) -> bool:
 
 
 func restore_state(start_mode: int, start_hp: int, anchor: Vector2) -> void:
-	mode = start_mode as Mode
+	mode = clampi(start_mode, Mode.STRAY, Mode.GUARD) as Mode
 	guard_anchor = anchor
 	if start_hp > 0:
 		hp = mini(start_hp, max_hp)
@@ -441,13 +441,13 @@ func _load_dog_frames() -> SpriteFrames:
 			if not ResourceLoader.exists(full_path):
 				continue
 
-			var strip_tex = load(full_path)
+			var strip_tex: Texture2D = load(full_path) as Texture2D
 			if strip_tex == null:
 				continue
 
-			var fh := maxi(1, strip_tex.get_height())
-			var count := maxi(1, roundi(float(strip_tex.get_width()) / float(maxi(1, fh))))
-			var fw := maxi(1, int(floorf(float(strip_tex.get_width()) / float(count))))
+			var fh: int = maxi(1, strip_tex.get_height())
+			var count: int = maxi(1, roundi(float(strip_tex.get_width()) / float(maxi(1, fh))))
+			var fw: int = maxi(1, int(floorf(float(strip_tex.get_width()) / float(count))))
 
 			var anim_key := "%s_%s" % [anim_name, dir_name]
 			sf.add_animation(anim_key)

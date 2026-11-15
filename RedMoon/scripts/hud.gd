@@ -700,10 +700,13 @@ func _build_trap_hotbar() -> void:
 		slot.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		slot.add_theme_stylebox_override("panel", _slot_box_normal)
 		slot.gui_input.connect(func(ev: InputEvent) -> void:
-			var is_click = (
-				ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT
-			)
-			var is_tap = ev is InputEventScreenTouch and ev.pressed
+			var is_click := false
+			if ev is InputEventMouseButton:
+				var mb: InputEventMouseButton = ev as InputEventMouseButton
+				is_click = mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT
+			var is_tap := false
+			if ev is InputEventScreenTouch:
+				is_tap = (ev as InputEventScreenTouch).pressed
 			if is_click or is_tap:
 				get_viewport().set_input_as_handled()
 				trap_slot_clicked.emit(slot_idx)

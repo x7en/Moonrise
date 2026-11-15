@@ -3,7 +3,7 @@ extends Node2D
 
 # reusable bounce-back thrown weapon projectile (used by player; boss-ready via owner_node/targets)
 
-signal hit_target(target: Node, boomerang: Boomerang, is_return_leg: bool)
+signal hit_target(target: Node2D, boomerang: Boomerang, is_return_leg: bool)
 signal bounced(pos: Vector2, hit_enemy: bool)
 signal caught(boomerang: Boomerang)
 
@@ -98,12 +98,13 @@ func _step_outbound(delta: float, targets: Array, world_bounds: Rect2) -> void:
 	for t in targets:
 		if not _can_hit_target(t, _hit_outbound_ids):
 			continue
-		if _overlaps_target(t):
-			var tid := t.get_instance_id()
+		var target_node: Node2D = t as Node2D
+		if _overlaps_target(target_node):
+			var tid: int = target_node.get_instance_id()
 			_hit_outbound_ids[tid] = true
 			_bounce_grace_id = tid
 			_bounce_grace_timer = 0.18
-			hit_target.emit(t, self, false)
+			hit_target.emit(target_node, self, false)
 			_begin_return(true)
 			return
 
@@ -131,12 +132,13 @@ func _step_return(delta: float, targets: Array) -> void:
 	for t in targets:
 		if not _can_hit_target(t, _hit_return_ids):
 			continue
-		var tid := t.get_instance_id()
+		var target_node: Node2D = t as Node2D
+		var tid: int = target_node.get_instance_id()
 		if tid == _bounce_grace_id and _bounce_grace_timer > 0.0:
 			continue
-		if _overlaps_target(t):
+		if _overlaps_target(target_node):
 			_hit_return_ids[tid] = true
-			hit_target.emit(t, self, true)
+			hit_target.emit(target_node, self, true)
 
 
 func _begin_return(hit_enemy: bool) -> void:
@@ -149,7 +151,7 @@ func _begin_return(hit_enemy: bool) -> void:
 
 func _get_catch_point() -> Vector2:
 	if is_instance_valid(owner_node):
-		if owner_node is Player and owner_node.inside_house:
+		if owner_node is Player and (owner_node as Player).inside_house:
 			return Config.HOUSE_DOOR
 		return owner_node.position + Vector2(0.0, -8.0)
 	return _fallback_return_pos
@@ -162,15 +164,15 @@ func _can_hit_target(t: Variant, seen: Dictionary) -> bool:
 		return false
 	if from_player and t is Player:
 		return false
-	if not t.has_method("is_alive") or not t.is_alive():
+	if not t.has_method("is_alive") or not t.call("is_alive"):
 		return false
 	if not t.has_method("get_hurtbox_rect"):
 		return false
-	return not seen.has(t.get_instance_id())
+	return not seen.has((t as Node2D).get_instance_id())
 
 
 func _overlaps_target(t: Node2D) -> bool:
-	var hurt_rect: Rect2 = t.get_hurtbox_rect()
+	var hurt_rect: Rect2 = t.call("get_hurtbox_rect")
 	return hurt_rect.grow(hit_radius * 0.5).has_point(position)
 
 
