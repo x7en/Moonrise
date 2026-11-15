@@ -75,17 +75,6 @@ func can_afford(cost: Dictionary, extra: Bag = null) -> bool:
 	return true
 
 
-func missing_for(cost: Dictionary, extra: Bag = null) -> Dictionary:
-	var missing = {}
-	for key in cost.keys():
-		var item_id := String(key)
-		var need := int(cost[key])
-		var have := count(item_id) + (extra.count(item_id) if extra != null else 0)
-		if have < need:
-			missing[item_id] = need - have
-	return missing
-
-
 func spend(cost: Dictionary, extra: Bag = null) -> bool:
 	if not can_afford(cost, extra):
 		return false
@@ -109,10 +98,6 @@ func transfer_resources_to(target: Bag) -> Dictionary:
 			remove(res_id, added)
 			moved[res_id] = added
 	return moved
-
-
-func total_resources() -> int:
-	return count("plank") + count("scrap")
 
 
 func to_dict() -> Dictionary:

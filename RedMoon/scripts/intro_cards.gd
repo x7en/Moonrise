@@ -214,9 +214,9 @@ static func get_opening_cards() -> Array[Dictionary]:
 			"accent": Color(0.92, 0.94, 1.0),
 		},
 		{
-			"title": "THE TWO RINGS",
-			"body": "Two weathered rings of timber surround the house.\n"
-			+ "Gather planks by day, patch the gaps, and strengthen the outer fence.",
+			"title": "HOLD THE YARD",
+			"body": "A weathered timber ring surrounds the house.\n"
+			+ "Gather planks by day, patch the gaps, and unlock outer fence rings.",
 			"art": "house",
 			"accent": Color(1.0, 0.88, 0.64),
 		},

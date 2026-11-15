@@ -4,17 +4,6 @@ extends RefCounted
 # [frames, w, h] for horizontal sprite sheets
 # had to measure these by hand since the pack strips have slightly different widths per dir
 const ANIMATED := {
-	"enemies/brute/attack_down": [8, 20, 25],
-	"enemies/brute/attack_left": [8, 23, 23],
-	"enemies/brute/attack_right": [8, 23, 23],
-	"enemies/brute/attack_up": [8, 18, 24],
-	"enemies/brute/death_left": [7, 29, 23],
-	"enemies/brute/death_right": [7, 29, 23],
-	"enemies/brute/walk_down": [8, 16, 24],
-	"enemies/brute/walk_left": [8, 16, 24],
-	"enemies/brute/walk_right": [8, 16, 24],
-	"enemies/brute/walk_up": [8, 16, 24],
-
 	"enemies/raider/attack_down": [7, 15, 21],
 	"enemies/raider/attack_left": [7, 25, 19],
 	"enemies/raider/attack_right": [7, 25, 19],
@@ -153,7 +142,3 @@ const STATIC := {
 
 static func path(key: String) -> String:
 	return "res://assets/%s.png" % key
-
-
-static func is_animated(key: String) -> bool:
-	return ANIMATED.has(key)

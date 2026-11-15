@@ -33,6 +33,9 @@ var _hint_lbl: Label
 var _status_lbl: Label
 var _trap_slots: Array[PanelContainer] = []
 var _trap_slot_labels: Array[Label] = []
+var _slot_box_normal: StyleBox
+var _slot_box_active: StyleBox
+var _slot_active_state: Array[bool] = [false, false, false]
 
 # popups & overlays
 var _header_panel: PanelContainer
@@ -588,6 +591,9 @@ func _build_end_screen() -> void:
 func _build_trap_hotbar() -> void:
 	_trap_slots.clear()
 	_trap_slot_labels.clear()
+	_slot_box_normal = _make_slot_box(false)
+	_slot_box_active = _make_slot_box(true)
+	_slot_active_state = [false, false, false]
 	var bar_w = 376.0
 	var start_x = floorf((Config.VIEW_SIZE.x - bar_w) * 0.5)
 	var bar_y = Config.VIEW_SIZE.y - 27.0
@@ -598,7 +604,7 @@ func _build_trap_hotbar() -> void:
 		slot.size = Vector2(120.0, 15.0)
 		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		slot.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		slot.add_theme_stylebox_override("panel", _make_slot_box(false))
+		slot.add_theme_stylebox_override("panel", _slot_box_normal)
 		var hbox = HBoxContainer.new()
 		hbox.add_theme_constant_override("separation", 3)
 		hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -612,7 +618,7 @@ func _build_trap_hotbar() -> void:
 		var lbl = Label.new()
 		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		Art.style_label(lbl, "body", 8, Color(0.92, 0.90, 0.94))
+		Art.style_label(lbl, "body", 8, Color(0.88, 0.88, 0.94))
 		hbox.add_child(lbl)
 		slot.add_child(hbox)
 		_hud_layer.add_child(slot)
@@ -630,14 +636,19 @@ func _update_trap_hotbar(
 	]
 	for i in range(mini(3, _trap_slots.size())):
 		var active = trap_mode and (sel_idx == i + 1)
-		_trap_slots[i].add_theme_stylebox_override("panel", _make_slot_box(active))
-		_trap_slot_labels[i].text = texts[i]
-		Art.style_label(
-			_trap_slot_labels[i],
-			"bold" if active else "body",
-			8,
-			Color(1.0, 0.92, 0.45) if active else Color(0.88, 0.88, 0.94)
-		)
+		if _trap_slot_labels[i].text != texts[i]:
+			_trap_slot_labels[i].text = texts[i]
+		if _slot_active_state[i] != active:
+			_slot_active_state[i] = active
+			_trap_slots[i].add_theme_stylebox_override(
+				"panel", _slot_box_active if active else _slot_box_normal
+			)
+			Art.style_label(
+				_trap_slot_labels[i],
+				"bold" if active else "body",
+				8,
+				Color(1.0, 0.92, 0.45) if active else Color(0.88, 0.88, 0.94)
+			)
 
 
 func _make_slot_box(active: bool) -> StyleBox:

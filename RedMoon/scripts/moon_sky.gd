@@ -125,11 +125,6 @@ func configure_for_night(
 	red_blend = 1.0 if (is_blood and not start_white_turn_red) else 0.0
 
 
-func set_red_moon_frame(_frame_idx: int) -> void:
-	if _moon_red != null:
-		_moon_red.texture = Art.tex("sky/blood_moon")
-
-
 func update_sky(delta: float) -> void:
 	_time += delta
 

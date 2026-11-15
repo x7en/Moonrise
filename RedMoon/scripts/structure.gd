@@ -185,11 +185,6 @@ func distance_from_point(world_point: Vector2) -> float:
 	return world_point.distance_to(Vector2(cx, cy))
 
 
-func is_within_attack_reach(enemy_pos: Vector2) -> bool:
-	var margin = 11.0 if kind == Kind.HOUSE else 12.0
-	return distance_from_point(enemy_pos) <= margin
-
-
 func set_hovered(hovered: bool) -> void:
 	if is_hovered == hovered:
 		return
@@ -453,9 +448,8 @@ func _refresh_fence_visuals() -> void:
 	if _collider != null:
 		_collider.set_deferred("disabled", not blocking)
 
-	var use_reinf := (level >= 2 or hp >= Config.FENCE_REINFORCED_MIN_HP)
-	var folder := "iron" if use_reinf else "wood"
-	var lv_tint := Color(0.76, 0.82, 0.90, 1.0) if level >= 3 else Color.WHITE
+	var folder = "iron" if level >= 2 else "wood"
+	var lv_tint = Color(0.76, 0.82, 0.90, 1.0) if level >= 3 else Color.WHITE
 
 	if is_gate:
 		if _gate_closed_node != null:

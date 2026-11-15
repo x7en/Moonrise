@@ -128,50 +128,64 @@ func execute_action(
 	return res
 
 
-func save_day(
-	act: int,
-	day: int,
-	player: Player,
-	bag: Bag,
-	stockpile: Bag,
-	upgrades: Dictionary,
-	house: Structure,
-	fences: Array[Structure]
-) -> Dictionary:
-	var f_snaps: Array[Dictionary] = []
+func save_day(main_node: Node) -> Dictionary:
+	var house = main_node.get("house")
+	var fences: Array = main_node.get("fences")
+	var traps: Array = main_node.get("traps")
+	var watchtowers: Array = main_node.get("watchtowers")
+	var dogs: Array = main_node.get("dogs")
+	var fence_saves: Array[Dictionary] = []
 	for f in fences:
-		f_snaps.append(f.save_state())
+		fence_saves.append(f.save_state())
+	var trap_saves: Array[Dictionary] = []
+	for t in traps:
+		if is_instance_valid(t) and t.is_active():
+			trap_saves.append({
+				"type": t.trap_type,
+				"pos": t.position,
+				"triggers": t.triggers_left,
+				"hp": t.hp,
+			})
+	var tower_saves: Array[Dictionary] = []
+	for wt in watchtowers:
+		if is_instance_valid(wt) and wt.is_standing():
+			tower_saves.append({"pos": wt.position, "hp": wt.hp})
+	var dog_saves: Array[Dictionary] = []
+	for d in dogs:
+		if is_instance_valid(d) and d.mode != Dog.Mode.STRAY:
+			dog_saves.append({"pos": d.position, "mode": int(d.mode)})
 	return {
-		"act": act,
-		"day": day,
-		"hp": player.hp,
-		"bag": bag.to_dict(),
-		"stockpile": stockpile.to_dict(),
-		"upgrades": upgrades.duplicate(true),
+		"act": int(main_node.get("act")),
+		"day": int(main_node.get("day")),
+		"hp": main_node.get("_player").hp,
+		"bag": main_node.get("bag").to_dict(),
+		"stockpile": main_node.get("stockpile").to_dict(),
+		"upgrades": main_node.get("upgrades").duplicate(true),
 		"house": house.save_state() if house != null else {},
-		"fences": f_snaps,
+		"fences": fence_saves,
+		"traps": trap_saves,
+		"watchtowers": tower_saves,
+		"dogs": dog_saves,
 	}
 
 
-func load_day(
-	snap: Dictionary,
-	bag: Bag,
-	stockpile: Bag,
-	player: Player,
-	house: Structure,
-	fences: Array[Structure]
-) -> Dictionary:
-	bag.from_dict(snap["bag"])
-	stockpile.from_dict(snap["stockpile"])
-	var up = snap["upgrades"].duplicate(true)
+func load_day(saved: Dictionary, main_node: Node) -> Dictionary:
+	var bag = main_node.get("bag")
+	var stockpile = main_node.get("stockpile")
+	var player = main_node.get("_player")
+	var house = main_node.get("house")
+	var fences: Array = main_node.get("fences")
+	bag.from_dict(saved["bag"])
+	stockpile.from_dict(saved["stockpile"])
+	var up = saved["upgrades"].duplicate(true)
 	player.reset_for_new_game(Config.HOUSE_DOOR)
-	player.hp = int(snap["hp"])
+	player.hp = int(saved["hp"])
 	player.apply_upgrade_stats(up)
 	if house != null:
-		house.load_state(snap["house"])
-	var f_snaps: Array = snap["fences"]
-	for i in range(mini(fences.size(), f_snaps.size())):
-		fences[i].load_state(f_snaps[i])
+		house.load_state(saved["house"])
+	var fence_saves: Array = saved["fences"]
+	for i in range(mini(fences.size(), fence_saves.size())):
+		fences[i].load_state(fence_saves[i])
 	return up
 
 
@@ -247,6 +261,31 @@ func can_place_trap_at(
 
 
 # spends a trap from the bag first, otherwise crafts one right out of the stockpile
+func spawn_trap_node(
+	t_key: String, place_pos: Vector2, main_node: Node
+) -> Trap:
+	var traps: Array = main_node.get("traps")
+	var entities_layer = main_node.get("_entities_layer")
+	var sfx = main_node.get("_sfx")
+	var fx = main_node.get("_fx")
+
+	var trap = Trap.new()
+	trap.setup(t_key, place_pos)
+	trap.triggered.connect(func(tr: Trap, en: Node) -> void:
+		sfx.play("trap_trigger", -7.0)
+		if is_instance_valid(en):
+			var ep = en.position
+			if tr.trap_type == "trap_snare":
+				fx.spawn_sparks(ep, Color(0.95, 0.85, 0.35, 1.0), 8)
+				fx.spawn_floating_text(ep, "SNARED!", Color(1.0, 0.88, 0.38))
+			else:
+				fx.spawn_sparks(ep, Color(0.96, 0.32, 0.28, 1.0), 6)
+	)
+	entities_layer.add_child(trap)
+	traps.append(trap)
+	return trap
+
+
 func try_place_trap_at(
 	t_key: String, place_pos: Vector2, main_node: Node
 ) -> bool:
@@ -255,10 +294,9 @@ func try_place_trap_at(
 	var stockpile = main_node.get("stockpile")
 	var traps: Array = main_node.get("traps")
 	var structures: Array = main_node.get("structures")
-	var entities_layer = main_node.get("_entities_layer")
 	var hud = main_node.get("_hud")
 	var sfx = main_node.get("_sfx")
-	var effects = main_node.get("_effects")
+	var fx = main_node.get("_fx")
 
 	var check = can_place_trap_at(
 		t_key, place_pos, player, bag, stockpile, traps, structures
@@ -274,24 +312,11 @@ func try_place_trap_at(
 		if not bag.spend(cost, stockpile):
 			return false
 
-	var trap = Trap.new()
-	trap.setup(t_key, place_pos)
-	trap.triggered.connect(func(tr: Trap, en: Node) -> void:
-		sfx.play("trap_trigger", -7.0)
-		if is_instance_valid(en):
-			var ep = en.position
-			if tr.trap_type == "trap_snare":
-				effects.spawn_sparks(ep, Color(0.95, 0.85, 0.35, 1.0), 8)
-				effects.spawn_floating_text(ep, "SNARED!", Color(1.0, 0.88, 0.38))
-			else:
-				effects.spawn_sparks(ep, Color(0.96, 0.32, 0.28, 1.0), 6)
-	)
-	entities_layer.add_child(trap)
-	traps.append(trap)
+	spawn_trap_node(t_key, place_pos, main_node)
 	sfx.play("fence_rebuilt", -8.0)
-	effects.spawn_sparks(place_pos, Color(0.86, 0.82, 0.64, 1.0), 5)
+	fx.spawn_sparks(place_pos, Color(0.86, 0.82, 0.64, 1.0), 5)
 	var t_label = String((Config.TRAPS[t_key])["label"])
-	effects.spawn_floating_text(place_pos, "%s Set!" % t_label, Color(0.62, 0.96, 0.68))
+	fx.spawn_floating_text(place_pos, "%s Set!" % t_label, Color(0.62, 0.96, 0.68))
 	return true
 
 
@@ -309,11 +334,11 @@ func compute_trap_place_pos(trap_mode_active: bool, main_node: Node) -> Vector2:
 func update_trap_preview(
 	trap_mode_active: bool, selected_idx: int, main_node: Node
 ) -> void:
-	var effects = main_node.get("_effects")
+	var fx = main_node.get("_fx")
 	var player = main_node.get("_player")
-	var upgrade_ui = main_node.get("_upgrade_ui")
-	if not trap_mode_active or upgrade_ui.is_open() or player.inside_house:
-		effects.set_trap_preview(false)
+	var menus = main_node.get("_menus")
+	if not trap_mode_active or menus.is_open() or player.inside_house:
+		fx.set_trap_preview(false)
 		return
 	var keys: Array[String] = ["trap_spike", "trap_snare", "trap_lure"]
 	var t_key = keys[clampi(selected_idx - 1, 0, 2)]
@@ -328,7 +353,7 @@ func update_trap_preview(
 		main_node.get("traps"),
 		main_node.get("structures")
 	)
-	effects.set_trap_preview(
+	fx.set_trap_preview(
 		true,
 		place_pos,
 		float(info.get("radius", 13.0)),
@@ -340,14 +365,14 @@ func update_trap_preview(
 
 func grant_prop_loot(
 	prop: Dictionary,
-	world_builder: MapGen,
+	map: MapGen,
 	player: Player,
 	bag: Bag,
 	stockpile: Bag,
 	sfx: Sfx,
-	effects: Fx
+	fx: Fx
 ) -> void:
-	world_builder.mark_prop_searched(int(prop["id"]))
+	map.mark_prop_searched(int(prop["id"]))
 	var sg = int(prop["loot_scrap"])
 	var pg = int(prop["loot_plank"])
 	var sa = bag.add("scrap", sg)
@@ -359,41 +384,41 @@ func grant_prop_loot(
 	if randf() < 0.45:
 		bag.add("arrow", 4)
 	sfx.play("pickup", -7.0)
-	effects.spawn_floating_text(
+	fx.spawn_floating_text(
 		player.position, "+%d Scrap +%d Plank" % [sg, pg], Color(0.98, 0.84, 0.46)
 	)
 
 
 func handle_settings_action(
-	action_id: String, settings: SaveData, upgrade_ui: Menus
+	action_id: String, settings: SaveData, menus: Menus
 ) -> bool:
 	match action_id:
 		"show_controls":
-			upgrade_ui.open_info_panel("controls", settings)
+			menus.open_info_panel("controls", settings)
 		"show_settings":
-			upgrade_ui.open_info_panel("settings", settings)
+			menus.open_info_panel("settings", settings)
 		"show_achievements":
-			upgrade_ui.open_info_panel("achievements", settings)
+			menus.open_info_panel("achievements", settings)
 		"toggle_fullscreen":
 			settings.fullscreen = not settings.fullscreen
 			settings.save_settings()
 			settings.apply_display_and_audio()
-			upgrade_ui.open_info_panel("settings", settings)
+			menus.open_info_panel("settings", settings)
 		"cycle_volume":
 			settings.master_volume = fmod(settings.master_volume + 0.25, 1.25)
 			if settings.master_volume > 1.05:
 				settings.master_volume = 0.0
 			settings.save_settings()
 			settings.apply_display_and_audio()
-			upgrade_ui.open_info_panel("settings", settings)
+			menus.open_info_panel("settings", settings)
 		"toggle_shake":
 			settings.screen_shake = not settings.screen_shake
 			settings.save_settings()
-			upgrade_ui.open_info_panel("settings", settings)
+			menus.open_info_panel("settings", settings)
 		"toggle_intro":
 			settings.play_intro = not settings.play_intro
 			settings.save_settings()
-			upgrade_ui.open_info_panel("settings", settings)
+			menus.open_info_panel("settings", settings)
 		_:
 			return false
 	return true
