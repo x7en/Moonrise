@@ -1,7 +1,7 @@
 class_name WorldBuilder
 extends RefCounted
-## Builds the 2400x1350 world (T0.1b), concentric onion fence geometry (T0.4), zero fake wood
-## (T0.3), 12-18 seeded searchable POIs (T2.1 / T3.1), Act 1 soft fog, and meteor craters (T3.2b).
+
+# sets up the baked ground map, concentric fence rings, trees, bushes, and scrap wrecks
 
 const TILESET_COLS := 6
 const TILE_SIZE := 16
@@ -9,13 +9,13 @@ const MAX_SEG_LEN := 64.0
 const FENCE_THICKNESS := 10.0
 
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
-var search_props: Array[Dictionary] = []  # {id, node, pos, name, searched, loot_scrap, loot_plank}
+var search_props: Array[Dictionary] = []
 var _act1_boundary_overlay: Node2D = null
 var _decals_layer: Node2D = null
 var _entities_layer: Node2D = null
 
 
-## Generates exact contiguous, zero-gap fence segment specs for concentric rings 1, 2, 3 (T0.4).
+# splits each fence ring into contiguous segments + south gate with zero corner gaps
 func build_onion_fence_specs() -> Array[Dictionary]:
 	var specs: Array[Dictionary] = []
 	var half_t: float = FENCE_THICKNESS * 0.5
@@ -33,12 +33,13 @@ func build_onion_fence_specs() -> Array[Dictionary]:
 		var top_y: float = center.y - he.y
 		var bottom_y: float = center.y + he.y
 
-		# North wall spans full [left_x - half_t, right_x + half_t] so corners are 100% solid.
+		# overlap corners by half thickness so zombies cant slip diagonally through
 		_append_h_run(specs, ring_num, built, left_x - half_t, right_x + half_t, top_y)
-		# South-West wing and South-East wing flank the 28 px south Fence Gate opening.
+		# south wall splits around the center gate
 		_append_h_run(specs, ring_num, built, left_x - half_t, gate_x - gate_half, bottom_y)
 		_append_h_run(specs, ring_num, built, gate_x + gate_half, right_x + half_t, bottom_y)
-		# Closable Fence Gate (door) sealing the south opening with 2 px side overlap (0 leak).
+
+		# south gate — 2px overlap on both sides so nothing leaks when shut
 		specs.append({
 			"ring": ring_num,
 			"horizontal": true,
@@ -51,7 +52,8 @@ func build_onion_fence_specs() -> Array[Dictionary]:
 				FENCE_THICKNESS
 			),
 		})
-		# West and East walls overlap the corner squares so zero diagonal gap exists.
+
+		# west and east walls overlap the corners too
 		_append_v_run(specs, ring_num, built, left_x, top_y - half_t, bottom_y + half_t)
 		_append_v_run(specs, ring_num, built, right_x, top_y - half_t, bottom_y + half_t)
 
@@ -108,7 +110,6 @@ func _append_v_run(
 		})
 
 
-## Builds ground, decals, Act 1 fog frame, solid world edges, nature props, and 15 seeded POIs.
 func build_world(
 	ground_layer: Node2D,
 	decals_layer: Node2D,
@@ -132,14 +133,14 @@ func set_act1_fog_visible(is_visible: bool) -> void:
 		_act1_boundary_overlay.visible = is_visible
 
 
-## T3.2b: Places a charred lunar crater decal using owner moon/lunar_04..09 art.
+# drops a scorched crater decal when meteors hit during blood moon
 func spawn_crater_decal(world_pos: Vector2) -> void:
 	if _decals_layer == null:
 		return
-	var lunar_idx: int = rng.randi_range(4, 9)
-	var key: String = "moon/lunar_%02d" % lunar_idx
-	var spr: Sprite2D = Sprite2D.new()
-	spr.texture = SpriteFactory.tex(key)
+
+	var crater_idx := rng.randi_range(1, 6)
+	var spr := Sprite2D.new()
+	spr.texture = SpriteFactory.tex("ground/crater_%d" % crater_idx)
 	spr.centered = true
 	spr.position = world_pos.round()
 	spr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -147,7 +148,6 @@ func spawn_crater_decal(world_pos: Vector2) -> void:
 	_decals_layer.add_child(spr)
 
 
-## Finds the nearest unsearched prop within reach pixels (for holding E to scavenge scrap).
 func find_nearest_searchable(world_pos: Vector2, max_dist: float = 30.0) -> Dictionary:
 	var best: Dictionary = {}
 	var best_d: float = max_dist
@@ -171,7 +171,6 @@ func mark_prop_searched(prop_id: int) -> void:
 			return
 
 
-## Builds the house and all onion-ring fence Structure nodes into entities_layer.
 func spawn_homestead_structures(
 	decals_layer: Node2D, entities_layer: Node2D, on_crumbled: Callable
 ) -> Dictionary:
@@ -191,7 +190,7 @@ func spawn_homestead_structures(
 	return {"house": h, "fences": fence_list, "structures": all_list}
 
 
-## Generates Act 1 plank spawns inside ACT1_RECT, outside Ring 1 and clear of the house/fences.
+# scatters day 1-3 planks outside ring 1 so you actually have to step out of the yard
 func build_act1_plank_positions(count: int, seed_val: int) -> Array[Vector2]:
 	var prng: RandomNumberGenerator = RandomNumberGenerator.new()
 	prng.seed = seed_val
@@ -213,7 +212,6 @@ func build_act1_plank_positions(count: int, seed_val: int) -> Array[Vector2]:
 	return positions
 
 
-## Generates Act 2 plank + scrap pile specs across the full 2400x1350 world.
 func build_act2_pile_specs(seed_val: int) -> Array[Dictionary]:
 	var prng: RandomNumberGenerator = RandomNumberGenerator.new()
 	prng.seed = seed_val
@@ -262,16 +260,16 @@ func _build_ground(ground_layer: Node2D) -> void:
 	var cols: int = int(Config.WORLD_SIZE.x / float(TILE_SIZE))
 	var rows: int = int(Config.WORLD_SIZE.y / float(TILE_SIZE))
 	var grass_imgs: Array[Image] = [
-		SpriteFactory.get_image_rgba8("terrain/grass_0"),
-		SpriteFactory.get_image_rgba8("terrain/grass_1"),
-		SpriteFactory.get_image_rgba8("terrain/grass_2"),
-		SpriteFactory.get_image_rgba8("terrain/grass_3"),
+		SpriteFactory.get_image_rgba8("ground/grass_0"),
+		SpriteFactory.get_image_rgba8("ground/grass_1"),
+		SpriteFactory.get_image_rgba8("ground/grass_2"),
+		SpriteFactory.get_image_rgba8("ground/grass_3"),
 	]
 	var waste_imgs: Array[Image] = [
-		SpriteFactory.get_image_rgba8("terrain/wasteland_0"),
-		SpriteFactory.get_image_rgba8("terrain/wasteland_1"),
-		SpriteFactory.get_image_rgba8("terrain/wasteland_2"),
-		SpriteFactory.get_image_rgba8("terrain/wasteland_3"),
+		SpriteFactory.get_image_rgba8("ground/dirt_0"),
+		SpriteFactory.get_image_rgba8("ground/dirt_1"),
+		SpriteFactory.get_image_rgba8("ground/dirt_2"),
+		SpriteFactory.get_image_rgba8("ground/dirt_3"),
 	]
 	var road_img: Image = _make_asphalt_tile(waste_imgs[0])
 	var world_img: Image = Image.create_empty(
@@ -401,37 +399,36 @@ func _build_nature_and_pois(decals_layer: Node2D, entities_layer: Node2D) -> voi
 	var safe_yard: Rect2 = Rect2(hc - Vector2(236.0, 196.0), Vector2(472.0, 392.0))
 	var used_spots: Array[Vector2] = []
 
-	# 15 curated / seeded Points of Interest (T3.1 + T2.1 searchable scrap props).
+	# searchable scrap wrecks scattered around the valley
 	var poi_templates: Array = [
-		["Crashed Sedan", "vehicles/car_4_rust_red", Vector2(36, 16), 2, 1],
-		["Wrecked Blue Car", "vehicles/car_1_rust_blue", Vector2(22, 22), 2, 1],
-		["Wrecked Van", "vehicles/car_3_rust_blue_van", Vector2(40, 18), 3, 1],
-		["Shipping Container", "props/container_3_gray_horizontal", Vector2(38, 18), 2, 2],
-		["Supply Container", "props/container_7_red_horizontal", Vector2(38, 18), 3, 1],
-		["Burnt Barrel Cache", "props/barrel_rust_red_1", Vector2(14, 10), 2, 1],
-		["Ruined Shack", "structures/ruins/gray-brick_debris", Vector2(18, 12), 2, 3],
-		["Iron Beam Wreck", "structures/ruins/iron-beam", Vector2(16, 8), 3, 0],
-		["Roadside Barricade", "props/garbage-bin_1", Vector2(24, 14), 2, 2],
-		["Abandoned Camp", "props/cardboard_1", Vector2(12, 8), 1, 3],
-		["Collapsed Shed", "structures/ruins/metal-plates", Vector2(20, 12), 2, 2],
-		["Green Cargo Box", "props/container_11_green_horizontal", Vector2(38, 18), 3, 1],
-		["Scrap Truck", "vehicles/car_6_rust_green_scrap", Vector2(36, 16), 3, 1],
-		["Old Shopping Cart", "props/shopping-cart", Vector2(12, 10), 2, 2],
-		["Fuel Drum Pile", "props/barrel_rust_blue_1", Vector2(14, 10), 2, 1],
+		["Crashed Sedan", "props/car_red", Vector2(36, 16), 2, 1],
+		["Wrecked Blue Car", "props/car_blue", Vector2(22, 22), 2, 1],
+		["Wrecked Van", "props/van_blue", Vector2(40, 18), 3, 1],
+		["Shipping Container", "props/crate_gray", Vector2(38, 18), 2, 2],
+		["Supply Container", "props/crate_red", Vector2(38, 18), 3, 1],
+		["Burnt Barrel Cache", "props/barrel_red", Vector2(14, 10), 2, 1],
+		["Ruined Shack", "props/rubble", Vector2(18, 12), 2, 3],
+		["Iron Beam Wreck", "props/beam", Vector2(16, 8), 3, 0],
+		["Roadside Barricade", "props/dumpster", Vector2(24, 14), 2, 2],
+		["Abandoned Camp", "props/box", Vector2(12, 8), 1, 3],
+		["Collapsed Shed", "props/metal", Vector2(20, 12), 2, 2],
+		["Green Cargo Box", "props/crate_green", Vector2(38, 18), 3, 1],
+		["Scrap Truck", "props/truck_scrap", Vector2(36, 16), 3, 1],
+		["Old Shopping Cart", "props/cart", Vector2(12, 10), 2, 2],
+		["Fuel Drum Pile", "props/barrel_blue", Vector2(14, 10), 2, 1],
 	]
 
-	var prop_id: int = 1
-	# Place 4 searchable props inside ACT1_RECT (outside Ring 3) so players can find scrap early!
+	var prop_id := 1
+	# keep the first 4 inside the starter area so players can actually find scrap early
 	for idx in range(poi_templates.size()):
 		var tpl: Array = poi_templates[idx]
-		var in_act1: bool = (idx < 4)
-		var pos: Vector2 = _pick_poi_position(in_act1, safe_yard, used_spots)
+		var in_act1 := (idx < 4)
+		var pos := _pick_poi_position(in_act1, safe_yard, used_spots)
 		used_spots.append(pos)
-		var node: Node2D = _spawn_prop_node(
-			entities_layer, String(tpl[1]), pos, tpl[2] as Vector2
-		)
-		# Small ground stain decal under each POI for visual storytelling.
-		var stain: ColorRect = ColorRect.new()
+
+		var node := _spawn_prop_node(entities_layer, String(tpl[1]), pos, tpl[2] as Vector2)
+
+		var stain := ColorRect.new()
 		stain.position = pos + Vector2(-18.0, -8.0)
 		stain.size = Vector2(36.0, 16.0)
 		stain.color = Color(0.16, 0.14, 0.15, 0.25)
@@ -448,22 +445,22 @@ func _build_nature_and_pois(decals_layer: Node2D, entities_layer: Node2D) -> voi
 		})
 		prop_id += 1
 
-	# Scatter solid trees and decorative bushes around the countryside (strictly outside Ring 3).
+	# random trees and bushes outside the fenced yard
 	var tree_keys: Array[String] = [
-		"nature/tree_1_spruce_green",
-		"nature/tree_2_spruce-sparse_green",
-		"nature/tree_3_normal_green",
-		"nature/tree_5_big_green",
-		"nature/tree_6_pine_big_green",
-		"nature/tree_7_birch_green",
-		"nature/tree_8_birch_green",
-		"nature/tree_10_small-oak_green",
+		"nature/spruce_1",
+		"nature/spruce_2",
+		"nature/tree_1",
+		"nature/tree_big",
+		"nature/pine_big",
+		"nature/birch_1",
+		"nature/birch_2",
+		"nature/oak",
 	]
 	var bush_keys: Array[String] = [
-		"nature/bush_1_green",
-		"nature/bush_2_green",
-		"nature/grass_3_green",
-		"nature/rock-grass",
+		"nature/bush_1",
+		"nature/bush_2",
+		"nature/tuft",
+		"nature/rock",
 	]
 	for _t in range(72):
 		var tp: Vector2 = Vector2(

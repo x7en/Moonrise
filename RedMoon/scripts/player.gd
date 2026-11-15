@@ -1,7 +1,7 @@
 class_name Player
 extends CharacterBody2D
-## Solid player (layer 2, mask 1|3) with spear melee, auto-aim hunting bow (T1.2),
-## inside-house shelter + healing (T1.5), lantern light, and workshop upgrades (T2.2).
+
+# survivor controller — movement, spear poke, auto-aim bow, indoor healing, lantern
 
 signal spear_swung(hitbox: Rect2, facing_dir: Vector2, damage: int)
 signal bow_fired(origin: Vector2, target_dir: Vector2, damage: int, pierce: int)
@@ -15,9 +15,9 @@ var facing: String = "down"
 var facing_vec: Vector2 = Vector2.DOWN
 var dead: bool = false
 var inside_house: bool = false
-var active_weapon: String = "spear"  # "spear" or "bow"
+var active_weapon: String = "spear"
 
-# Bow state (T1.2)
+# bow stats
 var mag: int = 6
 var mag_max: int = 6
 var reserve_max: int = 30
@@ -27,7 +27,7 @@ var bow_pierce: int = 0
 var reload_timer: float = 0.0
 var bow_cd: float = 0.0
 
-# Workshop upgrades (T2.2)
+# workshop upgrades
 var melee_damage: int = 1
 var speed_mult: float = 1.0
 var bounce_cd_mult: float = 1.0
@@ -164,12 +164,12 @@ func step_player(
 	if bow_cd > 0.0:
 		bow_cd = maxf(0.0, bow_cd - delta)
 
-	# Handle bow reload countdown (T1.2).
+	# bow reload timer
 	if reload_timer > 0.0:
 		reload_timer = maxf(0.0, reload_timer - delta)
 		if reload_timer <= 0.0:
-			var need: int = mag_max - mag
-			var drawn: int = inventory.remove("arrow", need)
+			var need := mag_max - mag
+			var drawn := inventory.remove("arrow", need)
 			mag += drawn
 			bow_reloaded.emit()
 
@@ -177,7 +177,7 @@ func step_player(
 		velocity = Vector2.ZERO
 		return
 
-	# Slow passive healing while sheltered inside the house (T1.5C).
+	# trickle heal while hiding inside the house
 	if inside_house:
 		velocity = Vector2.ZERO
 		if hp < max_hp:
@@ -227,7 +227,7 @@ func try_swing() -> bool:
 	return true
 
 
-## T1.2: Fires an auto-aimed arrow at the nearest enemy in range (also works from house windows!).
+# shoots at the closest zombie in range — also works poking out from the house windows
 func try_fire_bow(enemies: Array, inventory: Inventory) -> bool:
 	if dead or bow_cd > 0.0 or reload_timer > 0.0:
 		return false

@@ -1,5 +1,6 @@
 extends Node2D
-## Root controller for Moonrise (Godot 4.7). Wires T0-T3 cleanly across modular scripts.
+
+# main game loop and glue between world, player, enemies, and ui
 
 enum GameState { TITLE, STORY, DAY, MOONRISE, NIGHT, PAUSED, GAME_OVER, VICTORY }
 
@@ -38,7 +39,6 @@ var _moonrise: MoonriseCutscene = null
 var _upgrade_ui: UpgradeUI = null
 var _toasts: ToastLayer = null
 var _sfx: Sfx = null
-var _smoke: SmokeRunner = null
 var _economy: EconomyController = EconomyController.new()
 var _spawner: WaveSpawner = WaveSpawner.new()
 
@@ -73,26 +73,18 @@ func _ready() -> void:
 	settings = SettingsStore.new()
 	settings.load_all()
 	settings.apply_display_and_audio()
+
 	_set_trap_mode(false)
 	bag = Inventory.new(Config.BAG_CAPACITY)
 	stockpile = Inventory.new(-1)
+
 	_build_scene_tree()
 	_connect_ui_signals()
 	_rebuild_world_and_structures(1337)
 	_hud.show_title_screen(false)
 
-	var all_args: PackedStringArray = OS.get_cmdline_args()
-	all_args.append_array(OS.get_cmdline_user_args())
-	if "--smoke" in all_args:
-		_smoke = SmokeRunner.new()
-		_smoke.start(self)
-
 
 func _process(delta: float) -> void:
-	if _smoke != null and _smoke.active:
-		_smoke.step(delta)
-		if state != GameState.DAY and state != GameState.NIGHT:
-			return
 	if _hit_stop > 0.0:
 		_hit_stop = maxf(0.0, _hit_stop - delta)
 		return
@@ -185,26 +177,33 @@ func _set_trap_mode(active: bool) -> void:
 	_trap_mode_active = active
 	if not active and _effects != null:
 		_effects.set_trap_preview(false)
+
+	# swap mouse cursor to crosshair while placing traps
 	if DisplayServer.get_name() != "headless":
-		var icon_id: String = "cursor_crosshair" if active else "cursor"
-		var hot: Vector2 = Vector2(8.0, 8.0) if active else Vector2(1.0, 1.0)
-		Input.set_custom_mouse_cursor(SpriteFactory.get_icon_texture(icon_id), Input.CURSOR_ARROW, hot)
+		var icon_id := "cursor_crosshair" if active else "cursor"
+		var hot := Vector2(8.0, 8.0) if active else Vector2(1.0, 1.0)
+		Input.set_custom_mouse_cursor(
+			SpriteFactory.get_icon_texture(icon_id), Input.CURSOR_ARROW, hot
+		)
 
 
 func _place_selected_trap() -> void:
 	var keys: Array[String] = ["trap_spike", "trap_snare", "trap_lure"]
-	var t_key: String = keys[clampi(_selected_trap_idx - 1, 0, 2)]
-	var pos: Vector2 = _economy.compute_trap_place_pos(_trap_mode_active, self)
+	var t_key := keys[clampi(_selected_trap_idx - 1, 0, 2)]
+	var pos := _economy.compute_trap_place_pos(_trap_mode_active, self)
 	_economy.try_place_trap_at(t_key, pos, self)
 
 
 func _handle_left_click() -> void:
 	if _upgrade_ui.is_open() or (state != GameState.DAY and state != GameState.NIGHT):
 		return
+
 	if _trap_mode_active:
 		_place_selected_trap()
 		return
-	var in_reach: bool = (
+
+	# clicking a nearby house or fence opens its upgrade panel instead of firing an arrow
+	var in_reach := (
 		_hovered_struct != null
 		and _hovered_struct.is_built
 		and _hovered_struct.distance_from_point(_player.position) <= Config.STRUCTURE_MENU_REACH
@@ -212,38 +211,47 @@ func _handle_left_click() -> void:
 	if in_reach:
 		_open_structure_menu(_hovered_struct)
 		return
+
 	_player.try_fire_bow(enemies, bag)
 
 
 func _step_gameplay(delta: float) -> void:
-	var bounds: Rect2 = Config.ACT1_RECT if act == 1 else Config.WORLD_RECT
+	var bounds := Config.ACT1_RECT if act == 1 else Config.WORLD_RECT
 	_player.step_player(
 		delta, _spawner.read_move_vector(), bounds, not _upgrade_ui.is_open(), bag
 	)
 	_player.set_night_lantern(state == GameState.NIGHT)
+
 	if _bounce_cd > 0.0:
 		_bounce_cd = maxf(0.0, _bounce_cd - delta)
 
 	_spawner.prune_invalid_arrays([enemies, arrows, traps, watchtowers, dogs])
 	_step_hover_target()
 	_economy.update_trap_preview(_trap_mode_active, _selected_trap_idx, self)
+
 	if _economy.step_piles_and_deposit(
 		get_tree(), _player, house, bag, stockpile, _sfx, _effects
 	):
 		_unlock_achievement("first_plank")
+
 	_step_hold_search_and_tame(delta)
+
 	for a in arrows:
 		if is_instance_valid(a):
 			a.step_arrow(delta, enemies, bounds)
+
 	for t in traps:
 		if is_instance_valid(t):
 			t.step_trap(delta, enemies)
+
 	for wt in watchtowers:
 		if is_instance_valid(wt):
 			wt.step_tower(delta, enemies)
+
 	for d in dogs:
 		if is_instance_valid(d):
 			d.step_dog(delta, _player.position, enemies, bounds)
+
 	for e in enemies:
 		if is_instance_valid(e):
 			e.step_enemy(
@@ -370,10 +378,10 @@ func _start_day(day_num: int) -> void:
 
 
 func _begin_night_sequence() -> void:
-	# T0.3: Destroy every surviving pickup pile cleanly before night starts.
+	# wipe leftover pickups before dusk flips over
 	_spawner.clear_piles_in_tree(get_tree())
 	if OS.is_debug_build():
-		assert(get_tree().get_nodes_in_group("piles").is_empty(), "T0.3: piles leaked into night!")
+		assert(get_tree().get_nodes_in_group("piles").is_empty(), "leftover piles still around at night")
 	if act == 2 and Config.LOSE_BAG_AT_DUSK_ACT2 and not _player.inside_house:
 		if bag.used_capacity() > 0:
 			bag.remove("plank", bag.count("plank"))
@@ -543,8 +551,10 @@ func _handle_interact_press() -> void:
 		_player.set_inside_house(false, Config.HOUSE_DOOR)
 		_sfx.play("door_creak", -8.0)
 		return
+
+	# house door first, then fence gates, then fallback to upgrade menu
 	if house != null and house.is_standing():
-		var d_door: float = minf(
+		var d_door := minf(
 			_player.position.distance_to(Config.HOUSE_DOOR_STEP),
 			_player.position.distance_to(Config.HOUSE_DOOR)
 		)
@@ -553,25 +563,27 @@ func _handle_interact_press() -> void:
 				_player.set_inside_house(true)
 				house.toggle_door(true)
 				_sfx.play("door_creak", -8.0)
-				_hud.show_message("Sheltered indoors & door closed.", 1.8, Color(0.60, 0.95, 0.65))
+				_hud.show_message("Safe inside. Door shut.", 1.8, Color(0.60, 0.95, 0.65))
 			else:
 				house.toggle_door(false)
 				_sfx.play("door_creak", -8.0)
 				if house.is_door_open():
 					_hud.show_message("Door open! Press E at step to enter, or E to close.", 1.8)
 			return
-	var near_gate: Structure = _spawner.find_nearest_gate(fences, _player.position, 28.0)
+
+	var near_gate := _spawner.find_nearest_gate(fences, _player.position, 28.0)
 	if near_gate != null and near_gate.is_standing():
 		near_gate.toggle_door(false)
 		_sfx.play("door_creak", -8.0)
-		var g_msg: String = (
-			"Layer %d Gate OPEN (close before night!)" % near_gate.ring
-			if near_gate.gate_open else "Layer %d Gate CLOSED (blocks zombies!)" % near_gate.ring
+		var g_msg := (
+			"Ring %d gate OPEN — don't forget to shut it!" % near_gate.ring
+			if near_gate.gate_open else "Ring %d gate shut." % near_gate.ring
 		)
 		_hud.show_message(
 			g_msg, 2.0, Color(1.0, 0.78, 0.40) if near_gate.gate_open else Color(0.60, 0.95, 0.65)
 		)
 		return
+
 	_try_open_nearby_structure_menu()
 
 
@@ -964,35 +976,3 @@ func _clear_dynamic_world() -> void:
 	_spawner.clear_piles_in_tree(get_tree())
 	_spawner.clear_group_or_list(enemies)
 	_spawner.clear_group_or_list(arrows)
-
-
-# --- Headless --smoke hooks (T0.0) ---
-func smoke_start_run() -> void:
-	_begin_new_run(true)
-
-
-func smoke_get_state() -> String:
-	return String(GameState.keys()[state])
-
-
-func smoke_skip_overlay() -> void:
-	if _story.active:
-		_story.show_cards([], true, true)
-	if _moonrise.active:
-		_moonrise.skip_now()
-
-
-func smoke_fast_forward_day() -> void:
-	stockpile.add("plank", 10)
-	phase_timer = 0.01
-
-
-func smoke_defend_step(delta: float) -> void:
-	_player.hp = _player.max_hp
-	if house != null and house.hp < 50:
-		house.set_hp(house.max_hp)
-	_player.try_fire_bow(enemies, bag)
-	phase_timer -= delta * 18.0
-	if phase_timer <= 0.0:
-		_wave_queue.clear()
-		_finish_night()

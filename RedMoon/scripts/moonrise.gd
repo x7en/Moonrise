@@ -1,7 +1,7 @@
 class_name MoonriseCutscene
 extends CanvasLayer
-## T1.1: ~7-second procedural moonrise cutscene at the start of every night.
-## Skippable immediately via Space, Enter, Esc, or click. Features Night 3 white->red shift.
+
+# short skippable moonrise intro before each night starts
 
 signal finished()
 
@@ -43,7 +43,7 @@ func _ready() -> void:
 	SpriteFactory.style_label(_title_label, "display", 16, Color(0.96, 0.94, 0.90))
 	_root.add_child(_title_label)
 
-	var text_band: ColorRect = ColorRect.new()
+	var text_band := ColorRect.new()
 	text_band.position = Vector2(0.0, Config.VIEW_SIZE.y - 54.0)
 	text_band.size = Vector2(Config.VIEW_SIZE.x, 54.0)
 	text_band.color = Color(0.05, 0.04, 0.08, 0.80)
@@ -118,29 +118,28 @@ func skip_now() -> void:
 func _process(delta: float) -> void:
 	if not active:
 		return
+
 	_elapsed += delta
 	_sky.moon_progress = clampf(_elapsed / 4.2, 0.0, 1.0)
 
-	# Night 3 twist: rises pale white, then dramatically bleeds red across frames 0..3.
+	# night 3 fakeout: starts normal white then turns crimson halfway up
 	if _is_early_blood_twist:
 		if _elapsed > 2.2:
-			var t_red: float = clampf((_elapsed - 2.2) / 2.8, 0.0, 1.0)
+			var t_red := clampf((_elapsed - 2.2) / 2.8, 0.0, 1.0)
 			_sky.red_blend = t_red
-			var red_frame: int = clampi(int(t_red * 3.99), 0, 3)
-			_sky.set_red_moon_frame(red_frame)
+
 			if t_red > 0.35:
 				_title_label.text = "NIGHT 3 - BLOOD MOON!"
 				SpriteFactory.style_label(_title_label, "display", 16, Color(1.0, 0.30, 0.28))
 				_narration_label.text = "The Blood Moon came early! Brace the walls!"
+
 			if _elapsed > 2.4 and _elapsed < 3.1:
 				_flash.color.a = sin(((_elapsed - 2.4) / 0.7) * PI) * 0.35
 			else:
 				_flash.color.a = 0.0
-	elif _is_blood:
-		var pulse_frame: int = clampi(int(_elapsed * 1.2) % 4, 0, 3)
-		_sky.set_red_moon_frame(pulse_frame)
 
 	_sky.update_sky(delta)
+
 	if _elapsed >= TOTAL_DURATION:
 		skip_now()
 
@@ -148,14 +147,15 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not active:
 		return
+
 	if event is InputEventKey:
-		var ke: InputEventKey = event as InputEventKey
+		var ke := event as InputEventKey
 		if ke.pressed and not ke.echo:
 			if ke.keycode in [KEY_SPACE, KEY_ENTER, KEY_KP_ENTER, KEY_ESCAPE]:
 				get_viewport().set_input_as_handled()
 				skip_now()
 	elif event is InputEventMouseButton:
-		var mb: InputEventMouseButton = event as InputEventMouseButton
+		var mb := event as InputEventMouseButton
 		if mb.pressed:
 			get_viewport().set_input_as_handled()
 			skip_now()

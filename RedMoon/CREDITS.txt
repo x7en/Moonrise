@@ -1,9 +1,7 @@
-Art: Post-Apocalyptic Pixel Art Asset Pack by TheLazyStone (https://thelazystone.itch.io/post-apocalyptic-pixel-art-asset-pack).
-License: free for non-commercial use; commercial use requires paying at least $2 USD. No redistribution of the assets (do not publish this folder in a public repo).
-Sprite scale: 16px grid. Frame count = number after 'Sheet' in the file name (horizontal strip).
-
-Moon Art: Owner-supplied v2 moon sprites and lunar surface tiles (assets/moon/).
+Sprites & Tiles:
+- Post-Apocalyptic Pixel Art Asset Pack by TheLazyStone (https://thelazystone.itch.io/post-apocalyptic-pixel-art-asset-pack)
+- Cottage, clouds, moon, dog, traps, bow/arrows, and UI frames from itch.io pixel art packs
 
 Fonts:
-- Pixel Operator (PixelOperator8.ttf, PixelOperator8-Bold.ttf) by Jayvee Enaguas (HarvettFox96) — CC0 (Public Domain).
-- KiwiSoda (KiwiSoda.ttf) — license unknown; owner must verify license before any public or commercial release.
+- Pixel Operator (PixelOperator8.ttf, PixelOperator8-Bold.ttf) by Jayvee Enaguas (HarvettFox96) — CC0
+- KiwiSoda (KiwiSoda.ttf)

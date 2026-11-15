@@ -1,7 +1,7 @@
 class_name StoryCard
 extends CanvasLayer
-## Full-screen retro story cards (640x360), T0.2 Blood Moon deadline card, T1.7 skippable intro
-## (Esc skips all remaining cards and marks intro seen), and T1.8 World Expanded reveal.
+
+# little fullscreen slides for the intro and the night 3 map-expansion twist
 
 signal sequence_finished(was_skipped: bool)
 
@@ -19,7 +19,6 @@ var _index: int = 0
 var _allow_skip_all: bool = true
 var _ready_timer: float = 0.0
 var _blink_timer: float = 0.0
-var _auto_skip: bool = false
 
 
 func _ready() -> void:
@@ -36,24 +35,29 @@ func show_cards(
 	_cards = cards
 	_index = 0
 	_allow_skip_all = allow_skip_all
-	_auto_skip = instant_skip
+
 	if _cards.is_empty():
 		sequence_finished.emit(false)
 		return
+
 	active = true
 	visible = true
 	if _skip_lbl != null:
 		_skip_lbl.visible = allow_skip_all
+
 	_render_current()
-	if _auto_skip:
+
+	if instant_skip:
 		_finish_all(true)
 
 
 func _process(delta: float) -> void:
 	if not active:
 		return
+
 	if _ready_timer > 0.0:
 		_ready_timer = maxf(0.0, _ready_timer - delta)
+
 	_blink_timer += delta
 	if _prompt_lbl != null:
 		_prompt_lbl.visible = (_ready_timer <= 0.0) and (int(_blink_timer * 2.5) % 2 == 0)
@@ -62,19 +66,23 @@ func _process(delta: float) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not active:
 		return
+
 	if event is InputEventKey:
-		var ke: InputEventKey = event as InputEventKey
+		var ke := event as InputEventKey
 		if not ke.pressed or ke.echo:
 			return
+
 		if ke.keycode == KEY_ESCAPE and _allow_skip_all:
 			get_viewport().set_input_as_handled()
 			_finish_all(true)
 			return
+
 		if ke.keycode in [KEY_SPACE, KEY_ENTER, KEY_KP_ENTER] and _ready_timer <= 0.0:
 			get_viewport().set_input_as_handled()
 			_advance()
+
 	elif event is InputEventMouseButton:
-		var mb: InputEventMouseButton = event as InputEventMouseButton
+		var mb := event as InputEventMouseButton
 		if mb.pressed and _ready_timer <= 0.0:
 			get_viewport().set_input_as_handled()
 			_advance()
@@ -96,9 +104,12 @@ func _finish_all(skipped: bool) -> void:
 
 
 func _render_current() -> void:
+	# tiny input lock so mashing space doesnt skip two cards by accident
 	_ready_timer = 0.25
-	var card: Dictionary = _cards[_index]
-	var accent: Color = card.get("accent", Color(0.95, 0.90, 0.85)) as Color
+
+	var card := _cards[_index]
+	var accent := card.get("accent", Color(0.95, 0.90, 0.85)) as Color
+
 	_title_lbl.text = String(card.get("title", ""))
 	SpriteFactory.style_label(_title_lbl, "display", 16, accent)
 	_body_lbl.text = String(card.get("body", ""))
@@ -107,28 +118,30 @@ func _render_current() -> void:
 		if _index < _cards.size() - 1
 		else "[Space / Enter] Begin"
 	)
+
 	_render_card_art(String(card.get("art", "moon")))
 
 
 func _render_card_art(art_kind: String) -> void:
 	for child in _art_holder.get_children():
 		child.queue_free()
-	var tex_rect: TextureRect = TextureRect.new()
+
+	var tex_rect := TextureRect.new()
 	tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	tex_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	tex_rect.position = Vector2(272.0, 62.0)
 	tex_rect.size = Vector2(96.0, 96.0)
+
 	match art_kind:
 		"blood_moon":
-			tex_rect.texture = SpriteFactory.tex("moon/moon_02_red")
+			tex_rect.texture = SpriteFactory.tex("sky/blood_moon")
 		"house":
 			tex_rect.texture = SpriteFactory.get_shaded_house_texture(1, false)
-		"world":
-			tex_rect.texture = SpriteFactory.tex("moon/moon_00_white")
 		"rubble":
-			tex_rect.texture = SpriteFactory.tex("structures/ruins/gray-brick_debris")
+			tex_rect.texture = SpriteFactory.tex("props/rubble")
 		_:
-			tex_rect.texture = SpriteFactory.tex("moon/moon_01")
+			tex_rect.texture = SpriteFactory.tex("sky/moon")
+
 	_art_holder.add_child(tex_rect)
 
 
@@ -139,16 +152,16 @@ func _build_ui() -> void:
 	_root.theme = SpriteFactory.get_game_theme()
 	add_child(_root)
 
-	var bg: ColorRect = ColorRect.new()
+	var bg := ColorRect.new()
 	bg.position = Vector2.ZERO
 	bg.size = Config.VIEW_SIZE
 	bg.color = Color(0.05, 0.04, 0.08, 0.96)
 	_root.add_child(bg)
 
-	var frame: PanelContainer = PanelContainer.new()
+	var frame := PanelContainer.new()
 	frame.position = Vector2(64.0, 28.0)
 	frame.size = Vector2(Config.VIEW_SIZE.x - 128.0, Config.VIEW_SIZE.y - 56.0)
-	var style: StyleBoxFlat = StyleBoxFlat.new()
+	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.09, 0.07, 0.13, 0.96)
 	style.border_color = Color(0.55, 0.30, 0.34, 1.0)
 	style.set_border_width_all(2)
@@ -193,7 +206,6 @@ func _build_ui() -> void:
 	_root.add_child(_skip_lbl)
 
 
-## T0.2 + T1.7: Opening story cards, explicitly establishing the Act 1 Night 5 false deadline.
 static func get_opening_cards() -> Array[Dictionary]:
 	return [
 		{

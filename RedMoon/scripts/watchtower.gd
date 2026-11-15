@@ -1,6 +1,7 @@
 class_name Watchtower
 extends Node2D
-## Automated defensive archer tower (T2.2). Max 2 placed near the farmhouse.
+
+# auto-shooting archer tower, you can build up to 2 around the yard
 
 signal fire_requested(origin: Vector2, target: Node)
 signal destroyed(tower: Watchtower)
@@ -24,7 +25,7 @@ func setup(world_pos: Vector2) -> void:
 	footprint_rect = Rect2(position - Vector2(10.0, 14.0), Vector2(20.0, 18.0))
 	add_to_group("watchtowers")
 
-	var shadow: Sprite2D = Sprite2D.new()
+	var shadow := Sprite2D.new()
 	shadow.texture = SpriteFactory.get_blob_shadow(22, 8)
 	shadow.position = Vector2(0.0, 2.0)
 	shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -37,11 +38,12 @@ func setup(world_pos: Vector2) -> void:
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(_sprite)
 
-	var body: StaticBody2D = StaticBody2D.new()
+	var body := StaticBody2D.new()
 	body.collision_layer = 1
 	body.collision_mask = 0
-	var col: CollisionShape2D = CollisionShape2D.new()
-	var sh: RectangleShape2D = RectangleShape2D.new()
+
+	var col := CollisionShape2D.new()
+	var sh := RectangleShape2D.new()
 	sh.size = Vector2(16.0, 12.0)
 	col.shape = sh
 	col.position = Vector2(0.0, -6.0)
@@ -51,11 +53,13 @@ func setup(world_pos: Vector2) -> void:
 	_hp_holder = Node2D.new()
 	_hp_holder.position = Vector2(0.0, -39.0)
 	_hp_holder.visible = false
-	var bg: ColorRect = ColorRect.new()
+
+	var bg := ColorRect.new()
 	bg.position = Vector2(-10.0, 0.0)
 	bg.size = Vector2(20.0, 3.0)
 	bg.color = Color(0.08, 0.06, 0.10, 0.85)
 	_hp_holder.add_child(bg)
+
 	_hp_fill = ColorRect.new()
 	_hp_fill.position = Vector2(-9.0, 1.0)
 	_hp_fill.size = Vector2(18.0, 1.0)
@@ -71,10 +75,13 @@ func is_standing() -> bool:
 func take_damage(dmg: int) -> void:
 	if dmg <= 0 or hp <= 0:
 		return
+
 	hp = maxi(0, hp - dmg)
+
 	if _hp_holder != null and _hp_fill != null:
 		_hp_holder.visible = hp > 0 and hp < max_hp
 		_hp_fill.size.x = maxf(1.0, 18.0 * (float(hp) / float(maxi(1, max_hp))))
+
 	if hp <= 0:
 		remove_from_group("watchtowers")
 		destroyed.emit(self)
@@ -84,18 +91,22 @@ func take_damage(dmg: int) -> void:
 func step_tower(delta: float, enemies: Array) -> void:
 	if hp <= 0:
 		return
+
 	fire_timer = maxf(0.0, fire_timer - delta)
 	if fire_timer > 0.0:
 		return
+
 	var best: Node = null
-	var best_d: float = attack_range
+	var best_d := attack_range
+
 	for enemy in enemies:
 		if not is_instance_valid(enemy) or not enemy.is_alive():
 			continue
-		var d: float = position.distance_to(enemy.position)
+		var d := position.distance_to(enemy.position)
 		if d <= best_d:
 			best_d = d
 			best = enemy
+
 	if best != null:
 		fire_timer = Config.WATCHTOWER_FIRE_INTERVAL
 		fire_requested.emit(position + Vector2(0.0, -24.0), best)

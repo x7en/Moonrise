@@ -1,7 +1,7 @@
 class_name Structure
 extends Node2D
-## Solid House (with 3D shading, door, lighting, damage stages, crumble -> rubble, rebuild)
-## and solid concentric-ring Fence segments (level 1-3, spikes, ghost foundations, collider).
+
+# handles both the farmhouse and the fence/gate segments (should probably split these one day)
 
 signal destroyed(structure: Structure)
 signal crumbled_finished(structure: Structure)
@@ -24,7 +24,8 @@ var is_built: bool = true
 var is_gate: bool = false
 var gate_open: bool = false
 var spiked: bool = false
-var is_fallen: bool = false  # House crumbled into rubble (NOT game over, T1.5)
+# house collapsed to rubble (not instant game over, you can still rebuild it)
+var is_fallen: bool = false
 var door_state: DoorState = DoorState.CLOSED
 var is_hovered: bool = false
 
@@ -71,7 +72,6 @@ var _crumble_timer: float = 0.0
 var _is_crumbling: bool = false
 
 
-## Sets up the central 3/4 solid farmhouse with door, lighting, damage stages, and HP bar.
 func setup_house(decals_layer: Node2D) -> void:
 	name = "House"
 	kind = Kind.HOUSE
@@ -87,7 +87,7 @@ func setup_house(decals_layer: Node2D) -> void:
 	is_fallen = false
 	active_in_game = true
 	target_center = Config.HOUSE_CENTER + Vector2(12.0, 20.0)
-	# 3/4 oblique solid base footprint matching 160x120 cottage + side woodshed (door at x=1200).
+	# bumped footprint to match the bigger 160x120 cottage + woodshed on the right
 	footprint_rect = Rect2(Config.HOUSE_CENTER + Vector2(-47.0, -3.0), Vector2(124.0, 46.0))
 	visual_rect = Rect2(Config.HOUSE_CENTER + Vector2(-80.0, -75.0), Vector2(160.0, 120.0))
 	position = Config.HOUSE_CENTER + Vector2(0.0, 45.0)
@@ -95,7 +95,6 @@ func setup_house(decals_layer: Node2D) -> void:
 	_build_house_nodes(decals_layer)
 
 
-## Sets up one solid fence segment (or closable Fence Gate) for concentric rings 1-3.
 func setup_fence_segment(idx: int, seg_spec: Dictionary, decals_layer: Node2D) -> void:
 	is_gate = bool(seg_spec.get("is_gate", false))
 	name = (
@@ -166,7 +165,6 @@ func is_standing() -> bool:
 	return active_in_game and is_built and hp > 0
 
 
-## True when this structure physically blocks enemies (open fence gates let entities through).
 func is_blocking() -> bool:
 	if not is_standing():
 		return false
@@ -261,7 +259,6 @@ func take_damage(amount: int) -> void:
 		destroyed.emit(self)
 
 
-## Toggles the house door OR a built fence gate between open and closed (force_close snaps shut).
 func toggle_door(force_close: bool = false) -> bool:
 	if kind == Kind.FENCE:
 		return _toggle_fence_gate(force_close)
@@ -296,7 +293,7 @@ func _toggle_fence_gate(force_close: bool) -> bool:
 	return true
 
 
-## T1.5D: Plays the 3-second house collapse into a walkable rubble pile (NOT game over).
+# 3s collapse animation before swapping to the rubble pile
 func _start_crumble() -> void:
 	if kind != Kind.HOUSE or is_fallen or _is_crumbling:
 		return
@@ -311,7 +308,6 @@ func _start_crumble() -> void:
 		_damage_flames.emitting = true
 
 
-## T1.5D: Restores the fallen house at 40% HP, level 1, door closed.
 func rebuild_house() -> void:
 	if kind != Kind.HOUSE:
 		return
@@ -333,7 +329,6 @@ func rebuild_house() -> void:
 	refresh_visuals()
 
 
-## Updates cast shadow & window lights based on time of day (T1.4).
 func update_lighting(is_night: bool, is_dusk: bool, is_blood: bool, intruder_count: int) -> void:
 	if kind != Kind.HOUSE:
 		return
@@ -451,31 +446,31 @@ func _refresh_house_visuals() -> void:
 
 
 func _refresh_fence_visuals() -> void:
-	# Unbuilt outer layers stay completely hidden until unlocked by the player.
+	# hide rings 2 & 3 until you pay to build them
 	visible = is_built
 	var standing: bool = is_built and hp > 0
 	var blocking: bool = standing and not (is_gate and gate_open)
 	if _collider != null:
 		_collider.set_deferred("disabled", not blocking)
 
-	var use_reinf: bool = (level >= 2 or hp >= Config.FENCE_REINFORCED_MIN_HP)
-	var folder: String = "fence_reinforced" if use_reinf else "fence_wood"
-	var lv_tint: Color = Color(0.76, 0.82, 0.90, 1.0) if level >= 3 else Color.WHITE
+	var use_reinf := (level >= 2 or hp >= Config.FENCE_REINFORCED_MIN_HP)
+	var folder := "iron" if use_reinf else "wood"
+	var lv_tint := Color(0.76, 0.82, 0.90, 1.0) if level >= 3 else Color.WHITE
 
 	if is_gate:
 		if _gate_closed_node != null:
 			_gate_closed_node.visible = standing and not gate_open
 			for gs in _gate_closed_sprites:
-				gs.texture = SpriteFactory.tex("structures/%s/gate_horizontal" % folder)
+				gs.texture = SpriteFactory.tex("fences/%s/gate_h" % folder)
 				gs.modulate = lv_tint
 		if _gate_open_node != null:
 			_gate_open_node.visible = standing and gate_open
 			for os in _gate_open_sprites:
-				os.texture = SpriteFactory.tex("structures/%s/gate_vertical" % folder)
+				os.texture = SpriteFactory.tex("fences/%s/gate_v" % folder)
 				os.modulate = lv_tint
 	else:
-		var orient: String = "horizontal" if is_horizontal else "vertical"
-		var tex_key: String = "structures/%s/%s" % [folder, orient]
+		var orient := "h" if is_horizontal else "v"
+		var tex_key := "fences/%s/%s" % [folder, orient]
 		for spr in _fence_sprites:
 			spr.visible = standing
 			if standing:
@@ -533,7 +528,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	var hw: float = float(base_tex.get_width()) * 0.5
 	var hh: float = float(base_tex.get_height())
 
-	# Soft angled ground drop-shadow reinforcing the 3/4 3D height.
+	# fake angled drop shadow under the cottage
 	_cast_shadow = Polygon2D.new()
 	_cast_shadow.polygon = PackedVector2Array([
 		Vector2(-48.0, -4.0), Vector2(78.0, -4.0), Vector2(92.0, 11.0), Vector2(-34.0, 11.0)
@@ -551,14 +546,16 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	add_child(_house_sprite)
 
 	_damage_overlay = Sprite2D.new()
-	_damage_overlay.texture = HouseArt.get_house_silhouette(Color(0.55, 0.0, 0.0, 1.0))
+	_damage_overlay.texture = SpriteFactory.get_tinted_silhouette(
+		"house/lv1", Color(0.55, 0.0, 0.0, 1.0)
+	)
 	_damage_overlay.centered = false
 	_damage_overlay.offset = Vector2(-hw, -hh)
 	_damage_overlay.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_damage_overlay.modulate = Color(1.0, 1.0, 1.0, 0.0)
 	add_child(_damage_overlay)
 
-	# Procedural facade cracks shown below 75% HP (T1.5B).
+	# cracks appear once the house drops under 75% hp
 	_cracks_overlay = Node2D.new()
 	_cracks_overlay.visible = false
 	for crack_pts in [
@@ -572,7 +569,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 		_cracks_overlay.add_child(ln)
 	add_child(_cracks_overlay)
 
-	# Window intruder silhouettes (T1.5C).
+	# red blotches in the windows when zombies sneak indoors
 	_intruder_marks = Node2D.new()
 	_intruder_marks.visible = false
 	for pos in [Vector2(-34.0, -32.0), Vector2(28.0, -32.0), Vector2(-3.0, -62.0)]:
@@ -583,7 +580,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 		_intruder_marks.add_child(sil)
 	add_child(_intruder_marks)
 
-	# Chimney smoke aligned with the brick chimney on the right roof slope.
+	# chimney smoke — eyeballed these coords onto the right brick chimney
 	_chimney_smoke = _make_particles(Vector2(32.0, -109.0), Color(0.78, 0.80, 0.86, 0.55), 6, 1.8)
 	add_child(_chimney_smoke)
 	_damage_smoke = _make_particles(Vector2(0.0, -84.0), Color(0.28, 0.26, 0.30, 0.75), 10, 1.5)
@@ -593,7 +590,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_damage_flames.emitting = false
 	add_child(_damage_flames)
 
-	# Warm 2D refuge lights aligned to the 3 cottage windows + porch entrance.
+	# warm window glow + porch light at night
 	_window_lights.clear()
 	var light_tex: GradientTexture2D = SpriteFactory.get_radial_light_texture(128)
 	for spec in [
@@ -621,7 +618,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_occluder.occluder = occ_poly
 	add_child(_occluder)
 
-	# Solid 3/4 house base body (layer 1) — roof peaks above overhang naturally with Y-sort!
+	# solid wall collider only covers the lower base so you can walk behind the roof a bit
 	_body = StaticBody2D.new()
 	_body.name = "HouseBody"
 	_body.collision_layer = 1
@@ -646,7 +643,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_door_body.add_child(_door_collider)
 	add_child(_door_body)
 
-	# World-space floating HP bar above the cottage roof peak.
+	# hp bar floats over the roof when the house takes hits
 	_hp_bar_holder = Node2D.new()
 	_hp_bar_holder.position = Vector2(0.0, -hh - 6.0)
 	_hp_bar_holder.z_index = 12
@@ -672,7 +669,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_hover_outline = _make_hover_outline(Rect2(-64.0, -hh + 4.0, 142.0, hh - 4.0))
 	add_child(_hover_outline)
 
-	# Walkable house rubble pile placed in Decals (hidden until house crumbles, T1.5D).
+	# rubble pile under the house, stays hidden unless it actually falls
 	_rubble_node = Node2D.new()
 	_rubble_node.name = "HouseRubble"
 	_rubble_node.position = Config.HOUSE_CENTER
@@ -683,12 +680,12 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	stain.color = Color(0.14, 0.11, 0.14, 0.55)
 	_rubble_node.add_child(stain)
 	for piece in [
-		{"key": "structures/ruins/gray-brick_debris", "pos": Vector2(-36.0, -24.0)},
-		{"key": "structures/ruins/metal-plates", "pos": Vector2(-10.0, -18.0)},
-		{"key": "structures/ruins/gray-brick_debris", "pos": Vector2(18.0, -14.0)},
-		{"key": "structures/ruins/iron-beam", "pos": Vector2(-22.0, 8.0)},
-		{"key": "structures/ruins/metal-plates", "pos": Vector2(4.0, 10.0)},
-		{"key": "structures/ruins/gray-brick_debris", "pos": Vector2(-34.0, 14.0)},
+		{"key": "props/rubble", "pos": Vector2(-36.0, -24.0)},
+		{"key": "props/metal", "pos": Vector2(-10.0, -18.0)},
+		{"key": "props/rubble", "pos": Vector2(18.0, -14.0)},
+		{"key": "props/beam", "pos": Vector2(-22.0, 8.0)},
+		{"key": "props/metal", "pos": Vector2(4.0, 10.0)},
+		{"key": "props/rubble", "pos": Vector2(-34.0, 14.0)},
 	]:
 		var rs: Sprite2D = Sprite2D.new()
 		rs.texture = SpriteFactory.tex(String(piece["key"]))
@@ -708,7 +705,7 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 	var seg_w: float = footprint_rect.size.x
 	var seg_h: float = footprint_rect.size.y
 
-	# Solid StaticBody2D on layer 1 matching exact drawn footprint (T0.4).
+	# collider matches the exact drawn fence rect
 	_body = StaticBody2D.new()
 	_body.name = "FenceGateBody" if is_gate else "FenceBody"
 	_body.collision_layer = 1
@@ -722,7 +719,7 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 	add_child(_body)
 
 	if is_gate:
-		# Closed Fence Gate: double wooden gate panels + framing jamb posts + brass latch bar.
+		# closed gate panels + posts + little gold latch so it actually looks like a gate
 		_gate_closed_node = Node2D.new()
 		for gx in [-16.0, 0.0]:
 			var gs: Sprite2D = Sprite2D.new()
@@ -731,7 +728,7 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 			gs.position = Vector2(gx, -15.0)
 			_gate_closed_node.add_child(gs)
 			_gate_closed_sprites.append(gs)
-		# Heavy side posts + visible gold horizontal iron latch in center so door is unmistakable.
+		# side posts + little brass latch so the gate stands out from regular fence
 		for px in [-16.0, 14.0]:
 			var post: ColorRect = ColorRect.new()
 			post.position = Vector2(px, -16.0)
@@ -750,7 +747,7 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 		_gate_closed_node.add_child(latch_bar)
 		add_child(_gate_closed_node)
 
-		# Open Fence Gate: swung-open side gate leaves flanking the clear stone path.
+		# swung-open gate doors on either side of the path
 		_gate_open_node = Node2D.new()
 		for ox in [-16.0, 13.0]:
 			var os: Sprite2D = Sprite2D.new()
@@ -795,7 +792,7 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 	_ghost_rect.visible = false
 	add_child(_ghost_rect)
 
-	# Visible metal spikes overlay when Spiked Fences upgrade is installed (T2.2).
+	# little metal spikes along the top once spiked fences are unlocked
 	_spike_bar = Node2D.new()
 	_spike_bar.visible = false
 	var spike_count: int = maxi(2, int(segment_length / 12.0))
@@ -812,7 +809,7 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 		_spike_bar.add_child(sp)
 	add_child(_spike_bar)
 
-	# Small HP bar shown only while standing and damaged.
+	# tiny hp bar only shows up once the fence gets chewed
 	var bar_y: float = -19.0 if is_horizontal else (-segment_length - 6.0)
 	_hp_bar_holder = Node2D.new()
 	_hp_bar_holder.position = Vector2(0.0, bar_y)
@@ -832,12 +829,12 @@ func _build_fence_nodes(decals_layer: Node2D) -> void:
 	_hover_outline = _make_hover_outline(Rect2(-seg_w * 0.5, -seg_h, seg_w, seg_h))
 	add_child(_hover_outline)
 
-	# Ruin debris in Decals when broken (HP == 0).
+	# little debris patch on the ground when a fence breaks
 	_ruin_node = Node2D.new()
 	_ruin_node.position = target_center
 	_ruin_node.visible = false
-	var debris: Sprite2D = Sprite2D.new()
-	debris.texture = SpriteFactory.tex("structures/ruins/gray-brick_debris")
+	var debris := Sprite2D.new()
+	debris.texture = SpriteFactory.tex("props/rubble")
 	debris.centered = false
 	debris.offset = Vector2(-8.0, -7.0)
 	debris.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST

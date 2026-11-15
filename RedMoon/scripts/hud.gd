@@ -1,7 +1,7 @@
 class_name Hud
 extends CanvasLayer
-## 640x360 pixel HUD (T0.1b / T0.B / T0.2 / T1.1 / T1.2 / T1.5 / T2.3 / T3.1 / T3.3 / T3.4).
-## No persistent sky moon icon (T1.1). Main Menu reuses MoonSky live sky (T3.4).
+
+# 640x360 pixel hud, title screen, trap bar, and game over / victory screen
 
 signal play_requested(continue_run: bool)
 signal menu_panel_requested(panel_kind: String)
@@ -13,7 +13,7 @@ signal return_to_menu_requested()
 var _root: Control = null
 var _hud_layer: Control = null
 
-# Top-left status cluster
+# top-left bars
 var _hp_fill: ColorRect = null
 var _hp_lbl: Label = null
 var _house_lbl: Label = null
@@ -22,19 +22,19 @@ var _bag_lbl: Label = null
 var _stock_lbl: Label = null
 var _bow_lbl: Label = null
 
-# Top-center clock & persistent objective strip (T0.2)
+# top-center clock & objective
 var _day_lbl: Label = null
 var _timer_lbl: Label = null
 var _objective_lbl: Label = null
 
-# Top-right bounce & quick-hints
+# top-right & bottom trap hotbar
 var _bounce_lbl: Label = null
 var _hint_lbl: Label = null
 var _status_lbl: Label = null
 var _trap_slots: Array[PanelContainer] = []
 var _trap_slot_labels: Array[Label] = []
 
-# Center banners, search bar, tooltip, home arrow
+# popups & overlays
 var _header_panel: PanelContainer = null
 var _header_title: Label = null
 var _header_sub: Label = null
@@ -48,7 +48,7 @@ var _search_bar_fill: ColorRect = null
 var _home_arrow: Label = null
 var _vignette: ColorRect = null
 
-# Main menu (T3.4) & End screen
+# title & end screen
 var _title_screen: Control = null
 var _menu_sky: MoonSky = null
 var _menu_buttons: Array[Button] = []
@@ -130,7 +130,6 @@ func show_end_screen(victory: bool, title_txt: String, body_txt: String, can_ret
 		_end_buttons[_end_idx].grab_focus()
 
 
-## T0.2: Big centered day/night header banner (e.g., "DAY 1 - ACT 1", "NIGHT 3 - BLOOD MOON!").
 func show_header_banner(
 	title_txt: String,
 	subtitle_txt: String,
@@ -249,7 +248,7 @@ func update_hud(data: Dictionary) -> void:
 	_search_bar_bg.visible = search_frac > 0.0
 	_search_bar_fill.size.x = floorf(84.0 * clampf(search_frac, 0.0, 1.0))
 
-	# Off-screen home arrow when far from farmhouse in Act 2 (T3.1).
+	# points back toward the house when you wander off into the big valley
 	var home_dir: Vector2 = data.get("home_arrow_dir", Vector2.ZERO) as Vector2
 	if home_dir.length_squared() > 0.01:
 		_home_arrow.visible = true
@@ -261,7 +260,7 @@ func update_hud(data: Dictionary) -> void:
 	else:
 		_home_arrow.visible = false
 
-	# Subtle red border danger flash on low HP or active intruders (T1.5).
+	# red screen tint when hp is critical or zombies got inside
 	if intruders > 0 or (hp > 0 and hp <= 15):
 		_vignette.visible = true
 		_vignette.color = Color(0.75, 0.08, 0.08, 0.16)
@@ -334,7 +333,7 @@ func _build_hud() -> void:
 	_vignette.visible = false
 	_hud_layer.add_child(_vignette)
 
-	# Top bar translucent backdrop (compact 44 px height on 640x360 viewport).
+	# dark bar behind the top hud so white text stays readable on grass
 	var top_bar: ColorRect = ColorRect.new()
 	top_bar.position = Vector2.ZERO
 	top_bar.size = Vector2(Config.VIEW_SIZE.x, 44.0)
@@ -342,7 +341,7 @@ func _build_hud() -> void:
 	top_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud_layer.add_child(top_bar)
 
-	# Left cluster: HP bar, House status, Bag & Stockpile, Bow ammo.
+	# top-left: hp bar, house hp, bag/stock counts
 	var hp_bg: ColorRect = ColorRect.new()
 	hp_bg.position = Vector2(8.0, 5.0)
 	hp_bg.size = Vector2(80.0, 9.0)
@@ -370,7 +369,7 @@ func _build_hud() -> void:
 	_stock_lbl = _mk_lbl(Vector2(8.0, 29.0), Vector2(10.0, 10.0), "body", 8, Color.WHITE)
 	_stock_lbl.visible = false
 
-	# Center cluster: Day + Clock on row 1, short crisp Objective on row 2 (zero overlap!).
+	# center: day timer on top, current goal under it
 	_day_lbl = _mk_lbl(
 		Vector2(186.0, 4.0), Vector2(268.0, 12.0), "bold", 8, Color(1.0, 0.90, 0.64)
 	)
@@ -382,7 +381,7 @@ func _build_hud() -> void:
 	)
 	_objective_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
-	# Right cluster: Bow, Shockwave Q, clean quick-key strip.
+	# top-right: ammo, shockwave cooldown, quick key reminders
 	_bow_lbl = _mk_lbl(
 		Vector2(458.0, 4.0), Vector2(174.0, 12.0), "bold", 8, Color(0.92, 0.94, 1.0)
 	)
@@ -397,17 +396,17 @@ func _build_hud() -> void:
 	_hint_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_hint_lbl.text = "[E] Door/Gate  [U] Upgrade  [I] Bag  [Esc] Pause"
 
-	# Status strip just below top bar (Indoors / Intruders / Muted).
+	# indoors / intruder warning right under the top bar
 	_status_lbl = _mk_lbl(
 		Vector2(110.0, 46.0), Vector2(420.0, 12.0), "bold", 8, Color(1.0, 0.78, 0.42)
 	)
 	_status_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_status_lbl.visible = false
 
-	# Dedicated clean Bottom Trap Hotbar ([1] Spike, [2] Snare, [3] Lure).
+	# bottom trap slots (1/2/3)
 	_build_trap_hotbar()
 
-	# Big Day/Night Header Banner (T0.2).
+	# big day/night announcement banner
 	_header_panel = PanelContainer.new()
 	_header_panel.position = Vector2(140.0, 80.0)
 	_header_panel.size = Vector2(360.0, 56.0)
@@ -416,7 +415,7 @@ func _build_hud() -> void:
 	_header_panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_header_panel.add_theme_stylebox_override(
 		"panel",
-		SpriteFactory.make_panel_style("res://assets/ui/panel_dark.png", 10.0, 10.0, 6.0)
+		SpriteFactory.make_panel_style("res://assets/ui/panel.png", 10.0, 10.0, 6.0)
 	)
 	_hud_layer.add_child(_header_panel)
 
@@ -432,7 +431,7 @@ func _build_hud() -> void:
 	SpriteFactory.style_label(_header_sub, "body", 8, Color(0.92, 0.90, 0.94))
 	hvbox.add_child(_header_sub)
 
-	# Bottom prompts, search hold bar, hover tooltip, and transient message (clean vertical stack).
+	# prompts and search progress bar down near the bottom
 	_toast_lbl = _mk_lbl(
 		Vector2(90.0, Config.VIEW_SIZE.y - 64.0), Vector2(460.0, 12.0), "bold", 8, Color.WHITE
 	)
@@ -546,7 +545,7 @@ func _build_end_screen() -> void:
 	panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	panel.add_theme_stylebox_override(
 		"panel",
-		SpriteFactory.make_panel_style("res://assets/ui/panel_dark.png", 10.0, 14.0, 12.0)
+		SpriteFactory.make_panel_style("res://assets/ui/panel.png", 10.0, 14.0, 12.0)
 	)
 	_end_screen.add_child(panel)
 
@@ -642,9 +641,7 @@ func _update_trap_hotbar(
 
 
 func _make_slot_box(active: bool) -> StyleBox:
-	var path: String = (
-		"res://assets/ui/slot_selected.png" if active else "res://assets/ui/slot_normal.png"
-	)
+	var path := "res://assets/ui/slot_active.png" if active else "res://assets/ui/slot.png"
 	return SpriteFactory.make_panel_style(
 		path,
 		4.0,

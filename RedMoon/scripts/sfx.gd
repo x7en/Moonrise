@@ -1,6 +1,7 @@
 class_name Sfx
 extends Node
-## Procedural 8-bit mono 22050 Hz sound effects. Works on Desktop and Web export.
+
+# synth 8-bit bleeps generated on startup so we dont need external wav files
 
 const SAMPLE_RATE := 22050
 const POOL_SIZE := 10

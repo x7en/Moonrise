@@ -1,7 +1,7 @@
 class_name Dog
 extends CharacterBody2D
-## Asset-gated companion dog (T3.2a). Remains completely dormant until dog_idle_* and
-## dog_run_* sprite sheets are placed in res://assets/animals/. Never invents placeholder art.
+
+# stray dog you can tame once the map opens up
 
 signal tamed(dog: Dog)
 signal attacked_enemy(enemy: Node)
@@ -19,17 +19,17 @@ var _attack_cd: float = 0.0
 var _facing: String = "down"
 
 
-## Checks res://assets/animals/ for real dog idle & run sprite strips (export-safe).
 static func assets_available() -> bool:
 	return (
-		ResourceLoader.exists("res://assets/animals/dog_idle_right.png")
-		and ResourceLoader.exists("res://assets/animals/dog_run_right.png")
+		ResourceLoader.exists("res://assets/dog/idle_right.png")
+		and ResourceLoader.exists("res://assets/dog/run_right.png")
 	)
 
 
 func setup(spawn_pos: Vector2) -> bool:
 	if not Dog.assets_available():
 		return false
+
 	position = spawn_pos.round()
 	max_hp = Config.DOG_HP
 	hp = max_hp
@@ -39,19 +39,20 @@ func setup(spawn_pos: Vector2) -> bool:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 	add_to_group("dogs")
 
-	var col: CollisionShape2D = CollisionShape2D.new()
-	var shape: RectangleShape2D = RectangleShape2D.new()
+	var col := CollisionShape2D.new()
+	var shape := RectangleShape2D.new()
 	shape.size = Vector2(8.0, 6.0)
 	col.shape = shape
 	col.position = Vector2(0.0, -3.0)
 	add_child(col)
 
-	var shadow: Sprite2D = Sprite2D.new()
+	var shadow := Sprite2D.new()
 	shadow.texture = SpriteFactory.get_blob_shadow(12, 5)
 	shadow.position = Vector2(0.0, 1.0)
 	shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(shadow)
 
+	# dog sheets are 48x47 per frame so scale them down to match our 16px guy
 	_sprite = AnimatedSprite2D.new()
 	_sprite.centered = false
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -66,10 +67,12 @@ func setup(spawn_pos: Vector2) -> bool:
 func toggle_guard_mode(anchor_pos: Vector2) -> String:
 	if mode == Mode.STRAY:
 		return ""
+
 	if mode == Mode.FOLLOW:
 		mode = Mode.GUARD
 		guard_anchor = anchor_pos
 		return "Dog guarding spot"
+
 	mode = Mode.FOLLOW
 	return "Dog following you"
 
@@ -77,6 +80,7 @@ func toggle_guard_mode(anchor_pos: Vector2) -> String:
 func advance_tame(delta: float, is_holding: bool) -> bool:
 	if mode != Mode.STRAY:
 		return false
+
 	if is_holding:
 		tame_progress += delta
 		if tame_progress >= Config.DOG_TAME_TIME:
@@ -85,6 +89,7 @@ func advance_tame(delta: float, is_holding: bool) -> bool:
 			return true
 	else:
 		tame_progress = maxf(0.0, tame_progress - delta * 2.0)
+
 	return false
 
 
@@ -95,18 +100,20 @@ func step_dog(
 	world_bounds: Rect2
 ) -> void:
 	_attack_cd = maxf(0.0, _attack_cd - delta)
+
 	if mode == Mode.STRAY:
 		velocity = Vector2.ZERO
 		_play_anim("idle")
 		return
 
 	var target_enemy: Node = null
-	var origin: Vector2 = guard_anchor if mode == Mode.GUARD else player_pos
-	var best_d: float = Config.DOG_GUARD_RANGE
+	var origin := guard_anchor if mode == Mode.GUARD else player_pos
+	var best_d := Config.DOG_GUARD_RANGE
+
 	for enemy in enemies:
 		if not is_instance_valid(enemy) or not enemy.is_alive():
 			continue
-		var d: float = enemy.position.distance_to(origin)
+		var d := enemy.position.distance_to(origin)
 		if d < best_d:
 			best_d = d
 			target_enemy = enemy
@@ -122,8 +129,8 @@ func step_dog(
 		else:
 			velocity = to_e.normalized() * 78.0
 	else:
-		var follow_target: Vector2 = guard_anchor if mode == Mode.GUARD else player_pos
-		var to_t: Vector2 = follow_target - position
+		var follow_target := guard_anchor if mode == Mode.GUARD else player_pos
+		var to_t := follow_target - position
 		velocity = to_t.normalized() * 72.0 if to_t.length() > 22.0 else Vector2.ZERO
 
 	if velocity.length_squared() > 1.0:
@@ -139,9 +146,11 @@ func step_dog(
 func _play_anim(prefix: String) -> void:
 	if _sprite == null or _sprite.sprite_frames == null:
 		return
-	var anim: StringName = StringName("%s_%s" % [prefix, _facing])
+
+	var anim := StringName("%s_%s" % [prefix, _facing])
 	if not _sprite.sprite_frames.has_animation(anim):
 		anim = StringName("%s_down" % prefix)
+
 	if _sprite.sprite_frames.has_animation(anim) and _sprite.animation != anim:
 		_sprite.play(anim)
 
@@ -153,27 +162,33 @@ func _vec_to_dir(v: Vector2) -> String:
 
 
 func _load_dog_frames() -> SpriteFrames:
-	var sf: SpriteFrames = SpriteFrames.new()
+	var sf := SpriteFrames.new()
 	if sf.has_animation(&"default"):
 		sf.remove_animation(&"default")
+
 	for anim_name in ["idle", "run"]:
 		for dir_name in ["down", "up", "left", "right"]:
-			var full_path: String = "res://assets/animals/dog_%s_%s.png" % [anim_name, dir_name]
+			var full_path := "res://assets/dog/%s_%s.png" % [anim_name, dir_name]
 			if not ResourceLoader.exists(full_path):
 				continue
-			var strip_tex: Texture2D = load(full_path) as Texture2D
+
+			var strip_tex := load(full_path) as Texture2D
 			if strip_tex == null:
 				continue
-			var fh: int = maxi(1, strip_tex.get_height())
-			var count: int = maxi(1, roundi(float(strip_tex.get_width()) / float(maxi(1, fh))))
-			var fw: int = maxi(1, int(floorf(float(strip_tex.get_width()) / float(count))))
-			var anim_key: String = "%s_%s" % [anim_name, dir_name]
+
+			var fh := maxi(1, strip_tex.get_height())
+			var count := maxi(1, roundi(float(strip_tex.get_width()) / float(maxi(1, fh))))
+			var fw := maxi(1, int(floorf(float(strip_tex.get_width()) / float(count))))
+
+			var anim_key := "%s_%s" % [anim_name, dir_name]
 			sf.add_animation(anim_key)
 			sf.set_animation_speed(anim_key, 9.0 if anim_name == "run" else 6.0)
 			sf.set_animation_loop(anim_key, true)
+
 			for i in range(count):
-				var at: AtlasTexture = AtlasTexture.new()
+				var at := AtlasTexture.new()
 				at.atlas = strip_tex
 				at.region = Rect2(float(i * fw), 0.0, float(fw), float(fh))
 				sf.add_frame(anim_key, at)
+
 	return sf

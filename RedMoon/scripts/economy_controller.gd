@@ -1,7 +1,7 @@
 class_name EconomyController
 extends RefCounted
-## Handles House/Whole-Ring Fence/Gear/Trap/Watchtower economy, layer unlocks,
-## validated trap placement, and day-start snapshot serialization.
+
+# crafting, upgrades, trap placement checks, and day-start snapshots
 
 
 func compute_ring_stats(fences: Array[Structure]) -> Dictionary:
@@ -33,8 +33,7 @@ func compute_ring_stats(fences: Array[Structure]) -> Dictionary:
 	return stats
 
 
-## Executes one structure/workshop economy action and returns a result dictionary:
-## {"sfx": String, "message": String, "achievement": String, "spawn_watchtower": bool}
+# returns { sfx, message, achievement, spawn_watchtower } for whichever upgrade button was clicked
 func execute_action(
 	action_id: String,
 	payload: Dictionary,
@@ -176,7 +175,7 @@ func apply_day_snapshot(
 	return up
 
 
-## Handles auto-deposit near the farmhouse and ground pickup collection into bag.
+# dumps your bag into the stockpile when you walk close to the house, and vacuums nearby pickups
 func step_piles_and_deposit(
 	tree: SceneTree,
 	player: Player,
@@ -218,7 +217,6 @@ func step_piles_and_deposit(
 	return picked_plank
 
 
-## Validates whether a trap of `t_key` can be placed at `place_pos`.
 func can_place_trap_at(
 	t_key: String,
 	place_pos: Vector2,
@@ -248,7 +246,7 @@ func can_place_trap_at(
 	return {"ok": true, "reason": ""}
 
 
-## Places a trap at `place_pos` using bag stock first, then bag+stockpile planks/scrap.
+# spends a trap from the bag first, otherwise crafts one right out of the stockpile
 func try_place_trap_at(
 	t_key: String, place_pos: Vector2, main_node: Node
 ) -> bool:
@@ -297,7 +295,6 @@ func try_place_trap_at(
 	return true
 
 
-## Computes trap placement coordinate clamped within TRAP_PLACE_RANGE around player.
 func compute_trap_place_pos(trap_mode_active: bool, main_node: Node) -> Vector2:
 	var player: Player = main_node.get("_player") as Player
 	if trap_mode_active and DisplayServer.get_name() != "headless":
@@ -309,7 +306,6 @@ func compute_trap_place_pos(trap_mode_active: bool, main_node: Node) -> Vector2:
 	return (player.position + player.facing_vec.normalized() * 16.0).round()
 
 
-## Updates the live ground ghost preview whenever Trap Placement Mode is active.
 func update_trap_preview(
 	trap_mode_active: bool, selected_idx: int, main_node: Node
 ) -> void:
@@ -342,7 +338,6 @@ func update_trap_preview(
 	)
 
 
-## Completes a hold-E search on a POI prop, rewarding scrap, planks, and occasional arrows.
 func grant_prop_loot(
 	prop: Dictionary,
 	world_builder: WorldBuilder,
@@ -369,7 +364,6 @@ func grant_prop_loot(
 	)
 
 
-## Applies Settings menu toggles/cycles cleanly and refreshes the settings panel.
 func handle_settings_action(
 	action_id: String, settings: SettingsStore, upgrade_ui: UpgradeUI
 ) -> bool:

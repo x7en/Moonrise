@@ -1,6 +1,7 @@
 class_name Enemy
 extends CharacterBody2D
-## Solid physics enemy (T0.6) with full chew/aggro/leash/intruder/wanderer AI (T1.3 / T1.5 / T3.1).
+
+# zombie / raider / brute ai — walks to house, chews fences, chases player if provoked
 
 signal structure_damaged(structure: Node, damage: int, enemy: Enemy)
 signal player_damaged(damage: int, enemy: Enemy)
@@ -158,7 +159,6 @@ func start_dissolve() -> void:
 	collision_mask = 0
 
 
-## Applies damage, velocity knockback (physics-safe), and aggros onto player.
 func take_hit(dmg: int, push_dir: Vector2, from_bow: bool = false) -> bool:
 	if not is_alive():
 		return false
@@ -390,10 +390,10 @@ func _step_walk_to_target(
 	all_enemies: Array,
 	world_bounds: Rect2
 ) -> void:
-	# 1. Nearby active Lure Post attracts enemies first (T2.3).
-	var lure: Trap = _find_lure(traps)
+	# lure posts pull zombies away from the fences first
+	var lure := _find_lure(traps)
 	if lure != null:
-		var to_lure: Vector2 = lure.position - position
+		var to_lure := lure.position - position
 		if to_lure.length() <= lure.radius + 6.0:
 			_target_lure = lure
 			_target_struct = null
@@ -401,21 +401,21 @@ func _step_walk_to_target(
 			facing = _vec_to_dir(to_lure)
 			state = State.ATTACK_STRUCTURE
 			return
-		var dir_l: Vector2 = to_lure.normalized()
+		var dir_l := to_lure.normalized()
 		_move_solid(dir_l * speed, all_enemies, world_bounds)
 		_play_walk(dir_l)
 		return
 
-	# 2. If house door is OPEN and enemy reaches the doorstep, slip inside as an intruder (T1.5C).
+	# if you forgot to shut the front door they sneak straight inside
 	if house != null and house.is_standing() and house.is_door_open():
-		var dist_door: float = position.distance_to(Config.HOUSE_DOOR_STEP)
+		var dist_door := position.distance_to(Config.HOUSE_DOOR_STEP)
 		if dist_door <= 15.0:
 			remove_from_group("enemies")
 			entered_house.emit(self)
 			queue_free()
 			return
 
-	# 3. Check if already flush against any standing structure or watchtower -> stay and chew!
+	# if already pressed up against a fence or tower, stop and chew it
 	var blocker: Node = _find_adjacent_blocker(structures, watchtowers)
 	if blocker != null:
 		_target_struct = blocker
@@ -428,7 +428,7 @@ func _step_walk_to_target(
 		state = State.ATTACK_STRUCTURE
 		return
 
-	# 4. Determine primary goal: open door, standing house, or exposed player (if house fell).
+	# head for open door, otherwise house, otherwise player if house is gone
 	var goal: Vector2 = Config.HOUSE_CENTER
 	if house != null and house.is_standing():
 		if house.is_door_open() and position.distance_to(Config.HOUSE_DOOR_STEP) < 110.0:
@@ -441,7 +441,7 @@ func _step_walk_to_target(
 	var to_goal: Vector2 = goal - position
 	var desired_dir: Vector2 = to_goal.normalized() if to_goal.length() > 1.0 else Vector2.DOWN
 
-	# Stuck recovery: if blocked > 1.2 s with negligible progress, chew nearby fence or sidestep.
+	# simple stuck check: if barely moving, either chew a nearby fence or sidestep around a tree
 	var moved_px: float = position.distance_to(_last_pos)
 	if moved_px < 4.0 * delta:
 		_stuck_timer += delta
@@ -466,8 +466,8 @@ func _step_walk_to_target(
 
 
 func _move_solid(move_vel: Vector2, all_enemies: Array, world_bounds: Rect2) -> void:
-	# Soft enemy-enemy separation prevents stacking without rigid gridlock (T0.6).
-	var sep: Vector2 = Vector2.ZERO
+	# gentle push away from nearby zombies so they dont stack into one ugly blob
+	var sep := Vector2.ZERO
 	var sep_r: float = Config.ENEMY_SEPARATION_RADIUS
 	var sep_r_sq: float = sep_r * sep_r
 	for other in all_enemies:

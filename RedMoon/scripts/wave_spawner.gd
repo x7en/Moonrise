@@ -1,6 +1,7 @@
 class_name WaveSpawner
 extends RefCounted
-## Pure wave scheduling, spawn edge picking, and HUD objective string builders (T0.2 / T0.5).
+
+# builds night spawn queues, picks map edges, and formats the hud state dictionary
 
 
 func build_night_wave_queue(day: int, act: int) -> Array[Dictionary]:
@@ -236,7 +237,7 @@ func pick_wanderer_positions() -> Array[Vector2]:
 	return out
 
 
-## Assembles the full dictionary snapshot consumed by Hud.update_hud() from Main state.
+# packs everything Hud.update_hud needs into one dict so main.gd stays somewhat readable
 func build_hud_payload(
 	main_node: Node,
 	is_night: bool,

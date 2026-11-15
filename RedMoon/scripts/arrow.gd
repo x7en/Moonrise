@@ -1,6 +1,5 @@
 class_name Arrow
 extends Node2D
-## Bow / watchtower projectile (T1.2 / T2.2). Flies straight, damages enemies, respects pierce.
 
 signal hit_enemy(enemy: Node, arrow: Arrow, from_player: bool)
 
@@ -25,7 +24,7 @@ func setup(
 	p_from_player: bool = true
 ) -> void:
 	position = start_pos
-	var dir_n: Vector2 = (
+	var dir_n := (
 		direction.normalized() if direction.length_squared() > 0.001 else Vector2.RIGHT
 	)
 	velocity = dir_n * speed
@@ -37,15 +36,7 @@ func setup(
 	add_to_group("arrows")
 
 	_sprite = Sprite2D.new()
-	var arrow_path: String = (
-		"res://assets/weapons/arrow_pierce.png"
-		if pierce > 0
-		else "res://assets/weapons/arrow_wood.png"
-	)
-	if ResourceLoader.exists(arrow_path):
-		_sprite.texture = load(arrow_path) as Texture2D
-	else:
-		_sprite.texture = SpriteFactory.get_icon_texture("arrow_proj")
+	_sprite.texture = SpriteFactory.tex("weapons/arrow_pierce" if pierce > 0 else "weapons/arrow")
 	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	add_child(_sprite)
 
@@ -53,7 +44,8 @@ func setup(
 func step_arrow(delta: float, enemies: Array, world_bounds: Rect2) -> void:
 	if _dead:
 		return
-	var step_vec: Vector2 = velocity * delta
+
+	var step_vec := velocity * delta
 	position += step_vec
 	range_left -= step_vec.length()
 
@@ -64,9 +56,12 @@ func step_arrow(delta: float, enemies: Array, world_bounds: Rect2) -> void:
 	for enemy in enemies:
 		if not is_instance_valid(enemy) or not enemy.is_alive():
 			continue
+
 		var eid: int = enemy.get_instance_id()
 		if hit_ids.has(eid):
 			continue
+
+		# grow hurtbox by 3px so fast arrows dont feel stingy
 		var hurt_rect: Rect2 = enemy.get_hurtbox_rect()
 		if hurt_rect.grow(3.0).has_point(position):
 			hit_ids[eid] = true

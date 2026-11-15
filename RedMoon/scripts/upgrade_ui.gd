@@ -1,7 +1,7 @@
 class_name UpgradeUI
 extends CanvasLayer
-## Clean, compact modal overlays for Inventory (I), streamlined House & Whole-Ring Fence
-## Upgrade Menus (U / Click), Pause Menu, Controls, Settings, Achievements, and Credits.
+
+# popup menus: backpack, house/fence upgrades, pause, settings, controls, achievements
 
 signal action_triggered(action_id: String, payload: Dictionary)
 signal menu_closed()
@@ -39,7 +39,6 @@ func close_all() -> void:
 	menu_closed.emit()
 
 
-## Opens Inventory panel (I) showing Bag + Stockpile + Gear Tier + Traps.
 func open_inventory(
 	bag: Inventory,
 	stockpile: Inventory,
@@ -79,7 +78,6 @@ func open_inventory(
 	_focus_index(0)
 
 
-## Opens streamlined context upgrade menu for House or Whole Fence Ring.
 func open_structure_menu(
 	st: Structure,
 	bag: Inventory,
@@ -232,7 +230,7 @@ func _build_house_menu(
 			stockpile
 		)
 
-	# Player-unlocked Layered Fencing (Ring 2, then Ring 3 — each built whole with its own Gate!).
+	# outer fence rings (ring 2 then ring 3, each comes with its own gate)
 	var r2_built: bool = bool((ring_stats.get(2, {}) as Dictionary).get("built", false))
 	var r3_built: bool = bool((ring_stats.get(3, {}) as Dictionary).get("built", false))
 	if not r2_built:
@@ -254,7 +252,7 @@ func _build_house_menu(
 			stockpile
 		)
 
-	# Single consolidated Weapons & Gear upgrade tier (cuts 6 old buttons down to 1!).
+	# bundled weapon + gear upgrade instead of cluttering the menu with 6 separate rows
 	var g_tier: int = int(upgrades.get("gear_tier", 1))
 	if g_tier == 1:
 		_add_cost_button(
@@ -295,7 +293,7 @@ func _build_house_menu(
 	)
 
 
-## Whole-ring fence upgrade menu ONLY — no per-segment partitions.
+# upgrades apply to the whole ring at once, per-segment clicking was way too tedious
 func _build_fence_menu(
 	seg: Structure,
 	bag: Inventory,
@@ -492,7 +490,7 @@ func _build_shell() -> void:
 	_panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_panel.add_theme_stylebox_override(
 		"panel",
-		SpriteFactory.make_panel_style("res://assets/ui/panel_dark.png", 10.0, 12.0, 10.0)
+		SpriteFactory.make_panel_style("res://assets/ui/panel.png", 10.0, 12.0, 10.0)
 	)
 	add_child(_panel)
 

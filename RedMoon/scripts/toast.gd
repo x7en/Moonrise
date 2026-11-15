@@ -1,6 +1,7 @@
 class_name ToastLayer
 extends CanvasLayer
-## T1.8: Non-blocking bottom-right toast queue for achievements and "World Expanded!" reveals.
+
+# little slide-in achievement popups in the bottom right corner
 
 const TOAST_WIDTH := 224.0
 const TOAST_HEIGHT := 36.0
@@ -29,14 +30,16 @@ func enqueue(title: String, subtitle: String, icon_id: String = "trophy") -> voi
 func _process(delta: float) -> void:
 	if not _showing or _active_panel == null:
 		return
+
 	_timer -= delta
-	var target_x: float = Config.VIEW_SIZE.x - TOAST_WIDTH - 10.0
-	var hidden_x: float = Config.VIEW_SIZE.x + 12.0
+	var target_x := Config.VIEW_SIZE.x - TOAST_WIDTH - 10.0
+	var hidden_x := Config.VIEW_SIZE.x + 12.0
+
 	if _timer > HOLD_SECONDS - 0.25:
-		var t_in: float = clampf((HOLD_SECONDS - _timer) / 0.25, 0.0, 1.0)
+		var t_in := clampf((HOLD_SECONDS - _timer) / 0.25, 0.0, 1.0)
 		_active_panel.position.x = floorf(lerpf(hidden_x, target_x, t_in))
 	elif _timer < 0.25:
-		var t_out: float = clampf(_timer / 0.25, 0.0, 1.0)
+		var t_out := clampf(_timer / 0.25, 0.0, 1.0)
 		_active_panel.position.x = floorf(lerpf(hidden_x, target_x, t_out))
 	else:
 		_active_panel.position.x = target_x
@@ -50,10 +53,12 @@ func _process(delta: float) -> void:
 func _pop_next() -> void:
 	if _queue.is_empty():
 		return
-	var item: Dictionary = _queue.pop_front() as Dictionary
+
+	var item := _queue.pop_front() as Dictionary
 	_title_lbl.text = String(item["title"])
 	_desc_lbl.text = String(item["desc"])
 	_icon_rect.texture = SpriteFactory.get_icon_texture(String(item.get("icon", "trophy")))
+
 	_showing = true
 	_timer = HOLD_SECONDS
 	_active_panel.position = Vector2(
@@ -71,7 +76,7 @@ func _build_panel() -> void:
 	_active_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_active_panel.visible = false
 
-	var style: StyleBoxFlat = StyleBoxFlat.new()
+	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.10, 0.08, 0.14, 0.94)
 	style.border_color = Color(0.94, 0.72, 0.30, 1.0)
 	style.set_border_width_all(1)
@@ -82,7 +87,7 @@ func _build_panel() -> void:
 	_active_panel.add_theme_stylebox_override("panel", style)
 	add_child(_active_panel)
 
-	var hbox: HBoxContainer = HBoxContainer.new()
+	var hbox := HBoxContainer.new()
 	hbox.add_theme_constant_override("separation", 6)
 	_active_panel.add_child(hbox)
 
@@ -92,7 +97,7 @@ func _build_panel() -> void:
 	_icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	hbox.add_child(_icon_rect)
 
-	var vbox: VBoxContainer = VBoxContainer.new()
+	var vbox := VBoxContainer.new()
 	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	vbox.add_theme_constant_override("separation", 2)
 	hbox.add_child(vbox)

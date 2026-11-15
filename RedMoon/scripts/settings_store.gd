@@ -1,6 +1,7 @@
 class_name SettingsStore
 extends RefCounted
-## Persists user settings (user://settings.cfg) and achievements (user://achievements.cfg).
+
+# saves settings and unlocked achievements to user://
 
 const SETTINGS_PATH := "user://settings.cfg"
 const ACHIEVEMENTS_PATH := "user://achievements.cfg"
