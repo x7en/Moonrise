@@ -60,41 +60,19 @@ func setup(spawn_pos: Vector2, allow_tame: bool = false) -> bool:
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 	add_to_group("dogs")
 
-	var col := CollisionShape2D.new()
-	var shape := RectangleShape2D.new()
-	shape.size = Vector2(8.0, 6.0)
-	col.shape = shape
-	col.position = Vector2(0.0, -3.0)
-	add_child(col)
-
-	var shadow := Sprite2D.new()
+	var shadow := get_node("Shadow") as Sprite2D
 	shadow.texture = Art.get_blob_shadow(12, 5)
-	shadow.position = Vector2(0.0, 1.0)
-	shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	add_child(shadow)
 
 	# dog sheets are 48x47 per frame so scale them down to match our 16px guy
-	_sprite = AnimatedSprite2D.new()
-	_sprite.centered = false
-	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_sprite = get_node("Sprite") as AnimatedSprite2D
 	_sprite.sprite_frames = _load_dog_frames()
-	_sprite.scale = Vector2(0.5, 0.5)
-	_sprite.offset = Vector2(-24.0, -40.0)
 	_sprite.play(&"idle_right")
-	add_child(_sprite)
 
-	_hp_bar_bg = ColorRect.new()
-	_hp_bar_bg.position = Vector2(-7.0, -21.0)
-	_hp_bar_bg.size = Vector2(14.0, 3.0)
-	_hp_bar_bg.color = Color(0.08, 0.06, 0.10, 0.85)
+	_hp_bar_bg = get_node("HpBarBg") as ColorRect
 	_hp_bar_bg.visible = false
-	add_child(_hp_bar_bg)
 
-	_hp_bar_fill = ColorRect.new()
-	_hp_bar_fill.position = Vector2(1.0, 1.0)
-	_hp_bar_fill.size = Vector2(12.0, 1.0)
-	_hp_bar_fill.color = Color(0.42, 0.90, 0.45, 1.0)
-	_hp_bar_bg.add_child(_hp_bar_fill)
+	_hp_bar_fill = get_node("HpBarBg/HpBarFill") as ColorRect
+	_hp_bar_fill.size.x = 12.0
 	return true
 
 
