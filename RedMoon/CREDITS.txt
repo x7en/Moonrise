@@ -1,3 +1,8 @@
+Team:
+- Game Designer & Lead Developer: Abdul Haseeb
+- Secondary Designer: Waseem Qadir
+- Helper: Bilal
+
 Sprites & Tiles:
 - Post-Apocalyptic Pixel Art Asset Pack by TheLazyStone (https://thelazystone.itch.io/post-apocalyptic-pixel-art-asset-pack)
 - Cottage, clouds, moon, dog, traps, bow/arrows, and UI frames from itch.io pixel art packs

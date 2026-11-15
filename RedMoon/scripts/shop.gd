@@ -93,6 +93,14 @@ func execute_action(
 				bag.add("arrow", mini(Config.BUY_ARROWS_AMOUNT, space))
 				res["sfx"] = "pickup"
 				res["message"] = "+%d Arrows added to quiver." % mini(Config.BUY_ARROWS_AMOUNT, space)
+		"craft_trap":
+			if bag.spend(cost, stockpile):
+				var t_key = String(data["trap_key"])
+				var qty = int(data.get("qty", 1))
+				bag.add(t_key, qty)
+				var t_lbl = String((Config.TRAPS[t_key])["label"])
+				res["sfx"] = "pickup"
+				res["message"] = "Crafted +%d %s!" % [qty, t_lbl]
 		"build_watchtower":
 			if watchtower_count < Config.WATCHTOWER_MAX and bag.spend(cost, stockpile):
 				res["spawn_watchtower"] = true
@@ -236,18 +244,21 @@ func can_place_trap_at(
 	place_pos: Vector2,
 	player: Player,
 	bag: Bag,
-	stockpile: Bag,
+	_stockpile: Bag,
 	traps: Array,
 	structures: Array
 ) -> Dictionary:
 	if player.inside_house or player.dead:
 		return {"ok": false, "reason": "Step outside to place traps."}
 	if traps.size() >= Config.MAX_TRAPS:
-		return {"ok": false, "reason": "Max %d traps reached!" % Config.MAX_TRAPS}
+		return {"ok": false, "reason": "Max %d traps placed!" % Config.MAX_TRAPS}
 	if bag.count(t_key) <= 0:
+		var lbl = String((Config.TRAPS[t_key])["label"])
 		var cost = (Config.TRAPS[t_key])["cost"]
-		if not bag.can_afford(cost, stockpile):
-			return {"ok": false, "reason": "Need %s." % Bag.format_cost(cost)}
+		return {
+			"ok": false,
+			"reason": "No %ss left! Craft at House [U] (%s)." % [lbl, Bag.format_cost(cost)],
+		}
 	for s in structures:
 		if not is_instance_valid(s) or not (s is Structure):
 			continue
@@ -305,18 +316,16 @@ func try_place_trap_at(
 		hud.show_message(String(check["reason"]), 1.6, Color(1.0, 0.55, 0.45))
 		return false
 
-	if bag.count(t_key) > 0:
-		bag.remove(t_key, 1)
-	else:
-		var cost = (Config.TRAPS[t_key])["cost"]
-		if not bag.spend(cost, stockpile):
-			return false
+	if bag.count(t_key) <= 0:
+		return false
+	bag.remove(t_key, 1)
 
 	spawn_trap_node(t_key, place_pos, main_node)
 	sfx.play("fence_rebuilt", -8.0)
 	fx.spawn_sparks(place_pos, Color(0.86, 0.82, 0.64, 1.0), 5)
 	var t_label = String((Config.TRAPS[t_key])["label"])
-	fx.spawn_floating_text(place_pos, "%s Set!" % t_label, Color(0.62, 0.96, 0.68))
+	var left_n = bag.count(t_key)
+	fx.spawn_floating_text(place_pos, "%s (%d left)" % [t_label, left_n], Color(0.62, 0.96, 0.68))
 	return true
 
 
@@ -340,7 +349,7 @@ func update_trap_preview(
 	if not trap_mode_active or menus.is_open() or player.inside_house:
 		fx.set_trap_preview(false)
 		return
-	var keys: Array[String] = ["trap_spike", "trap_snare", "trap_lure"]
+	var keys: Array[String] = ["trap_snare", "trap_spike", "trap_lure"]
 	var t_key = keys[clampi(selected_idx - 1, 0, 2)]
 	var info = Config.TRAPS[t_key]
 	var place_pos = compute_trap_place_pos(trap_mode_active, main_node)
@@ -393,6 +402,8 @@ func handle_settings_action(
 	action_id: String, settings: SaveData, menus: Menus
 ) -> bool:
 	match action_id:
+		"show_tutorial":
+			menus.open_info_panel("tutorial", settings)
 		"show_controls":
 			menus.open_info_panel("controls", settings)
 		"show_settings":

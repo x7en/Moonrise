@@ -15,6 +15,15 @@ var tame_progress: float = 0.0
 var _sprite: AnimatedSprite2D
 var _attack_cd: float = 0.0
 var _facing: String = "down"
+var _home_spot: Vector2 = Vector2.ZERO
+var _wander_target: Vector2 = Vector2.ZERO
+var _wander_wait: float = 0.0
+var _is_moving: bool = false
+var _avoid_timer: float = 0.0
+var _avoid_sign: float = 1.0
+var _stuck_timer: float = 0.0
+var _last_pos: Vector2 = Vector2.ZERO
+var _heel_angle: float = 0.8
 
 
 static func assets_available() -> bool:
@@ -29,6 +38,10 @@ func setup(spawn_pos: Vector2) -> bool:
 		return false
 
 	position = spawn_pos.round()
+	_home_spot = position
+	_wander_target = position
+	_last_pos = position
+	_heel_angle = randf_range(0.5, 2.6)
 	max_hp = Config.DOG_HP
 	hp = max_hp
 	mode = Mode.STRAY
@@ -98,15 +111,28 @@ func step_dog(
 	world_bounds: Rect2
 ) -> void:
 	_attack_cd = maxf(0.0, _attack_cd - delta)
+	_avoid_timer = maxf(0.0, _avoid_timer - delta)
 
 	if mode == Mode.STRAY:
+		_step_stray_wander(delta, player_pos, world_bounds)
+		return
+
+	# catch up immediately if the player recalled home or left the dog far behind a gate
+	if mode == Mode.FOLLOW and position.distance_to(player_pos) > 260.0:
+		position = (player_pos + Vector2(cos(_heel_angle), sin(_heel_angle)) * 18.0).clamp(
+			world_bounds.position + Vector2(8.0, 8.0),
+			world_bounds.end - Vector2(8.0, 8.0)
+		)
 		velocity = Vector2.ZERO
+		_avoid_timer = 0.0
+		_stuck_timer = 0.0
+		_last_pos = position
 		_play_anim("idle")
 		return
 
 	var target_enemy = null
 	var origin := guard_anchor if mode == Mode.GUARD else player_pos
-	var best_d := Config.DOG_GUARD_RANGE
+	var best_d := Config.DOG_GUARD_RANGE + 24.0
 
 	for enemy in enemies:
 		if not is_instance_valid(enemy) or not enemy.is_alive():
@@ -116,28 +142,108 @@ func step_dog(
 			best_d = d
 			target_enemy = enemy
 
+	var desired_vel = Vector2.ZERO
 	if target_enemy != null:
 		var to_e = target_enemy.position - position
-		if to_e.length() <= 14.0:
-			velocity = Vector2.ZERO
+		var dist_e = to_e.length()
+		if dist_e <= 14.0:
+			_facing = _vec_to_dir(to_e)
 			if _attack_cd <= 0.0:
 				_attack_cd = Config.DOG_ATTACK_INTERVAL
 				target_enemy.take_hit(1, to_e.normalized(), false)
 				attacked_enemy.emit(target_enemy)
 		else:
-			velocity = to_e.normalized() * 78.0
+			desired_vel = _steer_toward(to_e / dist_e, 96.0)
+	elif mode == Mode.GUARD:
+		desired_vel = _compute_guard_patrol_vel(delta)
 	else:
-		var follow_target := guard_anchor if mode == Mode.GUARD else player_pos
-		var to_t := follow_target - position
-		velocity = to_t.normalized() * 72.0 if to_t.length() > 22.0 else Vector2.ZERO
+		var heel_pos = player_pos + Vector2(cos(_heel_angle), sin(_heel_angle)) * 18.0
+		var to_heel = heel_pos - position
+		var dist_h = to_heel.length()
+		# hysteresis prevents jittering between run and idle at the edge of stop radius
+		var stop_r = 14.0 if _is_moving else 26.0
+		if dist_h > stop_r:
+			var speed = 78.0 if dist_h < 72.0 else minf(118.0, 78.0 + (dist_h - 72.0) * 0.55)
+			desired_vel = _steer_toward(to_heel / dist_h, speed)
 
-	if velocity.length_squared() > 1.0:
+	_apply_smooth_movement(delta, desired_vel, world_bounds)
+
+
+func _step_stray_wander(delta: float, player_pos: Vector2, world_bounds: Rect2) -> void:
+	# pause and look at the player when they walk up to tame
+	if position.distance_to(player_pos) <= 34.0:
+		_facing = _vec_to_dir(player_pos - position)
+		_apply_smooth_movement(delta, Vector2.ZERO, world_bounds)
+		return
+
+	if _wander_wait > 0.0:
+		_wander_wait -= delta
+		_apply_smooth_movement(delta, Vector2.ZERO, world_bounds)
+		return
+
+	var to_w = _wander_target - position
+	if to_w.length() <= 6.0:
+		_wander_wait = randf_range(1.4, 3.2)
+		var ang = randf_range(0.0, TAU)
+		var rad = randf_range(16.0, 54.0)
+		_wander_target = (_home_spot + Vector2(cos(ang), sin(ang)) * rad).clamp(
+			world_bounds.position + Vector2(24.0, 24.0),
+			world_bounds.end - Vector2(24.0, 24.0)
+		)
+		_apply_smooth_movement(delta, Vector2.ZERO, world_bounds)
+		return
+
+	_apply_smooth_movement(delta, _steer_toward(to_w.normalized(), 34.0), world_bounds)
+
+
+func _compute_guard_patrol_vel(delta: float) -> Vector2:
+	var to_anchor = guard_anchor - position
+	if to_anchor.length() > 30.0:
+		return _steer_toward(to_anchor.normalized(), 74.0)
+	if _wander_wait > 0.0:
+		_wander_wait -= delta
+		return Vector2.ZERO
+	var to_patrol = _wander_target - position
+	if to_patrol.length() <= 5.0 or _wander_target.distance_to(guard_anchor) > 26.0:
+		_wander_wait = randf_range(1.0, 2.4)
+		var ang = randf_range(0.0, TAU)
+		_wander_target = guard_anchor + Vector2(cos(ang), sin(ang)) * randf_range(10.0, 22.0)
+		return Vector2.ZERO
+	return _steer_toward(to_patrol.normalized(), 42.0)
+
+
+func _steer_toward(dir_n: Vector2, speed: float) -> Vector2:
+	if _avoid_timer > 0.0:
+		var side = Vector2(-dir_n.y, dir_n.x) * _avoid_sign
+		return (dir_n * 0.45 + side * 0.89).normalized() * speed
+	return dir_n * speed
+
+
+func _apply_smooth_movement(delta: float, desired_vel: Vector2, world_bounds: Rect2) -> void:
+	var accel = 12.0 if desired_vel.length_squared() > 1.0 else 16.0
+	velocity = velocity.lerp(desired_vel, minf(1.0, delta * accel))
+	if velocity.length_squared() > 16.0:
+		_is_moving = true
 		_facing = _vec_to_dir(velocity)
 		move_and_slide()
 		position.x = clampf(position.x, world_bounds.position.x + 8.0, world_bounds.end.x - 8.0)
 		position.y = clampf(position.y, world_bounds.position.y + 8.0, world_bounds.end.y - 8.0)
+		# detect obstacle snag and steer smoothly around it
+		if is_on_wall() or (desired_vel.length() > 25.0 and position.distance_to(_last_pos) < 0.3):
+			_stuck_timer += delta
+			if _stuck_timer >= 0.16:
+				_stuck_timer = 0.0
+				_avoid_timer = 0.55
+				_avoid_sign = -_avoid_sign if randf() < 0.35 else _avoid_sign
+		else:
+			_stuck_timer = maxf(0.0, _stuck_timer - delta)
+		_last_pos = position
 		_play_anim("run")
 	else:
+		_is_moving = false
+		velocity = Vector2.ZERO
+		_stuck_timer = 0.0
+		_last_pos = position
 		_play_anim("idle")
 
 

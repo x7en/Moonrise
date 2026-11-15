@@ -76,8 +76,8 @@ func build(view_size: Vector2 = Config.VIEW_SIZE) -> void:
 	add_child(_moon_holder)
 
 	_moon_glow = TextureRect.new()
-	_moon_glow.position = Vector2(-24.0, -24.0)
-	_moon_glow.size = Vector2(176.0, 176.0)
+	_moon_glow.position = Vector2(-42.0, -42.0)
+	_moon_glow.size = Vector2(212.0, 212.0)
 	_moon_glow.texture = Art.get_radial_light_texture(128)
 	_moon_glow.stretch_mode = TextureRect.STRETCH_SCALE
 	_moon_glow.modulate = Color(0.86, 0.88, 1.0, 0.14)
@@ -129,11 +129,11 @@ func update_sky(delta: float) -> void:
 	_time += delta
 
 	if _sky_top != null:
-		_sky_top.color = Color(0.04, 0.04, 0.11).lerp(Color(0.14, 0.03, 0.05), red_blend)
+		_sky_top.color = Color(0.04, 0.04, 0.11).lerp(Color(0.16, 0.01, 0.03), red_blend)
 	if _sky_mid != null:
-		_sky_mid.color = Color(0.08, 0.06, 0.16).lerp(Color(0.28, 0.05, 0.08), red_blend)
+		_sky_mid.color = Color(0.08, 0.06, 0.16).lerp(Color(0.36, 0.02, 0.05), red_blend)
 	if _sky_low != null:
-		_sky_low.color = Color(0.13, 0.09, 0.18).lerp(Color(0.40, 0.08, 0.10), red_blend)
+		_sky_low.color = Color(0.13, 0.09, 0.18).lerp(Color(0.56, 0.04, 0.07), red_blend)
 
 	for s in _stars:
 		var node = s["node"]
@@ -151,11 +151,14 @@ func update_sky(delta: float) -> void:
 		)
 
 	if _moon_red != null:
-		_moon_red.modulate.a = clampf(red_blend, 0.0, 1.0)
+		var red_a := clampf(red_blend, 0.0, 1.0)
+		var pulse_r := 1.18 + 0.10 * sin(_time * 2.4)
+		_moon_red.modulate = Color(pulse_r, 0.72, 0.70, red_a)
 
 	if _moon_glow != null:
+		var glow_pulse := 0.56 + 0.14 * sin(_time * 2.4)
 		_moon_glow.modulate = Color(0.86, 0.88, 1.0, 0.14).lerp(
-			Color(0.98, 0.22, 0.22, 0.30), red_blend
+			Color(1.0, 0.06, 0.08, glow_pulse), red_blend
 		)
 
 	for layer in _cloud_layers:
@@ -195,7 +198,7 @@ func _add_cloud_layer(idx: int, speed_px: float, y_pos: float) -> void:
 	# tuned by eye so the white cloud art looks moody instead of pitch black
 	var shade = [0.46, 0.54, 0.36][clampi(idx, 0, 2)]
 	var night_col := Color(shade * 0.85, shade * 0.84, shade * 1.15, 0.88)
-	var blood_col := Color(shade * 1.32, shade * 0.44, shade * 0.46, 0.92)
+	var blood_col := Color(shade * 1.68, shade * 0.18, shade * 0.20, 0.94)
 
 	_cloud_layers.append({
 		"a": a,
