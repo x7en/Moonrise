@@ -3,6 +3,8 @@ extends RefCounted
 
 # upgrades, trap placement checks, and saving/reloading the start of a day
 
+const TRAP_SCENE: PackedScene = preload("res://scenes/trap.tscn")
+
 
 func compute_ring_stats(fences: Array[Structure]) -> Dictionary:
 	var stats = {}
@@ -301,7 +303,7 @@ func spawn_trap_node(
 	var sfx = main_node.get("_sfx")
 	var fx = main_node.get("_fx")
 
-	var trap = Trap.new()
+	var trap: Trap = TRAP_SCENE.instantiate() as Trap
 	trap.setup(t_key, place_pos)
 	trap.triggered.connect(func(tr: Trap, en: Node2D) -> void:
 		sfx.play("trap_trigger", -7.0)
