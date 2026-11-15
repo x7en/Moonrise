@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+  />
+  <meta name="theme-color" content="#140b18" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" type="image/png" href="./assets/sky/blood_moon.png" />
+  <title>Moonrise — Survival</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="overlay-screen">
+      <div class="loading-box">
+        <div class="display-title">MOONRISE</div>
+        <div id="loading-status" class="loading-sub">Loading sprites...</div>
+        <div class="loading-bar-bg">
+          <div id="loading-bar-fill" class="loading-bar-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Game Viewport Canvas -->
+    <canvas id="game-canvas" width="640" height="360"></canvas>
+
+    <!-- Red low-HP / danger vignette -->
+    <div id="danger-vignette" class="hidden"></div>
+
+    <!-- Top Gameplay HUD -->
+    <div id="hud" class="hidden">
+      <div class="hud-top">
+        <div class="hud-col hud-left">
+          <div class="hp-row">
+            <div class="hp-bar-bg">
+              <div id="hp-bar-fill" class="hp-bar-fill"></div>
+            </div>
+            <span id="hp-label" class="hud-bold">HP 40/40</span>
+          </div>
+          <div class="house-row">
+            <img id="house-icon" src="./assets/ui/house.png" alt="" class="pixel-icon" />
+            <span id="house-label" class="hud-bold">House 100/100 (Shut)</span>
+          </div>
+          <div id="bag-label" class="hud-small">Bag 0/16 P:0 S:0 | Stock P:4 S:0</div>
+        </div>
+
+        <div class="hud-col hud-center">
+          <div id="day-label" class="hud-bold hud-gold">Day 1 — 01:30</div>
+          <div id="objective-label" class="hud-small hud-warm">Gather planks &amp; fortify</div>
+        </div>
+
+        <div class="hud-col hud-right">
+          <div id="weapon-label" class="hud-bold">Bow 5/5 (18)</div>
+          <div id="cooldown-label" class="hud-small hud-cyan">Shock Ready | Home Ready</div>
+          <div class="hud-quick-btns">
+            <button id="btn-hud-inv" class="mini-btn" type="button" aria-label="Inventory">
+              <img src="./assets/ui/bag.png" alt="" class="pixel-icon" /><span>Bag</span>
+            </button>
+            <button id="btn-hud-craft" class="mini-btn" type="button" aria-label="Crafting">
+              <span>Craft</span>
+            </button>
+            <button id="btn-hud-dbg" class="mini-btn" type="button" aria-label="Debug & Controls">
+              <span>DBG</span>
+            </button>
+            <button id="btn-hud-pause" class="mini-btn" type="button" aria-label="Pause">
+              <span>||</span>
+            </button>
+            <button id="btn-hud-fs" class="mini-btn" type="button" aria-label="Fullscreen">
+              <span>FS</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Debug Telemetry HUD (F3 or Debug menu) -->
+      <pre id="debug-hud" class="debug-hud hidden"></pre>
+
+      <!-- Status / Intruder Warning -->
+      <div id="status-banner" class="status-banner hidden"></div>
+
+      <!-- Day / Night Header Banner -->
+      <div id="header-banner" class="header-banner hidden">
+        <div id="header-title" class="header-title"></div>
+        <div id="header-sub" class="header-sub"></div>
+      </div>
+
+      <!-- Bottom center prompts, search bar, and trap hotbar -->
+      <div class="hud-bottom-center">
+        <div id="hud-toast" class="hud-toast hidden"></div>
+        <div id="search-bar" class="search-bar hidden">
+          <div id="search-bar-fill" class="search-bar-fill"></div>
+        </div>
+        <div id="prompt-label" class="prompt-label hidden"></div>
+        <div id="trap-meta" class="trap-meta">Traps: 5 | Placed 0/16</div>
+        <div id="trap-hotbar" class="trap-hotbar">
+          <button class="trap-slot" data-slot="1" type="button">
+            <img src="./assets/traps/snare.png" alt="" class="pixel-icon" />
+            <span id="trap-slot-1">Bear x3</span>
+          </button>
+          <button class="trap-slot" data-slot="2" type="button">
+            <img src="./assets/traps/spike.png" alt="" class="pixel-icon" />
+            <span id="trap-slot-2">Spike x2</span>
+          </button>
+          <button class="trap-slot" data-slot="3" type="button">
+            <img src="./assets/traps/lure.png" alt="" class="pixel-icon" />
+            <span id="trap-slot-3">Lure x0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Portrait rotate suggestion (non-blocking, dismissible) -->
+      <div id="rotate-hint" class="rotate-hint hidden">
+        <span>Rotate to landscape for best view</span>
+        <button id="btn-dismiss-rotate" type="button">x</button>
+      </div>
+    </div>
+
+    <!-- Mobile Multi-Touch Controls Layer -->
+    <div id="touch-layer" class="touch-layer hidden">
+      <!-- Left Floating Virtual Joystick Zone -->
+      <div id="joystick-zone" class="joystick-zone">
+        <div id="joystick-base" class="joystick-base">
+          <div id="joystick-knob" class="joystick-knob"></div>
+        </div>
+      </div>
+
+      <!-- Right Contextual Popups (Upgrade, Tame, Dog Mode, Trap Place/Cancel) -->
+      <div class="context-cluster">
+        <button id="tc-tame" class="ctx-btn ctx-green hidden" type="button">Tame Dog</button>
+        <button id="tc-upgrade" class="ctx-btn ctx-gold hidden" type="button">Upgrade / Repair</button>
+        <button id="tc-dog-mode" class="ctx-btn ctx-blue hidden" type="button">Dog: Follow</button>
+        <div id="tc-trap-actions" class="ctx-row hidden">
+          <button id="tc-trap-place" class="ctx-btn ctx-green" type="button">Place Trap</button>
+          <button id="tc-trap-cancel" class="ctx-btn ctx-red" type="button">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Right Combat & Action Cluster -->
+      <div class="action-cluster">
+        <div class="action-arc-top">
+          <button id="tc-swap" class="touch-btn touch-sm btn-teal" type="button">
+            <span class="btn-title">SWAP</span>
+            <span id="tc-swap-sub" class="btn-sub">BOW</span>
+          </button>
+          <button id="tc-shock" class="touch-btn touch-sm btn-cyan" type="button">
+            <span class="btn-title">SHOCK</span>
+            <span id="tc-shock-sub" class="btn-sub">RDY</span>
+          </button>
+          <button id="tc-reload" class="touch-btn touch-sm btn-amber" type="button">
+            <span class="btn-title">RLD</span>
+            <span id="tc-reload-sub" class="btn-sub">5/5</span>
+          </button>
+        </div>
+
+        <div class="action-arc-bottom">
+          <button id="tc-home" class="touch-btn touch-sm btn-purple" type="button">
+            <span class="btn-title">HOME</span>
+            <span id="tc-home-sub" class="btn-sub">RDY</span>
+          </button>
+          <button id="tc-interact" class="touch-btn touch-md btn-gold" type="button">
+            <span id="tc-interact-title" class="btn-title">ACT</span>
+            <span id="tc-interact-sub" class="btn-sub">TAP/HOLD</span>
+          </button>
+          <button id="tc-spear" class="touch-btn touch-md btn-steel" type="button">
+            <span class="btn-title">SPEAR</span>
+            <span class="btn-sub">MELEE</span>
+          </button>
+          <button id="tc-attack" class="touch-btn touch-lg btn-crimson" type="button">
+            <span id="tc-attack-title" class="btn-title">FIRE</span>
+            <span id="tc-attack-sub" class="btn-sub">BOW</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Optional Touch Zone & Pointer Debug Visualizer -->
+    <canvas id="debug-touch-overlay" class="debug-touch-overlay hidden"></canvas>
+
+    <!-- Title Screen -->
+    <div id="title-screen" class="overlay-screen hidden">
+      <canvas id="title-sky-canvas" width="640" height="360"></canvas>
+      <div class="title-content">
+        <div class="title-header">
+          <h1 class="display-title title-glow">MOONRISE</h1>
+          <p class="title-subtitle">Gather by day. Hold the rings by night.</p>
+        </div>
+        <div class="title-menu">
+          <button id="btn-title-continue" class="menu-btn menu-btn-accent hidden" type="button">Continue Day</button>
+          <button id="btn-title-play" class="menu-btn menu-btn-primary" type="button">Play</button>
+          <button id="btn-title-tutorial" class="menu-btn" type="button">Tutorial</button>
+          <button id="btn-title-controls" class="menu-btn" type="button">Controls</button>
+          <button id="btn-title-settings" class="menu-btn" type="button">Settings</button>
+          <button id="btn-title-achievements" class="menu-btn" type="button">Achievements</button>
+          <button id="btn-title-credits" class="menu-btn" type="button">Credits</button>
+        </div>
+        <div class="title-footer">Moonrise HTML5 Mobile Edition | Touch &amp; Keyboard Ready</div>
+      </div>
+    </div>
+
+    <!-- Story / Tutorial Cards Overlay -->
+    <div id="cards-screen" class="overlay-screen hidden">
+      <div class="card-frame">
+        <div id="card-title" class="card-title"></div>
+        <div class="card-art-wrap">
+          <canvas id="card-art-canvas" width="160" height="96"></canvas>
+        </div>
+        <div id="card-body" class="card-body"></div>
+        <div class="card-footer">
+          <button id="btn-card-skip" class="card-skip-btn" type="button">Skip</button>
+          <button id="btn-card-next" class="card-next-btn" type="button">Tap to Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Moonrise Cutscene Overlay -->
+    <div id="night-intro-screen" class="overlay-screen hidden">
+      <canvas id="night-sky-canvas" width="640" height="360"></canvas>
+      <div id="night-blood-flash" class="night-blood-flash"></div>
+      <div id="night-intro-title" class="night-intro-title"></div>
+      <div class="night-intro-band">
+        <div id="night-intro-narration" class="night-intro-narration"></div>
+        <div class="night-intro-skip">Tap anywhere to skip</div>
+      </div>
+    </div>
+
+    <!-- Pause / Inventory / Crafting / Upgrade / Settings / Info Modal -->
+    <div id="modal-screen" class="overlay-screen modal-dimmer hidden">
+      <div class="modal-panel">
+        <div class="modal-header">
+          <div id="modal-title" class="modal-title"></div>
+          <button id="btn-modal-close" class="modal-close-btn" type="button">Close</button>
+        </div>
+        <div id="modal-subtitle" class="modal-subtitle"></div>
+        <div id="modal-list" class="modal-list"></div>
+        <div id="modal-footer" class="modal-footer"></div>
+      </div>
+    </div>
+
+    <!-- Victory / Game Over Screen -->
+    <div id="end-screen" class="overlay-screen modal-dimmer hidden">
+      <div class="end-panel">
+        <div id="end-title" class="end-title"></div>
+        <div id="end-body" class="end-body"></div>
+        <div class="end-actions">
+          <button id="btn-end-retry" class="menu-btn menu-btn-accent" type="button">Retry Day</button>
+          <button id="btn-end-new" class="menu-btn menu-btn-primary" type="button">New Run</button>
+          <button id="btn-end-menu" class="menu-btn" type="button">Main Menu</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Achievement Popup Toast -->
+    <div id="ach-toast" class="ach-toast hidden">
+      <img id="ach-toast-icon" src="./assets/ui/trophy.png" alt="" class="ach-icon" />
+      <div class="ach-text">
+        <div id="ach-toast-title" class="ach-title"></div>
+        <div id="ach-toast-desc" class="ach-desc"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
