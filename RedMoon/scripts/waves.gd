@@ -63,7 +63,7 @@ func build_objective_text(
 	_total_planks: int
 ) -> String:
 	if is_night:
-		return "BLOOD MOON! Hold!" if is_blood_moon else "Hold out until dawn!"
+		return "BLOOD MOON! Hold!" if is_blood_moon else "EVEN MOON! Hold until dawn!"
 	if act == 1:
 		var left = maxi(0, Config.WORLD_EXPAND_NIGHT - day)
 		if left == 0:
@@ -120,11 +120,11 @@ func build_context_prompt(
 			var near_stray = false
 			for d in dogs:
 				if is_instance_valid(d) and d.mode == Dog.Mode.STRAY:
-					if d.position.distance_to(player.position) <= 24.0:
+					if d.position.distance_to(player.position) <= Config.DOG_TAME_RANGE:
 						near_stray = true
 						break
 			if near_stray:
-				out = "[Hold E] Tame Stray Dog"
+				out = "Wild Dog nearby - Click [Tame] button"
 			else:
 				var prop = map.find_nearest_searchable(player.position, 32.0)
 				if not prop.is_empty():
@@ -202,6 +202,18 @@ func find_nearest_gate(
 				if d <= best_d:
 					best_d = d
 					best = st
+	return best
+
+
+func find_nearest_stray_dog(dogs: Array, world_pos: Vector2, max_d: float) -> Dog:
+	var best = null
+	var best_d = max_d
+	for d in dogs:
+		if is_instance_valid(d) and d.mode == Dog.Mode.STRAY:
+			var dist = d.position.distance_to(world_pos)
+			if dist <= best_d:
+				best_d = dist
+				best = d
 	return best
 
 
@@ -298,9 +310,21 @@ func make_hud_data(
 	if not player.inside_house:
 		var to_home = Config.HOUSE_CENTER - player.position
 		var dist = to_home.length()
-		if dist > 165.0:
+		if dist >= Config.BASE_TRACKER_MIN_PX and dist <= Config.BASE_TRACKER_MAX_PX:
 			home_arrow = to_home / dist
 			home_dist = int(roundf(dist / 16.0))
+	var can_tame_dog = false
+	if not player.inside_house:
+		for d in dogs:
+			if is_instance_valid(d) and d.mode == Dog.Mode.STRAY:
+				if d.position.distance_to(player.position) <= Config.DOG_TAME_RANGE:
+					can_tame_dog = true
+					break
+	var phase_label = (
+		("NIGHT %d (%s)" % [day, "BLOOD MOON" if is_blood else "EVEN MOON"])
+		if is_night
+		else ("DAY %d (ACT %d)" % [day, act])
+	)
 	return {
 		"hp": player.hp,
 		"max_hp": player.max_hp,
@@ -321,7 +345,8 @@ func make_hud_data(
 		"arrows": bag.count("arrow"),
 		"bow_cd": player.bow_cd,
 		"reloading": player.is_reloading(),
-		"phase_label": "%s %d (ACT %d)" % ["NIGHT" if is_night else "DAY", day, act],
+		"active_weapon": player.active_weapon,
+		"phase_label": phase_label,
 		"time_left": phase_timer,
 		"objective": obj,
 		"bounce_cd": bounce_cd,
@@ -338,4 +363,5 @@ func make_hud_data(
 		"search_progress": search_progress,
 		"home_arrow_dir": home_arrow,
 		"home_dist": home_dist,
+		"can_tame_dog": can_tame_dog,
 	}

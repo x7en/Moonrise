@@ -423,17 +423,38 @@ static func get_icon_texture(icon_id: String) -> Texture2D:
 		_icon_cache[icon_id] = loaded
 		return loaded
 
-	# only two things still drawn in code because i never found matching sprites for em
+	# things still drawn in code because no dedicated sprite png exists yet
 	var result = null
 	if icon_id == "scrap":
 		result = _make_scrap_icon()
 	elif icon_id == "watchtower":
 		result = _make_watchtower_texture()
+	elif icon_id == "spear":
+		result = _make_spear_icon()
 	else:
 		result = _make_placeholder(icon_id)
 
 	_icon_cache[icon_id] = result
 	return result
+
+
+static func _make_spear_icon() -> ImageTexture:
+	var img := Image.create_empty(16, 16, false, Image.FORMAT_RGBA8)
+	var out_c := Color(0.16, 0.12, 0.18, 1.0)
+	var shaft := Color(0.58, 0.38, 0.22, 1.0)
+	var tip := Color(0.84, 0.88, 0.94, 1.0)
+	for i in range(2, 11):
+		var x := i
+		var y := 15 - i
+		img.set_pixel(x, y, shaft)
+		if x + 1 < 16:
+			img.set_pixel(x + 1, y, out_c)
+	for pt in [
+		Vector2i(11, 4), Vector2i(12, 3), Vector2i(13, 2),
+		Vector2i(11, 3), Vector2i(12, 4), Vector2i(12, 2), Vector2i(13, 3)
+	]:
+		img.set_pixel(pt.x, pt.y, tip)
+	return ImageTexture.create_from_image(img)
 
 
 static func _make_scrap_icon() -> ImageTexture:

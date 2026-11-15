@@ -6,6 +6,7 @@ extends CanvasLayer
 signal play_requested(continue_run: bool)
 signal menu_panel_requested(panel_kind: String)
 signal trap_slot_clicked(slot_idx: int)
+signal tame_dog_requested()
 signal quit_requested()
 signal retry_day_requested()
 signal new_game_requested()
@@ -49,6 +50,7 @@ var _toast_lbl: Label
 var _toast_timer: float = 0.0
 var _prompt_lbl: Label
 var _tooltip_lbl: Label
+var _tame_btn: Button
 var _search_bar_bg: ColorRect
 var _search_bar_fill: ColorRect
 var _home_arrow_holder: Node2D
@@ -107,7 +109,7 @@ func show_title_screen(has_continue: bool) -> void:
 	_hud_layer.visible = false
 	_end_screen.visible = false
 	_menu_sky.configure_for_night(3, true, false)
-	_menu_sky.moon_progress = 0.88
+	_menu_sky.moon_progress = 0.96
 	_menu_sky.red_blend = 0.92
 	_menu_continue_btn.visible = has_continue
 	_menu_idx = 1 if has_continue else 0
@@ -118,6 +120,12 @@ func show_gameplay_hud() -> void:
 	_title_screen.visible = false
 	_end_screen.visible = false
 	_hud_layer.visible = true
+
+
+func hide_all_screens() -> void:
+	_title_screen.visible = false
+	_hud_layer.visible = false
+	_end_screen.visible = false
 
 
 func show_end_screen(victory: bool, title_txt: String, body_txt: String, can_retry: bool) -> void:
@@ -172,7 +180,7 @@ func update_hud(data: Dictionary) -> void:
 	var door_open = bool(data.get("door_open", false))
 	var intruders = int(data.get("intruders", 0))
 	if house_fallen:
-		_house_lbl.text = "HOUSE FALLEN! (No Shelter)"
+		_house_lbl.text = "HOUSE FALLEN!"
 		Art.style_label(_house_lbl, "bold", 8, Color(1.0, 0.42, 0.36))
 		_house_icon.texture = Art.get_icon_texture("broken_house")
 		_house_icon.visible = true
@@ -190,7 +198,7 @@ func update_hud(data: Dictionary) -> void:
 		)
 		_house_icon.visible = true
 
-	_bag_lbl.text = "Bag %d/%d (P:%d S:%d) | Stock P:%d S:%d" % [
+	_bag_lbl.text = "Bag %d/%d P:%d S:%d | Stock P:%d S:%d" % [
 		int(data.get("bag_used", 0)),
 		int(data.get("bag_cap", 16)),
 		int(data.get("bag_planks", 0)),
@@ -201,11 +209,17 @@ func update_hud(data: Dictionary) -> void:
 	_stock_lbl.visible = false
 
 	var reloading = bool(data.get("reloading", false))
-	var mag_n = int(data.get("mag", 6))
-	var mag_max_n = int(data.get("mag_max", 6))
+	var mag_n = int(data.get("mag", Config.BOW_MAG))
+	var mag_max_n = int(data.get("mag_max", Config.BOW_MAG))
 	var arrows_n = int(data.get("arrows", 0))
 	var bow_cd = float(data.get("bow_cd", 0.0))
-	if reloading:
+	var active_w = String(data.get("active_weapon", "bow"))
+	var w_def: Dictionary = Config.WEAPON_DEFS.get(active_w, {})
+	var w_tag = String(w_def.get("short_label", active_w.capitalize()))
+	if active_w != "bow":
+		_bow_lbl.text = "Weap: %s | Bow %d/%d (%d)" % [w_tag, mag_n, mag_max_n, arrows_n]
+		Art.style_label(_bow_lbl, "bold", 8, Color(0.95, 0.86, 0.56))
+	elif reloading:
 		_bow_lbl.text = "Bow: Reloading... (%d)" % arrows_n
 		Art.style_label(_bow_lbl, "bold", 8, Color(1.0, 0.82, 0.40))
 	elif mag_n <= 0 and arrows_n <= 0:
@@ -215,7 +229,7 @@ func update_hud(data: Dictionary) -> void:
 		_bow_lbl.text = "Bow %d/%d (%d) %.1fs" % [mag_n, mag_max_n, arrows_n, bow_cd]
 		Art.style_label(_bow_lbl, "bold", 8, Color(1.0, 0.86, 0.56))
 	else:
-		_bow_lbl.text = "Bow %d/%d (%d) [Click/F]" % [mag_n, mag_max_n, arrows_n]
+		_bow_lbl.text = "Bow %d/%d (%d) [Click]" % [mag_n, mag_max_n, arrows_n]
 		Art.style_label(_bow_lbl, "bold", 8, Color(0.92, 0.94, 1.0))
 
 	var secs = maxi(0, ceili(float(data.get("time_left", 0.0))))
@@ -263,18 +277,21 @@ func update_hud(data: Dictionary) -> void:
 	_tooltip_lbl.text = tip_txt
 	_tooltip_lbl.visible = not tip_txt.is_empty()
 
+	if _tame_btn != null:
+		_tame_btn.visible = bool(data.get("can_tame_dog", false))
+
 	var search_frac = float(data.get("search_progress", 0.0))
 	_search_bar_bg.visible = search_frac > 0.0
 	_search_bar_fill.size.x = floorf(84.0 * clampf(search_frac, 0.0, 1.0))
 
-	# points directly back toward the farmhouse base whenever the player explores out
+	# points back toward the farmhouse base only when player is within 50m
 	var home_dir = data.get("home_arrow_dir", Vector2.ZERO)
 	if home_dir.length_squared() > 0.01:
 		var dir_n = home_dir.normalized()
-		var edge = Config.VIEW_SIZE * 0.5 + dir_n * Vector2(276.0, 124.0)
+		var edge = Config.VIEW_SIZE * 0.5 + dir_n * Vector2(276.0, 120.0)
 		var pos = Vector2(
 			clampf(edge.x, 24.0, Config.VIEW_SIZE.x - 24.0),
-			clampf(edge.y, 60.0, Config.VIEW_SIZE.y - 54.0)
+			clampf(edge.y, 60.0, Config.VIEW_SIZE.y - 74.0)
 		).round()
 		_home_arrow_holder.visible = true
 		_home_arrow_holder.position = pos
@@ -282,8 +299,8 @@ func update_hud(data: Dictionary) -> void:
 		_home_arrow.visible = true
 		_home_arrow.text = "BASE %dm" % int(data.get("home_dist", 0))
 		_home_arrow.position = Vector2(
-			clampf(pos.x - 28.0, 4.0, Config.VIEW_SIZE.x - 62.0),
-			pos.y + (10.0 if pos.y < Config.VIEW_SIZE.y - 72.0 else -19.0)
+			clampf(pos.x - 29.0, 4.0, Config.VIEW_SIZE.x - 62.0),
+			pos.y + (10.0 if pos.y < Config.VIEW_SIZE.y - 92.0 else -19.0)
 		).round()
 	else:
 		_home_arrow_holder.visible = false
@@ -383,7 +400,7 @@ func _build_hud() -> void:
 	_hp_fill.color = Color(0.86, 0.24, 0.26, 1.0)
 	_hud_layer.add_child(_hp_fill)
 
-	_hp_lbl = _mk_lbl(Vector2(92.0, 4.0), Vector2(84.0, 12.0), "bold", 8, Color.WHITE)
+	_hp_lbl = _mk_lbl(Vector2(92.0, 4.0), Vector2(76.0, 12.0), "bold", 8, Color.WHITE)
 	_house_icon = TextureRect.new()
 	_house_icon.position = Vector2(8.0, 16.0)
 	_house_icon.size = Vector2(12.0, 12.0)
@@ -392,38 +409,38 @@ func _build_hud() -> void:
 	_house_icon.visible = false
 	_hud_layer.add_child(_house_icon)
 	_house_lbl = _mk_lbl(
-		Vector2(22.0, 17.0), Vector2(194.0, 12.0), "bold", 8, Color(0.86, 0.94, 0.86)
+		Vector2(22.0, 17.0), Vector2(182.0, 12.0), "bold", 8, Color(0.86, 0.94, 0.86)
 	)
-	_bag_lbl = _mk_lbl(Vector2(8.0, 29.0), Vector2(310.0, 12.0), "body", 8, Color(0.95, 0.86, 0.62))
+	_bag_lbl = _mk_lbl(Vector2(8.0, 29.0), Vector2(270.0, 12.0), "body", 8, Color(0.95, 0.86, 0.62))
 	_stock_lbl = _mk_lbl(Vector2(8.0, 29.0), Vector2(10.0, 10.0), "body", 8, Color.WHITE)
 	_stock_lbl.visible = false
 
 	# center: day timer on top, current goal under it
 	_day_lbl = _mk_lbl(
-		Vector2(186.0, 4.0), Vector2(268.0, 12.0), "bold", 8, Color(1.0, 0.90, 0.64)
+		Vector2(172.0, 4.0), Vector2(260.0, 12.0), "bold", 8, Color(1.0, 0.90, 0.64)
 	)
 	_day_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_timer_lbl = _mk_lbl(Vector2(236.0, 16.0), Vector2(10.0, 10.0), "bold", 8, Color.WHITE)
 	_timer_lbl.visible = false
 	_objective_lbl = _mk_lbl(
-		Vector2(218.0, 17.0), Vector2(216.0, 12.0), "body", 8, Color(0.98, 0.92, 0.72)
+		Vector2(208.0, 17.0), Vector2(224.0, 12.0), "body", 8, Color(0.98, 0.92, 0.72)
 	)
 	_objective_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
-	# top-right: ammo, shockwave cooldown, quick key reminders
+	# top-right: weapon/ammo, recall cooldown, quick key reminders
 	_bow_lbl = _mk_lbl(
-		Vector2(458.0, 4.0), Vector2(174.0, 12.0), "bold", 8, Color(0.92, 0.94, 1.0)
+		Vector2(436.0, 4.0), Vector2(196.0, 12.0), "bold", 8, Color(0.92, 0.94, 1.0)
 	)
 	_bow_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_bounce_lbl = _mk_lbl(
-		Vector2(440.0, 17.0), Vector2(192.0, 12.0), "bold", 8, Color(0.62, 0.94, 1.0)
+		Vector2(436.0, 17.0), Vector2(196.0, 12.0), "bold", 8, Color(0.62, 0.94, 1.0)
 	)
 	_bounce_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_hint_lbl = _mk_lbl(
-		Vector2(326.0, 29.0), Vector2(306.0, 12.0), "body", 8, Color(0.80, 0.84, 0.92)
+		Vector2(284.0, 29.0), Vector2(348.0, 12.0), "body", 8, Color(0.80, 0.84, 0.92)
 	)
 	_hint_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_hint_lbl.text = "[E] Door/Gate  [U] Upgrade  [B] Home  [Esc] Pause"
+	_hint_lbl.text = "[I] Weap  [C] Craft  [E] Door  [B] Home  [Esc]"
 
 	# indoors / intruder warning right under the top bar
 	_status_lbl = _mk_lbl(
@@ -459,6 +476,17 @@ func _build_hud() -> void:
 	_header_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	Art.style_label(_header_sub, "body", 8, Color(0.92, 0.90, 0.94))
 	hvbox.add_child(_header_sub)
+
+	# clickable tame button appears when standing beside a wild dog
+	_tame_btn = Button.new()
+	_tame_btn.text = "Tame"
+	_tame_btn.position = Vector2(276.0, Config.VIEW_SIZE.y - 100.0)
+	_tame_btn.size = Vector2(88.0, 20.0)
+	_tame_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	_tame_btn.focus_mode = Control.FOCUS_NONE
+	_tame_btn.visible = false
+	_tame_btn.pressed.connect(func() -> void: tame_dog_requested.emit())
+	_hud_layer.add_child(_tame_btn)
 
 	# prompts and search progress bar down near the bottom
 	_toast_lbl = _mk_lbl(
@@ -550,8 +578,8 @@ func _build_title_screen() -> void:
 	_title_screen.add_child(sub_lbl)
 
 	var vbox = VBoxContainer.new()
-	vbox.position = Vector2(236.0, 142.0)
-	vbox.size = Vector2(168.0, 198.0)
+	vbox.position = Vector2(232.0, 152.0)
+	vbox.size = Vector2(176.0, 186.0)
 	vbox.add_theme_constant_override("separation", 3)
 	_title_screen.add_child(vbox)
 
@@ -617,18 +645,21 @@ func _build_end_screen() -> void:
 	_end_buttons.clear()
 	_end_retry_btn = Button.new()
 	_end_retry_btn.text = "Retry Day"
+	_end_retry_btn.custom_minimum_size = Vector2(0.0, 22.0)
 	_end_retry_btn.pressed.connect(func() -> void: retry_day_requested.emit())
 	vbox.add_child(_end_retry_btn)
 	_end_buttons.append(_end_retry_btn)
 
 	var b_new = Button.new()
 	b_new.text = "New Run"
+	b_new.custom_minimum_size = Vector2(0.0, 22.0)
 	b_new.pressed.connect(func() -> void: new_game_requested.emit())
 	vbox.add_child(b_new)
 	_end_buttons.append(b_new)
 
 	var b_menu = Button.new()
 	b_menu.text = "Main Menu"
+	b_menu.custom_minimum_size = Vector2(0.0, 22.0)
 	b_menu.pressed.connect(func() -> void: return_to_menu_requested.emit())
 	vbox.add_child(b_menu)
 	_end_buttons.append(b_menu)
@@ -683,6 +714,7 @@ func _build_trap_hotbar() -> void:
 		hbox.add_child(ic)
 		var lbl = Label.new()
 		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		Art.style_label(lbl, "body", 8, Color(0.88, 0.88, 0.94))
 		hbox.add_child(lbl)
@@ -710,7 +742,7 @@ func _update_trap_hotbar(
 	if _trap_count_lbl != null:
 		var total_left = n_snare + n_spike + n_lure
 		_trap_count_lbl.text = (
-			"Traps Left: %d  |  Placed: %d/%d  |  Craft at House [U]"
+			"Traps Left: %d  |  Placed: %d/%d  |  Craft [C]"
 			% [total_left, placed, max_placed]
 		)
 	for i in range(mini(3, _trap_slots.size())):

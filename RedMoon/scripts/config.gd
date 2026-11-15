@@ -17,54 +17,74 @@ const FONT_BOLD_PATH := "res://assets/fonts/PixelOperator8-Bold.ttf"
 const FONT_DISPLAY_PATH := "res://assets/fonts/KiwiSoda.ttf"
 
 
-# player & melee
+# player & melee (PLAYER_SPEED intentionally kept unchanged)
 const PLAYER_SPEED := 82.0
-const PLAYER_HP := 50
+const PLAYER_HP := 40
 const SWING_TIME := 0.30
-const SWING_COOLDOWN := 0.38
+const SWING_COOLDOWN := 0.55
 const SWING_BOX := Vector2(32, 22)
 const SWING_OFFSET := 18.0
-const KNOCKBACK := 18.0
-const CONTACT_INVULN := 1.0
+const KNOCKBACK := 14.0
+const CONTACT_INVULN := 0.75
 
 const BOUNCE_STUN := 5.0
-const BOUNCE_CD_ACT1 := 10.0
-const BOUNCE_CD_ACT2 := 40.0
+const BOUNCE_CD_ACT1 := 18.0
+const BOUNCE_CD_ACT2 := 45.0
 const SWING_GROWTH_PER_BOUNCE := 0.15
 const MAX_BOUNCE_BONUSES := 3
-const INSIDE_HEAL_INTERVAL := 2.0
-const RECALL_HEAL_DURATION := 6.0
-const RECALL_HEAL_INTERVAL := 0.5
+const INSIDE_HEAL_INTERVAL := 3.0
+const RECALL_HEAL_DURATION := 4.0
+const RECALL_HEAL_INTERVAL := 0.8
 const RECALL_HEAL_TICK := 2
 
 
 # bow
 const BOW_RANGE := 220.0
 const BOW_FIRE_INTERVAL := 1.5
-const BOW_MAG := 6
-const BOW_RELOAD := 2.2
+const BOW_MAG := 5
+const BOW_RELOAD := 2.6
 const BOW_RESERVE_MAX := 30
 const BOW_DAMAGE := 1
 const ARROW_SPEED := 220.0
 
+# extensible weapon registry (kept data-driven so phase-2 thrown weapons plug in cleanly)
+const WEAPON_DEFS := {
+	"bow": {
+		"id": "bow",
+		"label": "Hunting Bow",
+		"short_label": "Bow",
+		"kind": "ranged",
+		"icon": "bow",
+		"desc": "Auto-aim ranged shots (1.5s CD, uses arrows).",
+	},
+	"spear": {
+		"id": "spear",
+		"label": "Iron-Tipped Spear",
+		"short_label": "Spear",
+		"kind": "melee",
+		"icon": "spear",
+		"desc": "Close-range thrust with knockback (no ammo).",
+	},
+}
+const DEFAULT_WEAPONS: Array[String] = ["bow", "spear"]
 
 # enemies (TODO: maybe nerf raider speed if night 5 feels too brutal)
 const ENEMY_TYPES := {
 	"zombie": {
-		"hits": 2,
+		"hits": 3,
 		"speed": 33.0,
-		"struct_dmg": 4,
+		"struct_dmg": 5,
 		"attack_interval": 1.2,
-		"player_dmg": 10,
+		"player_dmg": 12,
 		"aggro_radius": 56.0,
 		"tint": Color(1, 1, 1),
 	},
 	"raider": {
-		"hits": 1,
+		"hits": 2,
 		"speed": 50.0,
-		"struct_dmg": 7,
+		"struct_dmg": 8,
 		"attack_interval": 1.0,
-		"player_dmg": 10,
+		"player_dmg": 13,
 		"aggro_radius": 80.0,
 		"tint": Color(1.0, 0.6, 0.55),
 	},
@@ -159,7 +179,7 @@ const TRAPS := {
 	"trap_spike": {
 		"label": "Spike Trap",
 		"cost": {"plank": 2},
-		"damage": 3,
+		"damage": 2,
 		"cooldown": 0.7,
 		"max_triggers": 5,
 		"radius": 13.0,
@@ -168,7 +188,7 @@ const TRAPS := {
 		"label": "Bear Trap",
 		"cost": {"plank": 2},
 		"damage": 1,
-		"root_time": 3.0,
+		"root_time": 2.5,
 		"max_triggers": 1,
 		"radius": 14.0,
 	},
@@ -181,14 +201,55 @@ const TRAPS := {
 	},
 }
 
+const CRAFT_RECIPES: Array[Dictionary] = [
+	{
+		"action": "craft_trap",
+		"item": "trap_snare",
+		"label": "Bear Traps (+2)",
+		"amount": 2,
+		"cost": {"plank": 2},
+		"desc": "Deals 1 dmg & immobilizes a zombie for 2.5s (single-use).",
+	},
+	{
+		"action": "craft_trap",
+		"item": "trap_spike",
+		"label": "Spike Traps (+2)",
+		"amount": 2,
+		"cost": {"plank": 2},
+		"desc": "Floor spikes dealing 2 dmg per trigger (5 uses).",
+	},
+	{
+		"action": "craft_trap",
+		"item": "trap_lure",
+		"label": "Decoy Lure (+1)",
+		"amount": 1,
+		"cost": {"plank": 2},
+		"desc": "Draws zombies within 150px away from fences (30 HP).",
+	},
+	{
+		"action": "buy_arrows",
+		"item": "arrows",
+		"label": "Arrows (+10)",
+		"amount": 10,
+		"cost": {"plank": 1},
+		"desc": "Restock bow quiver reserve.",
+	},
+]
+
 
 # day/night timers & wave sizes
 const DAY_LENGTH := 90.0
 const ACT1_DUSK_TIME := 12.0
 const ACT2_DUSK_TIME := 15.0
 const NIGHT_BASE := 30.0
-const NIGHT_STEP := 10.0
-const NIGHT_MAX := 120.0
+const NIGHT_STEP := 5.0
+const NIGHT_STEP_EVERY := 2
+const NIGHT_MAX := 60.0
+
+# base tracker: only shown when player is within 50m (50 * 16px = 800px) of base
+const BASE_TRACKER_MIN_PX := 80.0
+const BASE_TRACKER_MAX_METERS := 50.0
+const BASE_TRACKER_MAX_PX := 800.0
 
 const ACT1_PLANKS_PER_DAY := 14
 const PILES := [
@@ -214,11 +275,17 @@ const DAY_WANDERER_MAX := 6
 const DAY_WANDERER_AGGRO := 50.0
 const SEARCH_HOLD_TIME := 1.5
 
-const DOG_TAME_TIME := 2.0
+const DOG_TAME_RANGE := 40.0
 const DOG_MAX := 2
+const DOG_HP := 15
+const DOG_ENEMY_DMG := 5
+const DOG_DAMAGE := 1
 const DOG_GUARD_RANGE := 84.0
-const DOG_HUNT_RANGE := 240.0
-const DOG_ATTACK_INTERVAL := 0.75
+const DOG_HUNT_RANGE := 160.0
+const DOG_ATTACK_INTERVAL := 1.6
+const DOG_SPEED_FOLLOW := 56.0
+const DOG_SPEED_CATCHUP_MAX := 78.0
+const DOG_SPEED_CHASE := 66.0
 
 const METEOR_DAYS := []
 const METEOR_COUNT_DAY4 := 22
@@ -229,12 +296,17 @@ const METEOR_PLAYER_DMG := 15
 const METEOR_STRUCT_DMG := 20
 
 
-# day/night tint colors
+# day/night tint colors & moon palette
 const TINT_DAY := Color(1.0, 1.0, 1.0)
 const TINT_DUSK := Color(0.86, 0.67, 0.59)
 const TINT_NIGHT := Color(0.24, 0.28, 0.52)
 const TINT_BLOOD := Color(0.84, 0.16, 0.18)
 const TINT_HOPELESS := Color(0.58, 0.64, 0.74)
+
+# secondary moon ("Even Moon") deep wine-crimson vs bright scarlet Blood/Red Moon
+const EVEN_MOON_COLOR := Color(0.72, 0.12, 0.34, 1.0)
+const EVEN_MOON_GLOW := Color(0.74, 0.14, 0.38, 0.24)
+const EVEN_MOON_BANNER := Color(0.90, 0.36, 0.56, 1.0)
 
 
 func day_length() -> float:
@@ -242,4 +314,5 @@ func day_length() -> float:
 
 
 func night_length(night_num: int) -> float:
-	return minf(NIGHT_BASE + NIGHT_STEP * float(maxi(0, night_num - 1)), NIGHT_MAX)
+	var steps := floori(float(maxi(0, night_num - 1)) / float(NIGHT_STEP_EVERY))
+	return minf(NIGHT_BASE + NIGHT_STEP * float(steps), NIGHT_MAX)

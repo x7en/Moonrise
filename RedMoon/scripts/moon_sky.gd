@@ -80,14 +80,16 @@ func build(view_size: Vector2 = Config.VIEW_SIZE) -> void:
 	_moon_glow.size = Vector2(212.0, 212.0)
 	_moon_glow.texture = Art.get_radial_light_texture(128)
 	_moon_glow.stretch_mode = TextureRect.STRETCH_SCALE
-	_moon_glow.modulate = Color(0.86, 0.88, 1.0, 0.14)
+	_moon_glow.modulate = Config.EVEN_MOON_GLOW
 	_moon_holder.add_child(_moon_glow)
 
+	# secondary moon ("Even Moon") tinted deep crimson; distinct from bright scarlet Red Moon
 	_moon_base = TextureRect.new()
 	_moon_base.position = Vector2.ZERO
 	_moon_base.size = Vector2(128.0, 128.0)
 	_moon_base.stretch_mode = TextureRect.STRETCH_SCALE
 	_moon_base.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_moon_base.modulate = Config.EVEN_MOON_COLOR
 	_moon_holder.add_child(_moon_base)
 
 	_moon_red = TextureRect.new()
@@ -150,15 +152,19 @@ func update_sky(delta: float) -> void:
 			floorf(lerpf(start_y, end_y, eased))
 		)
 
+	var red_a := clampf(red_blend, 0.0, 1.0)
+	if _moon_base != null:
+		var even_c := Config.EVEN_MOON_COLOR
+		_moon_base.modulate = Color(even_c.r, even_c.g, even_c.b, 1.0 - red_a)
+
 	if _moon_red != null:
-		var red_a := clampf(red_blend, 0.0, 1.0)
 		var pulse_r := 1.18 + 0.10 * sin(_time * 2.4)
-		_moon_red.modulate = Color(pulse_r, 0.72, 0.70, red_a)
+		_moon_red.modulate = Color(pulse_r, 0.86, 0.72, red_a)
 
 	if _moon_glow != null:
 		var glow_pulse := 0.56 + 0.14 * sin(_time * 2.4)
-		_moon_glow.modulate = Color(0.86, 0.88, 1.0, 0.14).lerp(
-			Color(1.0, 0.06, 0.08, glow_pulse), red_blend
+		_moon_glow.modulate = Config.EVEN_MOON_GLOW.lerp(
+			Color(1.0, 0.16, 0.08, glow_pulse), red_a
 		)
 
 	for layer in _cloud_layers:

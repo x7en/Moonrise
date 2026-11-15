@@ -59,18 +59,14 @@ func _pop_next() -> void:
 
 	_showing = true
 	_timer = HOLD_SECONDS
-	_active_panel.position = Vector2(
-		Config.VIEW_SIZE.x + 12.0, Config.VIEW_SIZE.y - TOAST_HEIGHT - 12.0
-	)
+	_active_panel.position = Vector2(Config.VIEW_SIZE.x + 12.0, 48.0)
 	_active_panel.visible = true
 
 
 func _build_panel() -> void:
 	_active_panel = PanelContainer.new()
 	_active_panel.size = Vector2(TOAST_WIDTH, TOAST_HEIGHT)
-	_active_panel.position = Vector2(
-		Config.VIEW_SIZE.x + 12.0, Config.VIEW_SIZE.y - TOAST_HEIGHT - 12.0
-	)
+	_active_panel.position = Vector2(Config.VIEW_SIZE.x + 12.0, 48.0)
 	_active_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_active_panel.visible = false
 

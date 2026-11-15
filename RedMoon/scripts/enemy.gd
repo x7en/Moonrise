@@ -46,6 +46,7 @@ var _target_lure: Node
 var _attack_timer: float = 0.0
 var _player_windup: float = 0.0
 var _player_cd: float = 0.0
+var _dog_attack_cd: float = 0.0
 var _leash_timer: float = 0.0
 var _root_timer: float = 0.0
 var _stun_timer: float = 0.0
@@ -198,7 +199,8 @@ func step_enemy(
 	player_inside: bool,
 	house: Structure,
 	all_enemies: Array,
-	world_bounds: Rect2
+	world_bounds: Rect2,
+	dogs: Array = []
 ) -> void:
 	_tick_timers(delta)
 	if state == State.DYING or state == State.DISSOLVING:
@@ -232,6 +234,11 @@ func step_enemy(
 				_sprite.modulate = _base_tint
 			state = State.WANDER if is_day_wanderer else State.WALK_TO_TARGET
 		return
+
+	# enemies fight back against nearby tamed dogs (untamed strays are ignored)
+	if not dogs.is_empty() and _dog_attack_cd <= 0.0:
+		if _try_bite_tamed_dog(dogs):
+			return
 
 	# aggro on player if they wander too close while outside
 	var dist_player = position.distance_to(player_pos)
@@ -281,6 +288,28 @@ func _tick_timers(delta: float) -> void:
 			_sprite.modulate = _base_tint
 	if _player_cd > 0.0:
 		_player_cd = maxf(0.0, _player_cd - delta)
+	if _dog_attack_cd > 0.0:
+		_dog_attack_cd = maxf(0.0, _dog_attack_cd - delta)
+
+
+func _try_bite_tamed_dog(dogs: Array) -> bool:
+	var best_dog = null
+	var best_d = 20.0
+	for d in dogs:
+		if not is_instance_valid(d) or not d.is_tamed() or not d.is_alive():
+			continue
+		var dist = position.distance_to(d.position)
+		if dist <= best_d:
+			best_d = dist
+			best_dog = d
+	if best_dog == null:
+		return false
+	_dog_attack_cd = attack_interval
+	velocity = Vector2.ZERO
+	facing = _vec_to_dir(best_dog.position - position)
+	_play_attack(facing)
+	best_dog.take_damage(Config.DOG_ENEMY_DMG)
+	return true
 
 
 func _step_wander(delta: float, world_bounds: Rect2) -> void:
