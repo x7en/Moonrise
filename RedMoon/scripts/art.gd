@@ -22,6 +22,12 @@ static func tex(key: String) -> Texture2D:
 	var loaded = null
 	if ResourceLoader.exists(res_path):
 		loaded = load(res_path)
+	else:
+		var abs_path := ProjectSettings.globalize_path(res_path)
+		if FileAccess.file_exists(abs_path):
+			var raw_img := Image.load_from_file(abs_path)
+			if raw_img != null and not raw_img.is_empty():
+				loaded = ImageTexture.create_from_image(raw_img)
 
 	if loaded == null:
 		loaded = _make_placeholder(key)
@@ -263,6 +269,60 @@ static func get_enemy_frames(enemy_type: String) -> SpriteFrames:
 	return frames
 
 
+static func get_ghost_frames(variant: String = "scythe") -> SpriteFrames:
+	var cache_key := "ghost:%s" % variant
+	if _frames_cache.has(cache_key):
+		return _frames_cache[cache_key] as SpriteFrames
+
+	var strip_key := (
+		"enemies/ghost/ghost_lunge_strip" if variant == "lunge"
+		else "enemies/ghost/ghost_scythe_strip"
+	)
+	var info: Array = Sprites.ANIMATED.get(strip_key, [10, 80, 50])
+	var frame_count := maxi(1, int(info[0]))
+	var frame_w := maxi(1, int(info[1]))
+	var frame_h := maxi(1, int(info[2]))
+	var strip := tex(strip_key)
+
+	var slices: Array[Texture2D] = []
+	for i in range(frame_count):
+		if strip.get_width() >= (i + 1) * frame_w and strip.get_height() >= frame_h:
+			var atlas := AtlasTexture.new()
+			atlas.atlas = strip
+			atlas.region = Rect2(float(i * frame_w), 0.0, float(frame_w), float(frame_h))
+			slices.append(atlas)
+		else:
+			slices.append(strip)
+
+	var frames := SpriteFrames.new()
+	if frames.has_animation(&"default"):
+		frames.remove_animation(&"default")
+
+	var anim_defs := (
+		{
+			"materialize": {"idx": [0, 1, 2, 3], "fps": 10.0, "loop": false},
+			"drift": {"idx": [2, 3], "fps": 6.0, "loop": true},
+			"attack": {"idx": [4, 5, 6, 7], "fps": 10.0, "loop": false},
+			"dissolve": {"idx": [8, 9], "fps": 10.0, "loop": false},
+		} if variant == "lunge" else {
+			"materialize": {"idx": [0, 1, 2], "fps": 10.0, "loop": false},
+			"drift": {"idx": [3, 4], "fps": 6.0, "loop": true},
+			"attack": {"idx": [5, 6, 7], "fps": 10.0, "loop": false},
+			"dissolve": {"idx": [8, 9], "fps": 10.0, "loop": false},
+		}
+	)
+	for anim_name in anim_defs.keys():
+		var cfg: Dictionary = anim_defs[anim_name]
+		frames.add_animation(anim_name)
+		frames.set_animation_speed(anim_name, float(cfg["fps"]))
+		frames.set_animation_loop(anim_name, bool(cfg["loop"]))
+		for fi in cfg["idx"]:
+			frames.add_frame(anim_name, slices[clampi(int(fi), 0, slices.size() - 1)])
+
+	_frames_cache[cache_key] = frames
+	return frames
+
+
 static func get_shaded_house_texture(level: int = 1, door_open: bool = false) -> Texture2D:
 	var lv := clampi(level, 1, 3)
 	var suffix := "_open" if door_open else ""
@@ -316,8 +376,8 @@ static func get_blob_shadow(width: int, height: int) -> ImageTexture:
 
 # TODO: replace spear, scrap, and watchtower with real sprites if i ever draw them
 static func get_spear_texture() -> ImageTexture:
-	if _icon_cache.has("spear"):
-		return _icon_cache["spear"] as ImageTexture
+	if _icon_cache.has("spear_world"):
+		return _icon_cache["spear_world"] as ImageTexture
 
 	var img := Image.create_empty(26, 7, false, Image.FORMAT_RGBA8)
 	var out_c := Color(0.16, 0.12, 0.18, 1.0)
@@ -355,7 +415,7 @@ static func get_spear_texture() -> ImageTexture:
 	img.set_pixel(25, 3, out_c)
 
 	var result := ImageTexture.create_from_image(img)
-	_icon_cache["spear"] = result
+	_icon_cache["spear_world"] = result
 	return result
 
 
@@ -409,6 +469,7 @@ static func get_icon_texture(icon_id: String) -> Texture2D:
 		"bag_icon": "ui/bag",
 		"shock_icon": "ui/shock",
 		"bow": "weapons/bow",
+		"boomerang": "placeholders/boomerang_placeholder",
 		"arrow": "weapons/arrow",
 		"arrow_proj": "weapons/arrow",
 		"trap_spike": "traps/spike",

@@ -21,12 +21,10 @@ var _hp_lbl: Label
 var _house_lbl: Label
 var _house_icon: TextureRect
 var _bag_lbl: Label
-var _stock_lbl: Label
 var _bow_lbl: Label
 
 # top-center clock & objective
 var _day_lbl: Label
-var _timer_lbl: Label
 var _objective_lbl: Label
 
 # top-right & bottom trap hotbar
@@ -206,18 +204,30 @@ func update_hud(data: Dictionary) -> void:
 		int(data.get("stock_planks", 0)),
 		int(data.get("stock_scrap", 0)),
 	]
-	_stock_lbl.visible = false
 
 	var reloading = bool(data.get("reloading", false))
 	var mag_n = int(data.get("mag", Config.BOW_MAG))
 	var mag_max_n = int(data.get("mag_max", Config.BOW_MAG))
 	var arrows_n = int(data.get("arrows", 0))
 	var bow_cd = float(data.get("bow_cd", 0.0))
+	var rang_cd = float(data.get("boomerang_cd", 0.0))
+	var rang_flying = bool(data.get("boomerang_flying", false))
 	var active_w = String(data.get("active_weapon", "bow"))
 	var w_def: Dictionary = Config.WEAPON_DEFS.get(active_w, {})
 	var w_tag = String(w_def.get("short_label", active_w.capitalize()))
-	if active_w != "bow":
-		_bow_lbl.text = "Weap: %s | Bow %d/%d (%d)" % [w_tag, mag_n, mag_max_n, arrows_n]
+	if active_w == "boomerang":
+		if rang_flying:
+			_bow_lbl.text = "Boomerang: IN FLIGHT"
+			Art.style_label(_bow_lbl, "bold", 8, Color(0.56, 0.96, 1.0))
+		elif rang_cd > 0.05:
+			_bow_lbl.text = "Boomerang: CD %.1fs" % rang_cd
+			Art.style_label(_bow_lbl, "bold", 8, Color(1.0, 0.82, 0.42))
+		else:
+			_bow_lbl.text = "Boomerang: READY [Click]"
+			Art.style_label(_bow_lbl, "bold", 8, Color(0.62, 0.96, 0.68))
+	elif active_w != "bow":
+		var extra_cd := " | R %.1fs" % rang_cd if rang_cd > 0.05 else " (%d)" % arrows_n
+		_bow_lbl.text = "%s | Bow %d/%d%s" % [w_tag, mag_n, mag_max_n, extra_cd]
 		Art.style_label(_bow_lbl, "bold", 8, Color(0.95, 0.86, 0.56))
 	elif reloading:
 		_bow_lbl.text = "Bow: Reloading... (%d)" % arrows_n
@@ -235,7 +245,6 @@ func update_hud(data: Dictionary) -> void:
 	var secs = maxi(0, ceili(float(data.get("time_left", 0.0))))
 	var clk = "%d:%02d" % [int(floorf(float(secs) / 60.0)), secs % 60]
 	_day_lbl.text = "%s   %s" % [String(data.get("phase_label", "DAY 1")), clk]
-	_timer_lbl.visible = false
 	_objective_lbl.text = String(data.get("objective", ""))
 
 	var b_cd = float(data.get("bounce_cd", 0.0))
@@ -412,16 +421,12 @@ func _build_hud() -> void:
 		Vector2(22.0, 17.0), Vector2(182.0, 12.0), "bold", 8, Color(0.86, 0.94, 0.86)
 	)
 	_bag_lbl = _mk_lbl(Vector2(8.0, 29.0), Vector2(270.0, 12.0), "body", 8, Color(0.95, 0.86, 0.62))
-	_stock_lbl = _mk_lbl(Vector2(8.0, 29.0), Vector2(10.0, 10.0), "body", 8, Color.WHITE)
-	_stock_lbl.visible = false
 
 	# center: day timer on top, current goal under it
 	_day_lbl = _mk_lbl(
-		Vector2(172.0, 4.0), Vector2(260.0, 12.0), "bold", 8, Color(1.0, 0.90, 0.64)
+		Vector2(202.0, 4.0), Vector2(236.0, 12.0), "bold", 8, Color(1.0, 0.90, 0.64)
 	)
 	_day_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_timer_lbl = _mk_lbl(Vector2(236.0, 16.0), Vector2(10.0, 10.0), "bold", 8, Color.WHITE)
-	_timer_lbl.visible = false
 	_objective_lbl = _mk_lbl(
 		Vector2(208.0, 17.0), Vector2(224.0, 12.0), "body", 8, Color(0.98, 0.92, 0.72)
 	)
@@ -429,7 +434,7 @@ func _build_hud() -> void:
 
 	# top-right: weapon/ammo, recall cooldown, quick key reminders
 	_bow_lbl = _mk_lbl(
-		Vector2(436.0, 4.0), Vector2(196.0, 12.0), "bold", 8, Color(0.92, 0.94, 1.0)
+		Vector2(440.0, 4.0), Vector2(192.0, 12.0), "bold", 8, Color(0.92, 0.94, 1.0)
 	)
 	_bow_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_bounce_lbl = _mk_lbl(
@@ -454,8 +459,8 @@ func _build_hud() -> void:
 
 	# big day/night announcement banner
 	_header_panel = PanelContainer.new()
-	_header_panel.position = Vector2(140.0, 80.0)
-	_header_panel.size = Vector2(360.0, 56.0)
+	_header_panel.position = Vector2(100.0, 72.0)
+	_header_panel.size = Vector2(440.0, 58.0)
 	_header_panel.visible = false
 	_header_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_header_panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -474,13 +479,14 @@ func _build_hud() -> void:
 	hvbox.add_child(_header_title)
 	_header_sub = Label.new()
 	_header_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_header_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	Art.style_label(_header_sub, "body", 8, Color(0.92, 0.90, 0.94))
 	hvbox.add_child(_header_sub)
 
-	# clickable tame button appears when standing beside a wild dog
+	# clickable tame button appears when standing beside a tameable wild dog
 	_tame_btn = Button.new()
 	_tame_btn.text = "Tame"
-	_tame_btn.position = Vector2(276.0, Config.VIEW_SIZE.y - 100.0)
+	_tame_btn.position = Vector2(276.0, Config.VIEW_SIZE.y - 102.0)
 	_tame_btn.size = Vector2(88.0, 20.0)
 	_tame_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	_tame_btn.focus_mode = Control.FOCUS_NONE
@@ -490,13 +496,13 @@ func _build_hud() -> void:
 
 	# prompts and search progress bar down near the bottom
 	_toast_lbl = _mk_lbl(
-		Vector2(90.0, Config.VIEW_SIZE.y - 76.0), Vector2(460.0, 12.0), "bold", 8, Color.WHITE
+		Vector2(90.0, Config.VIEW_SIZE.y - 79.0), Vector2(460.0, 12.0), "bold", 8, Color.WHITE
 	)
 	_toast_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_toast_lbl.visible = false
 
 	_search_bar_bg = ColorRect.new()
-	_search_bar_bg.position = Vector2(277.0, Config.VIEW_SIZE.y - 62.0)
+	_search_bar_bg.position = Vector2(277.0, Config.VIEW_SIZE.y - 65.0)
 	_search_bar_bg.size = Vector2(86.0, 7.0)
 	_search_bar_bg.color = Color(0.08, 0.06, 0.12, 0.92)
 	_search_bar_bg.visible = false
@@ -508,7 +514,7 @@ func _build_hud() -> void:
 	_search_bar_bg.add_child(_search_bar_fill)
 
 	_prompt_lbl = _mk_lbl(
-		Vector2(40.0, Config.VIEW_SIZE.y - 52.0),
+		Vector2(40.0, Config.VIEW_SIZE.y - 55.0),
 		Vector2(560.0, 12.0),
 		"bold",
 		8,
@@ -518,7 +524,7 @@ func _build_hud() -> void:
 	_prompt_lbl.visible = false
 
 	_tooltip_lbl = _mk_lbl(
-		Vector2(8.0, Config.VIEW_SIZE.y - 11.0),
+		Vector2(8.0, Config.VIEW_SIZE.y - 12.0),
 		Vector2(624.0, 10.0),
 		"body",
 		8,
@@ -598,7 +604,7 @@ func _build_title_screen() -> void:
 	var ver_lbl = Label.new()
 	ver_lbl.position = Vector2(8.0, Config.VIEW_SIZE.y - 14.0)
 	ver_lbl.size = Vector2(300.0, 12.0)
-	ver_lbl.text = "Moonrise v2.1 (Godot 4.7)  |  F11 Fullscreen"
+	ver_lbl.text = "Moonrise v2.2  |  F11 Fullscreen"
 	Art.style_label(ver_lbl, "body", 8, Color(0.72, 0.68, 0.78))
 	_title_screen.add_child(ver_lbl)
 
@@ -673,7 +679,7 @@ func _build_trap_hotbar() -> void:
 	_slot_active_state = [false, false, false]
 	var bar_w = 376.0
 	var start_x = floorf((Config.VIEW_SIZE.x - bar_w) * 0.5)
-	var bar_y = Config.VIEW_SIZE.y - 27.0
+	var bar_y = Config.VIEW_SIZE.y - 29.0
 
 	_trap_count_lbl = _mk_lbl(
 		Vector2(start_x - 32.0, bar_y - 12.0),
@@ -689,7 +695,7 @@ func _build_trap_hotbar() -> void:
 		var slot_idx = i + 1
 		var slot = PanelContainer.new()
 		slot.position = Vector2(start_x + float(i) * 128.0, bar_y)
-		slot.size = Vector2(120.0, 15.0)
+		slot.size = Vector2(120.0, 16.0)
 		slot.mouse_filter = Control.MOUSE_FILTER_STOP
 		slot.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		slot.add_theme_stylebox_override("panel", _slot_box_normal)

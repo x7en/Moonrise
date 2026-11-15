@@ -16,6 +16,7 @@ var _subtitle_lbl: Label
 var _list_box: VBoxContainer
 var _footer_lbl: Label
 var _buttons: Array[Button] = []
+var _weapon_hotkey_ids: Array[String] = []
 var _selected_idx: int = 0
 
 
@@ -48,7 +49,7 @@ func open_inventory(
 	active_panel = "inventory"
 	current_structure = null
 	visible = true
-	_set_panel_size(426.0, 268.0)
+	_set_panel_size(448.0, 278.0)
 	_title_lbl.text = "INVENTORY & WEAPONS"
 	_subtitle_lbl.text = (
 		"Bag (%d/%d)   |   Stockpile (Unlimited)   |   Gear Tier %d/3"
@@ -57,7 +58,7 @@ func open_inventory(
 	_clear_list()
 
 	_add_info_row(
-		"Planks / Scrap",
+		"Resources",
 		"Bag P:%d S:%d   |   Stock P:%d S:%d" % [
 			bag.count("plank"),
 			bag.count("scrap"),
@@ -66,35 +67,46 @@ func open_inventory(
 		]
 	)
 	_add_info_row(
-		"Arrows",
-		"Loaded: %d/%d   |   Reserve: %d/%d"
-		% [player.mag, player.mag_max, bag.count("arrow"), player.reserve_max]
-	)
-	_add_info_row(
 		"Traps Owned",
 		"Bear: %d   Spike: %d   Lure: %d"
 		% [bag.count("trap_snare"), bag.count("trap_spike"), bag.count("trap_lure")]
 	)
 
-	_add_info_row("WEAPONS", "Click or Enter to equip for Left-Click", true)
+	_add_info_row("WEAPONS", "Click or press [1-3] to switch equipped weapon", true)
+	var slot_num := 1
 	for w_id in player.unlocked_weapons:
 		var def: Dictionary = Config.WEAPON_DEFS.get(w_id, {})
 		if def.is_empty():
 			continue
 		var is_eq := (player.active_weapon == w_id)
-		var badge := "[EQUIPPED] " if is_eq else "Equip: "
-		var lbl_txt := "%s%s - %s" % [
-			badge, String(def.get("label", w_id)), String(def.get("desc", ""))
+		var badge := "[EQUIPPED] " if is_eq else ""
+		var stat_txt := _format_weapon_status(w_id, player, bag)
+		var lbl_txt := "[%d] %s%s (%s)" % [
+			slot_num, badge, String(def.get("label", w_id)), stat_txt
 		]
 		var btn = _add_button(lbl_txt, "equip_weapon", {"weapon_id": w_id}, true)
 		var icon_key := String(def.get("icon", ""))
 		if not icon_key.is_empty():
 			btn.icon = Art.get_icon_texture(icon_key)
+		_weapon_hotkey_ids.append(w_id)
+		slot_num += 1
 
 	_add_button("Open Trap Crafting [C]", "open_crafting", {}, true)
 	_add_button("Close [I / Esc]", "close", {}, true)
-	_footer_lbl.text = "Switch weapons here [I]  |  Craft traps [C]  |  Slots 1-3 place traps"
+	_footer_lbl.text = "Press [1-3] or Click to switch  |  Craft [C]  |  [I / Esc] Resume"
 	_focus_index(0)
+
+
+func _format_weapon_status(w_id: String, player: Player, bag: Bag) -> String:
+	if w_id == "bow":
+		return "Loaded %d/%d, Reserve %d" % [player.mag, player.mag_max, bag.count("arrow")]
+	if w_id == "boomerang":
+		if player.boomerang_in_flight:
+			return "In flight"
+		if player.boomerang_cd > 0.05:
+			return "CD %.1fs" % player.boomerang_cd
+		return "Ready - 1.8s CD"
+	return "Melee, no ammo"
 
 
 func open_crafting_menu(
@@ -127,7 +139,11 @@ func open_crafting_menu(
 		var btn = _add_cost_button(label_txt, action_id, data, cost, bag, stockpile)
 		var icon_key := "arrow" if item_key == "arrows" else item_key
 		btn.icon = Art.get_icon_texture(icon_key)
-		_add_info_row("   ", String(recipe["desc"]))
+		var desc_lbl := Label.new()
+		desc_lbl.text = "   " + String(recipe["desc"])
+		desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		Art.style_label(desc_lbl, "body", 8, Color(0.76, 0.80, 0.88))
+		_list_box.add_child(desc_lbl)
 
 	_add_button("Open Weapons / Inventory [I]", "open_inventory", {}, true)
 	_add_button("Close [C / Esc]", "close", {}, true)
@@ -190,13 +206,13 @@ func open_info_panel(kind: String, settings: SaveData) -> void:
 		_title_lbl.text = "HOW TO PLAY"
 		_subtitle_lbl.text = "Gather by day, fortify your yard, and hold the farmhouse"
 		for step in [
-			["1. Morning Gather", "Exit the south gate, pick up planks, and hold E on wrecks."],
+			["1. Morning Gather", "Gate opens at dawn. Grab planks, hold E on trees & wrecks."],
 			["2. Store & Upgrade", "Walk near the house to store loot. Press U to upgrade."],
-			["3. Weapons [I]", "Press I to switch Bow/Spear. Click uses equipped weapon."],
+			["3. Weapons [I]", "Press I to switch Bow/Spear/Boomerang (click or 1-3)."],
 			["4. Craft Traps [C]", "Press C to craft traps. Pick slots 1-3 & click to place."],
-			["5. Bounce Back", "Press B anytime to recall home and recover health."],
-			["6. Night Shelter", "Watch the Even Moon & Blood Moon. Shut gates/door [E]."],
-			["7. Dogs & Tracker", "Click [Tame] beside wild dogs (G Follow/Guard). BASE <50m."],
+			["5. Bounce Back", "Press B anytime to recall home and start healing."],
+			["6. Night Shelter", "Watch the Even Moon. Shut gates/door [E] before dusk."],
+			["7. Dogs & Tracker", "Some strays can be tamed (G Follow/Guard). BASE <50m."],
 		]:
 			_add_info_row(String(step[0]), String(step[1]))
 	elif kind == "controls":
@@ -204,11 +220,11 @@ func open_info_panel(kind: String, settings: SaveData) -> void:
 		_subtitle_lbl.text = "Keyboard + Mouse"
 		for row in [
 			["Move", "WASD / Arrow Keys"],
-			["Weapons & Attack", "Click Equipped  |  Space Spear  |  F Bow  |  R Reload"],
-			["Inventory / Craft", "I Switch Weapons & Bag  |  C Craft Traps & Arrows"],
-			["Door / Gate / Dogs", "E Door or Gate  |  Hold E Wrecks  |  Click Tame / G Dog"],
+			["Weapons & Attack", "Click Equipped (Bow/Spear/Boomerang) | Space Spear | F Bow"],
+			["Inventory / Craft", "I Weapons (Click or 1-3) & Bag  |  C Craft Traps & Arrows"],
+			["Door / Trees / Dogs", "E Door/Gate | Hold E Chop Tree/Search | Tame Btn / G Dog"],
 			["Place Traps", "1 Bear  2 Spike  3 Lure (or Click Slot)  |  Click/T Place"],
-			["Bounce / Shockwave", "B Recall Home & Heal  |  Q Shockwave"],
+			["Bounce / Shockwave", "B Recall Home & Heal  |  Q Shockwave  |  R Reload Bow"],
 			["Upgrades & Pause", "U or Right-Click House/Fence  |  F11 Full  |  Esc Pause"],
 		]:
 			_add_info_row(String(row[0]), String(row[1]))
@@ -236,13 +252,21 @@ func open_info_panel(kind: String, settings: SaveData) -> void:
 			_add_info_row(("[X] " if done else "[ ] ") + String(d["title"]), String(d["desc"]), done)
 	elif kind == "credits":
 		_title_lbl.text = "CREDITS"
-		_subtitle_lbl.text = "Moonrise (Godot 4.7)"
-		_add_info_row("Game Designer & Lead Developer", "Abdul Haseeb", true)
-		_add_info_row("Secondary Designer", "Waseem Qadir", true)
-		_add_info_row("Helper", "Bilal", true)
-		_add_info_row("World & Sprites", "TheLazyStone + Custom 3/4 Cottage")
-		_add_info_row("Fonts", "Pixel Operator (CC0) & KiwiSoda")
-		_add_info_row("Audio", "Procedural 8-bit Web-safe SFX")
+		_subtitle_lbl.text = "Moonrise"
+		for line in [
+			"Game Designer & Lead Developer: Vaseem",
+			"Secondary Designer: Vaseem Qadir",
+			"Helper: Bilal",
+			"Weapon art: Jestan (The Ultimate Weapons Pack)",
+		]:
+			var lbl := Label.new()
+			lbl.text = line
+			lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			lbl.custom_minimum_size = Vector2(0.0, 20.0)
+			lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			Art.style_label(lbl, "bold", 8, Color(1.0, 0.90, 0.52))
+			_list_box.add_child(lbl)
 
 	_add_button("Back [Esc]", "close", {}, true)
 	_footer_lbl.text = "[Esc] Back"
@@ -556,6 +580,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		close_all()
 		return
+	if active_panel == "inventory" and ke.keycode >= KEY_1 and ke.keycode <= KEY_9:
+		var w_idx := int(ke.keycode - KEY_1)
+		if w_idx < _weapon_hotkey_ids.size():
+			get_viewport().set_input_as_handled()
+			action_triggered.emit("equip_weapon", {"weapon_id": _weapon_hotkey_ids[w_idx]})
+			return
 	if _buttons.is_empty():
 		return
 	if ke.keycode in [KEY_UP, KEY_W]:
@@ -580,6 +610,7 @@ func _focus_index(idx: int) -> void:
 
 func _clear_list() -> void:
 	_buttons.clear()
+	_weapon_hotkey_ids.clear()
 	for child in _list_box.get_children():
 		child.queue_free()
 

@@ -47,7 +47,16 @@ const BOW_RESERVE_MAX := 30
 const BOW_DAMAGE := 1
 const ARROW_SPEED := 220.0
 
-# extensible weapon registry (kept data-driven so phase-2 thrown weapons plug in cleanly)
+# boomerang (reusable bounce-back weapon)
+const BOOMERANG_RANGE := 175.0
+const BOOMERANG_SPEED := 230.0
+const BOOMERANG_RETURN_SPEED := 265.0
+const BOOMERANG_DAMAGE := 2
+const BOOMERANG_COOLDOWN := 1.8
+const BOOMERANG_HIT_RADIUS := 10.0
+const BOOMERANG_SPIN_SPEED := 18.0
+
+# extensible weapon registry (data-driven for future weapons)
 const WEAPON_DEFS := {
 	"bow": {
 		"id": "bow",
@@ -65,8 +74,16 @@ const WEAPON_DEFS := {
 		"icon": "spear",
 		"desc": "Close-range thrust with knockback (no ammo).",
 	},
+	"boomerang": {
+		"id": "boomerang",
+		"label": "Boomerang",
+		"short_label": "Boomerang",
+		"kind": "thrown",
+		"icon": "boomerang",
+		"desc": "Auto-aim throw; bounces back & hits both ways (1.8s CD).",
+	},
 }
-const DEFAULT_WEAPONS: Array[String] = ["bow", "spear"]
+const DEFAULT_WEAPONS: Array[String] = ["bow", "spear", "boomerang"]
 
 # enemies (TODO: maybe nerf raider speed if night 5 feels too brutal)
 const ENEMY_TYPES := {
@@ -274,9 +291,12 @@ const DAY_WANDERER_MIN := 3
 const DAY_WANDERER_MAX := 6
 const DAY_WANDERER_AGGRO := 50.0
 const SEARCH_HOLD_TIME := 1.5
+const CHOP_HOLD_TIME := 1.2
 
 const DOG_TAME_RANGE := 40.0
-const DOG_MAX := 2
+const DOG_TAMEABLE_CHANCE := 0.55
+const DOG_MAX := 3
+const DOG_MAX_TAMED := 2
 const DOG_HP := 15
 const DOG_ENEMY_DMG := 5
 const DOG_DAMAGE := 1
@@ -286,6 +306,23 @@ const DOG_ATTACK_INTERVAL := 1.6
 const DOG_SPEED_FOLLOW := 56.0
 const DOG_SPEED_CATCHUP_MAX := 78.0
 const DOG_SPEED_CHASE := 66.0
+
+# zombie ghosts (Act 2 / Day 4+ only; never in Act 1)
+const GHOST_MIN_DAY := 4
+const GHOST_MAX_ALIVE := 2
+const GHOST_HP := 2
+const GHOST_DAMAGE := 4
+const GHOST_DAMAGE_COOLDOWN := 2.2
+const GHOST_SPEED_SCYTHE := 42.0
+const GHOST_SPEED_LUNGE := 50.0
+const GHOST_DAY_INTERVAL_MIN := 22.0
+const GHOST_DAY_INTERVAL_MAX := 38.0
+const GHOST_NIGHT_INTERVAL_MIN := 16.0
+const GHOST_NIGHT_INTERVAL_MAX := 28.0
+const GHOST_SPAWN_MIN_DIST := 175.0
+const GHOST_SPAWN_MAX_DIST := 260.0
+const GHOST_LIFETIME := 18.0
+const GHOST_SCALE := 0.85
 
 const METEOR_DAYS := []
 const METEOR_COUNT_DAY4 := 22
@@ -300,6 +337,7 @@ const METEOR_STRUCT_DMG := 20
 const TINT_DAY := Color(1.0, 1.0, 1.0)
 const TINT_DUSK := Color(0.86, 0.67, 0.59)
 const TINT_NIGHT := Color(0.24, 0.28, 0.52)
+const TINT_EVEN_MOON := Color(0.44, 0.22, 0.36)
 const TINT_BLOOD := Color(0.84, 0.16, 0.18)
 const TINT_HOPELESS := Color(0.58, 0.64, 0.74)
 

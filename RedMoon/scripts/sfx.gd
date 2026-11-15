@@ -63,6 +63,11 @@ func _build_sounds() -> void:
 	_streams["trap_trigger"] = _make_sweep(0.12, 540.0, 120.0, 0.50, 0.40)
 	_streams["meteor_impact"] = _make_sweep(0.38, 120.0, 36.0, 0.78, 0.52)
 	_streams["dog_bark"] = _make_notes([480.0, 620.0], 0.06, 0.34)
+	_streams["ghost_appear"] = _make_sweep(0.42, 680.0, 220.0, 0.42, 0.24)
+	_streams["ghost_slash"] = _make_sweep(0.14, 520.0, 140.0, 0.38, 0.30)
+	_streams["boomerang_throw"] = _make_sweep(0.16, 360.0, 740.0, 0.18, 0.30)
+	_streams["boomerang_catch"] = _make_notes([520.0, 680.0], 0.045, 0.28)
+	_streams["wood_chop"] = _make_sweep(0.12, 220.0, 95.0, 0.46, 0.34)
 
 
 func _make_wav(samples: PackedByteArray) -> AudioStreamWAV:

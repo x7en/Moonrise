@@ -4,6 +4,7 @@ extends Control
 # night sky backdrop shared by the title screen and moonrise cutscene
 
 var is_blood_mode: bool = false
+var is_even_mode: bool = false
 var red_blend: float = 0.0
 var moon_progress: float = 1.0  # 0 = hidden under horizon, 1 = up in the sky
 var cloud_speed_scale: float = 1.0
@@ -117,9 +118,11 @@ func build(view_size: Vector2 = Config.VIEW_SIZE) -> void:
 func configure_for_night(
 	_night_num: int,
 	is_blood: bool,
-	start_white_turn_red: bool = false
+	start_white_turn_red: bool = false,
+	is_even: bool = false
 ) -> void:
 	is_blood_mode = is_blood
+	is_even_mode = is_even and not is_blood
 	if _moon_base != null:
 		_moon_base.texture = Art.tex("sky/moon")
 	if _moon_red != null:
@@ -130,12 +133,15 @@ func configure_for_night(
 func update_sky(delta: float) -> void:
 	_time += delta
 
+	var base_top := Color(0.08, 0.03, 0.09) if is_even_mode else Color(0.04, 0.04, 0.11)
+	var base_mid := Color(0.16, 0.05, 0.14) if is_even_mode else Color(0.08, 0.06, 0.16)
+	var base_low := Color(0.24, 0.08, 0.17) if is_even_mode else Color(0.13, 0.09, 0.18)
 	if _sky_top != null:
-		_sky_top.color = Color(0.04, 0.04, 0.11).lerp(Color(0.16, 0.01, 0.03), red_blend)
+		_sky_top.color = base_top.lerp(Color(0.16, 0.01, 0.03), red_blend)
 	if _sky_mid != null:
-		_sky_mid.color = Color(0.08, 0.06, 0.16).lerp(Color(0.36, 0.02, 0.05), red_blend)
+		_sky_mid.color = base_mid.lerp(Color(0.36, 0.02, 0.05), red_blend)
 	if _sky_low != null:
-		_sky_low.color = Color(0.13, 0.09, 0.18).lerp(Color(0.56, 0.04, 0.07), red_blend)
+		_sky_low.color = base_low.lerp(Color(0.56, 0.04, 0.07), red_blend)
 
 	for s in _stars:
 		var node = s["node"]
@@ -154,8 +160,8 @@ func update_sky(delta: float) -> void:
 
 	var red_a := clampf(red_blend, 0.0, 1.0)
 	if _moon_base != null:
-		var even_c := Config.EVEN_MOON_COLOR
-		_moon_base.modulate = Color(even_c.r, even_c.g, even_c.b, 1.0 - red_a)
+		var base_c := Config.EVEN_MOON_COLOR if is_even_mode else Color.WHITE
+		_moon_base.modulate = Color(base_c.r, base_c.g, base_c.b, 1.0 - red_a)
 
 	if _moon_red != null:
 		var pulse_r := 1.18 + 0.10 * sin(_time * 2.4)
@@ -163,7 +169,8 @@ func update_sky(delta: float) -> void:
 
 	if _moon_glow != null:
 		var glow_pulse := 0.56 + 0.14 * sin(_time * 2.4)
-		_moon_glow.modulate = Config.EVEN_MOON_GLOW.lerp(
+		var base_glow := Config.EVEN_MOON_GLOW if is_even_mode else Color(0.86, 0.88, 1.0, 0.14)
+		_moon_glow.modulate = base_glow.lerp(
 			Color(1.0, 0.16, 0.08, glow_pulse), red_a
 		)
 

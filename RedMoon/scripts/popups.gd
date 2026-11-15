@@ -2,7 +2,7 @@ class_name Popups
 extends CanvasLayer
 
 const TOAST_WIDTH := 224.0
-const TOAST_HEIGHT := 36.0
+const TOAST_HEIGHT := 42.0
 const HOLD_SECONDS := 3.4
 
 var _queue: Array[Dictionary] = []
@@ -65,6 +65,7 @@ func _pop_next() -> void:
 
 func _build_panel() -> void:
 	_active_panel = PanelContainer.new()
+	_active_panel.custom_minimum_size = Vector2(TOAST_WIDTH, TOAST_HEIGHT)
 	_active_panel.size = Vector2(TOAST_WIDTH, TOAST_HEIGHT)
 	_active_panel.position = Vector2(Config.VIEW_SIZE.x + 12.0, 48.0)
 	_active_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE

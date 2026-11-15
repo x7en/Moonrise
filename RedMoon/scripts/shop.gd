@@ -201,6 +201,20 @@ func load_day(saved: Dictionary, main_node: Node) -> Dictionary:
 	var fence_saves: Array = saved["fences"]
 	for i in range(mini(fences.size(), fence_saves.size())):
 		fences[i].load_state(fence_saves[i])
+	for td in saved.get("traps", []):
+		var tr = spawn_trap_node(String(td["type"]), td["pos"], main_node)
+		tr.triggers_left = int(td.get("triggers", tr.triggers_left))
+		tr.hp = int(td.get("hp", tr.hp))
+	for wd in saved.get("watchtowers", []):
+		main_node.call("_spawn_watchtower", wd["pos"], int(wd.get("hp", Config.WATCHTOWER_HP)))
+	var waves = main_node.get("_waves")
+	for dd in saved.get("dogs", []):
+		waves.spawn_dog_for(
+			main_node,
+			dd["pos"],
+			int(dd.get("mode", Dog.Mode.FOLLOW)),
+			int(dd.get("hp", Config.DOG_HP))
+		)
 	return up
 
 
@@ -405,12 +419,67 @@ func grant_prop_loot(
 	)
 
 
+func grant_tree_chop_loot(
+	tree_rec: Dictionary,
+	map: MapGen,
+	player: Player,
+	bag: Bag,
+	stockpile: Bag,
+	sfx: Sfx,
+	fx: Fx
+) -> void:
+	if not map.mark_tree_chopped(int(tree_rec["id"])):
+		return
+	var pa = bag.add("plank", 1)
+	if pa < 1:
+		stockpile.add("plank", 1)
+	sfx.play("wood_chop", -6.0)
+	fx.spawn_sparks(tree_rec["pos"], Color(0.76, 0.54, 0.30, 1.0), 8)
+	fx.spawn_floating_text(player.position, "+1 Plank (Chopped)", Color(0.98, 0.86, 0.48))
+
+
+func reset_hold_gather(main_node: Node) -> void:
+	main_node.set("_search_key", "")
+	main_node.set("_search_timer", 0.0)
+	main_node.set("_search_progress", 0.0)
+
+
+func step_hold_gather(delta: float, main_node: Node) -> void:
+	var player = main_node.get("_player")
+	var map = main_node.get("_map")
+	var holding_e = (not player.inside_house) and (not player.dead) and Input.is_key_pressed(KEY_E)
+	if not holding_e:
+		reset_hold_gather(main_node)
+		return
+	var prop = map.find_nearest_searchable(player.position, 32.0)
+	var tree_rec = {} if not prop.is_empty() else map.find_nearest_tree(player.position, 26.0)
+	if prop.is_empty() and tree_rec.is_empty():
+		reset_hold_gather(main_node)
+		return
+	var is_prop := not prop.is_empty()
+	var target_key := ("p:%d" % int(prop["id"])) if is_prop else ("t:%d" % int(tree_rec["id"]))
+	var needed := Config.SEARCH_HOLD_TIME if is_prop else Config.CHOP_HOLD_TIME
+	var same_target := String(main_node.get("_search_key")) == target_key
+	var timer := (float(main_node.get("_search_timer")) if same_target else 0.0) + delta
+	main_node.set("_search_key", target_key)
+	main_node.set("_search_timer", timer)
+	main_node.set("_search_progress", clampf(timer / maxf(0.1, needed), 0.0, 1.0))
+	if timer >= needed:
+		reset_hold_gather(main_node)
+		var bag = main_node.get("bag")
+		var stockpile = main_node.get("stockpile")
+		var sfx = main_node.get("_sfx")
+		var fx = main_node.get("_fx")
+		if is_prop:
+			grant_prop_loot(prop, map, player, bag, stockpile, sfx, fx)
+		else:
+			grant_tree_chop_loot(tree_rec, map, player, bag, stockpile, sfx, fx)
+
+
 func handle_settings_action(
 	action_id: String, settings: SaveData, menus: Menus
 ) -> bool:
 	match action_id:
-		"show_tutorial":
-			menus.open_info_panel("tutorial", settings)
 		"show_controls":
 			menus.open_info_panel("controls", settings)
 		"show_settings":

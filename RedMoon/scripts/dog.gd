@@ -8,6 +8,7 @@ signal died(dog: Dog)
 enum Mode { STRAY, FOLLOW, GUARD }
 
 var mode: Mode = Mode.STRAY
+var is_tameable: bool = false
 var guard_anchor: Vector2 = Vector2.ZERO
 var hp: int = Config.DOG_HP
 var max_hp: int = Config.DOG_HP
@@ -40,7 +41,7 @@ static func assets_available() -> bool:
 	)
 
 
-func setup(spawn_pos: Vector2) -> bool:
+func setup(spawn_pos: Vector2, allow_tame: bool = false) -> bool:
 	if not Dog.assets_available():
 		return false
 
@@ -50,6 +51,7 @@ func setup(spawn_pos: Vector2) -> bool:
 	_last_pos = position
 	_flank_sign = 1.0 if (randi() % 2 == 0) else -1.0
 	mode = Mode.STRAY
+	is_tameable = allow_tame
 	max_hp = Config.DOG_HP
 	hp = max_hp
 	# doesn't physically block player movement; enemies check distance to damage tamed dogs
@@ -100,12 +102,16 @@ func is_tamed() -> bool:
 	return mode != Mode.STRAY
 
 
+func can_be_tamed() -> bool:
+	return mode == Mode.STRAY and is_tameable
+
+
 func is_alive() -> bool:
 	return hp > 0
 
 
 func tame_now() -> bool:
-	if mode != Mode.STRAY:
+	if not can_be_tamed():
 		return false
 	mode = Mode.FOLLOW
 	hp = max_hp
@@ -127,6 +133,14 @@ func take_damage(dmg: int) -> bool:
 		queue_free()
 		return true
 	return false
+
+
+func restore_state(start_mode: int, start_hp: int, anchor: Vector2) -> void:
+	mode = start_mode as Mode
+	guard_anchor = anchor
+	if start_hp > 0:
+		hp = mini(start_hp, max_hp)
+	_refresh_hp_bar()
 
 
 func heal_for_new_day() -> void:
@@ -276,8 +290,8 @@ func _compute_heel_spot(anchor: Vector2, player_facing: Vector2) -> Vector2:
 
 
 func _step_stray_wander(delta: float, player_pos: Vector2, world_bounds: Rect2) -> void:
-	# pause and face the player when they walk up to tame
-	if position.distance_to(player_pos) <= 34.0:
+	# only tameable wild dogs pause and face the player when nearby
+	if is_tameable and position.distance_to(player_pos) <= 34.0:
 		_face_horizontal(player_pos.x - position.x, true)
 		_apply_smooth_movement(delta, Vector2.ZERO, world_bounds, false)
 		return
