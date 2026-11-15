@@ -889,35 +889,27 @@ func _rebuild_world_and_structures(seed_val: int) -> void:
 
 
 func _build_scene_tree() -> void:
-	_ground_layer = Node2D.new()
-	_decals_layer = Node2D.new()
-	_entities_layer = Node2D.new()
-	_entities_layer.y_sort_enabled = true
-	_fx = Fx.new()
-	_fx.z_index = 15
-	_tint = CanvasModulate.new()
+	_ground_layer = get_node("World/GroundLayer") as Node2D
+	_decals_layer = get_node("World/DecalsLayer") as Node2D
+	_entities_layer = get_node("Entities") as Node2D
+	_fx = get_node("Effects") as Fx
+	_tint = get_node("DayNightTint") as CanvasModulate
 	_tint.color = Config.TINT_DAY
-	_camera = Camera2D.new()
+	_camera = get_node("Camera2D") as Camera2D
 	_camera.enabled = true
-	_sfx = Sfx.new()
-	_hud = Hud.new()
-	_intro = IntroCards.new()
-	_night_intro = NightIntro.new()
-	_menus = Menus.new()
-	_popups = Popups.new()
-	for c in [
-		_ground_layer, _decals_layer, _entities_layer, _fx, _tint, _camera,
-		_sfx, _hud, _intro, _night_intro, _menus, _popups
-	]:
-		add_child(c)
-	_player = Player.new()
+	_sfx = get_node("Audio") as Sfx
+	_hud = get_node("UI") as Hud
+	_menus = get_node("Menus") as Menus
+	_night_intro = get_node("NightIntro") as NightIntro
+	_intro = get_node("IntroCards") as IntroCards
+	_popups = get_node("Popups") as Popups
+	_player = get_node("Entities/Player") as Player
 	_player.spear_swung.connect(_on_player_spear_swung)
 	_player.bow_fired.connect(_on_player_bow_fired)
 	_player.boomerang_thrown.connect(_on_player_boomerang_thrown)
 	_player.bow_empty_clicked.connect(func() -> void: _sfx.play("bow_empty", -8.0))
 	_player.bow_reloaded.connect(func() -> void: _sfx.play("bow_reload", -10.0))
 	_player.died.connect(_on_player_died)
-	_entities_layer.add_child(_player)
 
 
 func _open_tutorial_cards(from_title: bool) -> void:
