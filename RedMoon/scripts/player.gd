@@ -56,43 +56,21 @@ func _ready() -> void:
 	collision_mask = 1 | 4
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 
-	var col = CollisionShape2D.new()
-	var sh = RectangleShape2D.new()
-	sh.size = Vector2(8.0, 8.0)
-	col.shape = sh
-	col.position = Vector2(0.0, -4.0)
-	add_child(col)
-
-	_shadow = Sprite2D.new()
+	_shadow = get_node("Shadow") as Sprite2D
 	_shadow.texture = Art.get_blob_shadow(12, 5)
-	_shadow.position = Vector2(0.0, 1.0)
-	_shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	add_child(_shadow)
 
-	_sprite = AnimatedSprite2D.new()
-	_sprite.centered = false
-	_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_sprite = get_node("Sprite") as AnimatedSprite2D
 	_sprite.sprite_frames = Art.get_player_frames(Config.SWING_TIME)
 	_sprite.offset = Art.feet_offset_for_animated("player/idle_down")
 	_sprite.play(&"idle_down")
-	add_child(_sprite)
 
-	_spear = Sprite2D.new()
+	_spear = get_node("Spear") as Sprite2D
 	_spear.texture = Art.get_spear_texture()
-	_spear.centered = false
-	_spear.offset = Vector2(-5.0, -3.0)
-	_spear.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_spear.visible = false
-	add_child(_spear)
 
-	_lantern = PointLight2D.new()
+	_lantern = get_node("Lantern") as PointLight2D
 	_lantern.texture = Art.get_radial_light_texture(128)
-	_lantern.texture_scale = 0.85
-	_lantern.energy = 0.48
-	_lantern.color = Color(1.0, 0.82, 0.54, 1.0)
-	_lantern.position = Vector2(0.0, -8.0)
 	_lantern.visible = false
-	add_child(_lantern)
 
 
 func reset_for_new_game(spawn_pos: Vector2) -> void:
