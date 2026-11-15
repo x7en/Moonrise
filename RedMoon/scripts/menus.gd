@@ -626,47 +626,23 @@ func _set_panel_size(w: float, h: float) -> void:
 
 
 func _build_shell() -> void:
-	_dimmer = ColorRect.new()
-	_dimmer.position = Vector2.ZERO
-	_dimmer.size = Config.VIEW_SIZE
-	_dimmer.color = Color(0.03, 0.02, 0.06, 0.65)
-	add_child(_dimmer)
+	_dimmer = get_node("Dimmer") as ColorRect
 
-	_panel = PanelContainer.new()
+	_panel = get_node("Panel") as PanelContainer
 	_set_panel_size(388.0, 224.0)
 	_panel.theme = Art.get_game_theme()
-	_panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_panel.add_theme_stylebox_override(
 		"panel",
 		Art.make_panel_style("res://assets/ui/panel.png", 10.0, 12.0, 10.0)
 	)
-	add_child(_panel)
 
-	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 5)
-	_panel.add_child(vbox)
-
-	_title_lbl = Label.new()
-	_title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title_lbl = get_node("Panel/VBox/TitleLabel") as Label
 	Art.style_label(_title_lbl, "display", 16, Color(1.0, 0.88, 0.56))
-	vbox.add_child(_title_lbl)
 
-	_subtitle_lbl = Label.new()
-	_subtitle_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_subtitle_lbl = get_node("Panel/VBox/SubtitleLabel") as Label
 	Art.style_label(_subtitle_lbl, "body", 8, Color(0.80, 0.82, 0.88))
-	vbox.add_child(_subtitle_lbl)
 
-	var scroll = ScrollContainer.new()
-	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	vbox.add_child(scroll)
+	_list_box = get_node("Panel/VBox/Scroll/ListBox") as VBoxContainer
 
-	_list_box = VBoxContainer.new()
-	_list_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list_box.add_theme_constant_override("separation", 4)
-	scroll.add_child(_list_box)
-
-	_footer_lbl = Label.new()
-	_footer_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_footer_lbl = get_node("Panel/VBox/FooterLabel") as Label
 	Art.style_label(_footer_lbl, "body", 8, Color(0.68, 0.66, 0.74))
-	vbox.add_child(_footer_lbl)
