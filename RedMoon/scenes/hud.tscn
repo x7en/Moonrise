@@ -1,0 +1,450 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="Script" path="res://scripts/hud.gd" id="1_hud"]
+[ext_resource type="Script" path="res://scripts/moon_sky.gd" id="2_moon_sky"]
+
+[node name="UI" type="CanvasLayer"]
+layer = 20
+script = ExtResource("1_hud")
+
+[node name="Root" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 640.0
+offset_bottom = 360.0
+mouse_filter = 2
+
+[node name="HudLayer" type="Control" parent="Root"]
+anchors_preset = 0
+offset_right = 640.0
+offset_bottom = 360.0
+mouse_filter = 2
+
+[node name="Vignette" type="ColorRect" parent="Root/HudLayer"]
+visible = false
+layout_mode = 0
+offset_right = 640.0
+offset_bottom = 360.0
+mouse_filter = 2
+color = Color(0.75, 0.08, 0.08, 0)
+
+[node name="TopBar" type="ColorRect" parent="Root/HudLayer"]
+layout_mode = 0
+offset_right = 640.0
+offset_bottom = 44.0
+mouse_filter = 2
+color = Color(0.05, 0.04, 0.09, 0.62)
+
+[node name="HpBg" type="ColorRect" parent="Root/HudLayer"]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 5.0
+offset_right = 88.0
+offset_bottom = 14.0
+color = Color(0.14, 0.08, 0.12, 0.95)
+
+[node name="HpFill" type="ColorRect" parent="Root/HudLayer"]
+layout_mode = 0
+offset_left = 9.0
+offset_top = 6.0
+offset_right = 87.0
+offset_bottom = 13.0
+color = Color(0.86, 0.24, 0.26, 1)
+
+[node name="HpLabel" type="Label" parent="Root/HudLayer"]
+layout_mode = 0
+offset_left = 92.0
+offset_top = 4.0
+offset_right = 168.0
+offset_bottom = 16.0
+
+[node name="HouseIcon" type="TextureRect" parent="Root/HudLayer"]
+visible = false
+texture_filter = 1
+layout_mode = 0
+offset_left = 8.0
+offset_top = 16.0
+offset_right = 20.0
+offset_bottom = 28.0
+stretch_mode = 5
+
+[node name="HouseLabel" type="Label" parent="Root/HudLayer"]
+layout_mode = 0
+offset_left = 22.0
+offset_top = 17.0
+offset_right = 204.0
+offset_bottom = 29.0
+
+[node name="BagLabel" type="Label" parent="Root/HudLayer"]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 29.0
+offset_right = 278.0
+offset_bottom = 41.0
+
+[node name="DayLabel" type="Label" parent="Root/HudLayer"]
+layout_mode = 0
+offset_left = 202.0
+offset_top = 4.0
+offset_right = 438.0
+offset_bottom = 16.0
+horizontal_alignment = 1
+
+[node name="ObjectiveLabel" type="Label" parent="Root/HudLayer"]
+layout_mode = 0
+offset_left = 208.0
+offset_top = 17.0
+offset_right = 432.0
+offset_bottom = 29.0
+horizontal_alignment = 1
+
+[node name="BowLabel" type="Label" parent="Root/HudLayer"]
+layout_mode = 0
+offset_left = 440.0
+offset_top = 4.0
+offset_right = 632.0
+offset_bottom = 16.0
+horizontal_alignment = 2
+
+[node name="BounceLabel" type="Label" parent="Root/HudLayer"]
+layout_mode = 0
+offset_left = 436.0
+offset_top = 17.0
+offset_right = 632.0
+offset_bottom = 29.0
+horizontal_alignment = 2
+
+[node name="HintLabel" type="Label" parent="Root/HudLayer"]
+layout_mode = 0
+offset_left = 284.0
+offset_top = 29.0
+offset_right = 632.0
+offset_bottom = 41.0
+text = "[I] Weap  [C] Craft  [E] Door  [B] Home  [Esc]"
+horizontal_alignment = 2
+
+[node name="StatusLabel" type="Label" parent="Root/HudLayer"]
+visible = false
+layout_mode = 0
+offset_left = 110.0
+offset_top = 46.0
+offset_right = 530.0
+offset_bottom = 58.0
+horizontal_alignment = 1
+
+[node name="TrapCountLabel" type="Label" parent="Root/HudLayer"]
+layout_mode = 0
+offset_left = 100.0
+offset_top = 319.0
+offset_right = 540.0
+offset_bottom = 330.0
+horizontal_alignment = 1
+
+[node name="TrapSlot1" type="PanelContainer" parent="Root/HudLayer"]
+texture_filter = 1
+layout_mode = 0
+offset_left = 132.0
+offset_top = 331.0
+offset_right = 252.0
+offset_bottom = 347.0
+
+[node name="HBox" type="HBoxContainer" parent="Root/HudLayer/TrapSlot1"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 3
+
+[node name="Icon" type="TextureRect" parent="Root/HudLayer/TrapSlot1/HBox"]
+texture_filter = 1
+custom_minimum_size = Vector2(11, 11)
+layout_mode = 2
+mouse_filter = 2
+stretch_mode = 5
+
+[node name="Label" type="Label" parent="Root/HudLayer/TrapSlot1/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+vertical_alignment = 1
+
+[node name="TrapSlot2" type="PanelContainer" parent="Root/HudLayer"]
+texture_filter = 1
+layout_mode = 0
+offset_left = 260.0
+offset_top = 331.0
+offset_right = 380.0
+offset_bottom = 347.0
+
+[node name="HBox" type="HBoxContainer" parent="Root/HudLayer/TrapSlot2"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 3
+
+[node name="Icon" type="TextureRect" parent="Root/HudLayer/TrapSlot2/HBox"]
+texture_filter = 1
+custom_minimum_size = Vector2(11, 11)
+layout_mode = 2
+mouse_filter = 2
+stretch_mode = 5
+
+[node name="Label" type="Label" parent="Root/HudLayer/TrapSlot2/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+vertical_alignment = 1
+
+[node name="TrapSlot3" type="PanelContainer" parent="Root/HudLayer"]
+texture_filter = 1
+layout_mode = 0
+offset_left = 388.0
+offset_top = 331.0
+offset_right = 508.0
+offset_bottom = 347.0
+
+[node name="HBox" type="HBoxContainer" parent="Root/HudLayer/TrapSlot3"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 3
+
+[node name="Icon" type="TextureRect" parent="Root/HudLayer/TrapSlot3/HBox"]
+texture_filter = 1
+custom_minimum_size = Vector2(11, 11)
+layout_mode = 2
+mouse_filter = 2
+stretch_mode = 5
+
+[node name="Label" type="Label" parent="Root/HudLayer/TrapSlot3/HBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+mouse_filter = 2
+vertical_alignment = 1
+
+[node name="HeaderPanel" type="PanelContainer" parent="Root/HudLayer"]
+visible = false
+texture_filter = 1
+layout_mode = 0
+offset_left = 100.0
+offset_top = 72.0
+offset_right = 540.0
+offset_bottom = 130.0
+mouse_filter = 2
+
+[node name="VBox" type="VBoxContainer" parent="Root/HudLayer/HeaderPanel"]
+layout_mode = 2
+alignment = 1
+
+[node name="HeaderTitle" type="Label" parent="Root/HudLayer/HeaderPanel/VBox"]
+layout_mode = 2
+horizontal_alignment = 1
+
+[node name="HeaderSub" type="Label" parent="Root/HudLayer/HeaderPanel/VBox"]
+layout_mode = 2
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="TameButton" type="Button" parent="Root/HudLayer"]
+visible = false
+layout_mode = 0
+offset_left = 276.0
+offset_top = 258.0
+offset_right = 364.0
+offset_bottom = 278.0
+focus_mode = 0
+text = "Tame"
+
+[node name="ToastLabel" type="Label" parent="Root/HudLayer"]
+visible = false
+layout_mode = 0
+offset_left = 90.0
+offset_top = 281.0
+offset_right = 550.0
+offset_bottom = 293.0
+horizontal_alignment = 1
+
+[node name="SearchBarBg" type="ColorRect" parent="Root/HudLayer"]
+visible = false
+layout_mode = 0
+offset_left = 277.0
+offset_top = 295.0
+offset_right = 363.0
+offset_bottom = 302.0
+color = Color(0.08, 0.06, 0.12, 0.92)
+
+[node name="SearchBarFill" type="ColorRect" parent="Root/HudLayer/SearchBarBg"]
+layout_mode = 0
+offset_left = 1.0
+offset_top = 1.0
+offset_right = 1.0
+offset_bottom = 6.0
+color = Color(0.96, 0.78, 0.32, 1)
+
+[node name="PromptLabel" type="Label" parent="Root/HudLayer"]
+visible = false
+layout_mode = 0
+offset_left = 40.0
+offset_top = 305.0
+offset_right = 600.0
+offset_bottom = 317.0
+horizontal_alignment = 1
+
+[node name="TooltipLabel" type="Label" parent="Root/HudLayer"]
+visible = false
+layout_mode = 0
+offset_left = 8.0
+offset_top = 348.0
+offset_right = 632.0
+offset_bottom = 358.0
+horizontal_alignment = 1
+
+[node name="HomeArrowHolder" type="Node2D" parent="Root/HudLayer"]
+visible = false
+
+[node name="ArrowPoly" type="Polygon2D" parent="Root/HudLayer/HomeArrowHolder"]
+color = Color(1, 0.88, 0.34, 1)
+polygon = PackedVector2Array(9, 0, -6, -6, -2, 0, -6, 6)
+
+[node name="ArrowOutline" type="Line2D" parent="Root/HudLayer/HomeArrowHolder/ArrowPoly"]
+points = PackedVector2Array(9, 0, -6, -6, -2, 0, -6, 6, 9, 0)
+width = 1.5
+default_color = Color(0.12, 0.08, 0.14, 0.95)
+
+[node name="HomeArrowLabel" type="Label" parent="Root/HudLayer"]
+visible = false
+layout_mode = 0
+offset_right = 58.0
+offset_bottom = 12.0
+text = "BASE"
+horizontal_alignment = 1
+
+[node name="TitleScreen" type="Control" parent="Root"]
+anchors_preset = 0
+offset_right = 640.0
+offset_bottom = 360.0
+
+[node name="MenuSky" type="Control" parent="Root/TitleScreen"]
+anchors_preset = 0
+offset_right = 640.0
+offset_bottom = 360.0
+mouse_filter = 2
+script = ExtResource("2_moon_sky")
+
+[node name="TitleLabel" type="Label" parent="Root/TitleScreen"]
+layout_mode = 0
+offset_top = 26.0
+offset_right = 640.0
+offset_bottom = 66.0
+text = "MOONRISE"
+horizontal_alignment = 1
+
+[node name="SubtitleLabel" type="Label" parent="Root/TitleScreen"]
+layout_mode = 0
+offset_top = 68.0
+offset_right = 640.0
+offset_bottom = 82.0
+text = "Gather by day. Hold the rings by night."
+horizontal_alignment = 1
+
+[node name="Buttons" type="VBoxContainer" parent="Root/TitleScreen"]
+layout_mode = 0
+offset_left = 232.0
+offset_top = 152.0
+offset_right = 408.0
+offset_bottom = 338.0
+theme_override_constants/separation = 3
+
+[node name="ContinueButton" type="Button" parent="Root/TitleScreen/Buttons"]
+visible = false
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+text = "Continue"
+
+[node name="PlayButton" type="Button" parent="Root/TitleScreen/Buttons"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+text = "Play"
+
+[node name="TutorialButton" type="Button" parent="Root/TitleScreen/Buttons"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+text = "Tutorial"
+
+[node name="ControlsButton" type="Button" parent="Root/TitleScreen/Buttons"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+text = "Controls"
+
+[node name="SettingsButton" type="Button" parent="Root/TitleScreen/Buttons"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+text = "Settings"
+
+[node name="AchievementsButton" type="Button" parent="Root/TitleScreen/Buttons"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+text = "Achievements"
+
+[node name="CreditsButton" type="Button" parent="Root/TitleScreen/Buttons"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+text = "Credits"
+
+[node name="QuitButton" type="Button" parent="Root/TitleScreen/Buttons"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+text = "Quit"
+
+[node name="VersionLabel" type="Label" parent="Root/TitleScreen"]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 346.0
+offset_right = 308.0
+offset_bottom = 358.0
+text = "Moonrise v2.2  |  F11 Fullscreen"
+
+[node name="EndScreen" type="Control" parent="Root"]
+visible = false
+anchors_preset = 0
+offset_right = 640.0
+offset_bottom = 360.0
+
+[node name="Dimmer" type="ColorRect" parent="Root/EndScreen"]
+layout_mode = 0
+offset_right = 640.0
+offset_bottom = 360.0
+color = Color(0.05, 0.04, 0.08, 0.9)
+
+[node name="Panel" type="PanelContainer" parent="Root/EndScreen"]
+texture_filter = 1
+layout_mode = 0
+offset_left = 130.0
+offset_top = 56.0
+offset_right = 510.0
+offset_bottom = 304.0
+
+[node name="VBox" type="VBoxContainer" parent="Root/EndScreen/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="EndTitle" type="Label" parent="Root/EndScreen/Panel/VBox"]
+layout_mode = 2
+horizontal_alignment = 1
+
+[node name="EndBody" type="Label" parent="Root/EndScreen/Panel/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="RetryButton" type="Button" parent="Root/EndScreen/Panel/VBox"]
+custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
+text = "Retry Day"
+
+[node name="NewRunButton" type="Button" parent="Root/EndScreen/Panel/VBox"]
+custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
+text = "New Run"
+
+[node name="MainMenuButton" type="Button" parent="Root/EndScreen/Panel/VBox"]
+custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
+text = "Main Menu"

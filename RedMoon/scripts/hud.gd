@@ -72,12 +72,8 @@ var _end_idx: int = 0
 
 func _ready() -> void:
 	layer = 20
-	_root = Control.new()
-	_root.position = Vector2.ZERO
-	_root.size = Config.VIEW_SIZE
+	_root = get_node("Root") as Control
 	_root.theme = Art.get_game_theme()
-	_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_root)
 
 	_build_hud()
 	_build_title_screen()
@@ -374,300 +370,126 @@ func _focus_menu_button(idx: int) -> void:
 
 
 func _build_hud() -> void:
-	_hud_layer = Control.new()
-	_hud_layer.position = Vector2.ZERO
-	_hud_layer.size = Config.VIEW_SIZE
-	_hud_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_root.add_child(_hud_layer)
+	_hud_layer = get_node("Root/HudLayer") as Control
+	_vignette = get_node("Root/HudLayer/Vignette") as ColorRect
+	_hp_fill = get_node("Root/HudLayer/HpFill") as ColorRect
 
-	_vignette = ColorRect.new()
-	_vignette.position = Vector2.ZERO
-	_vignette.size = Config.VIEW_SIZE
-	_vignette.color = Color(0.75, 0.08, 0.08, 0.0)
-	_vignette.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_vignette.visible = false
-	_hud_layer.add_child(_vignette)
+	_hp_lbl = _bind_lbl("Root/HudLayer/HpLabel", "bold", 8, Color.WHITE)
+	_house_icon = get_node("Root/HudLayer/HouseIcon") as TextureRect
+	_house_lbl = _bind_lbl("Root/HudLayer/HouseLabel", "bold", 8, Color(0.86, 0.94, 0.86))
+	_bag_lbl = _bind_lbl("Root/HudLayer/BagLabel", "body", 8, Color(0.95, 0.86, 0.62))
 
-	# dark bar behind the top hud so white text stays readable on grass
-	var top_bar = ColorRect.new()
-	top_bar.position = Vector2.ZERO
-	top_bar.size = Vector2(Config.VIEW_SIZE.x, 44.0)
-	top_bar.color = Color(0.05, 0.04, 0.09, 0.62)
-	top_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_hud_layer.add_child(top_bar)
+	_day_lbl = _bind_lbl("Root/HudLayer/DayLabel", "bold", 8, Color(1.0, 0.90, 0.64))
+	_objective_lbl = _bind_lbl("Root/HudLayer/ObjectiveLabel", "body", 8, Color(0.98, 0.92, 0.72))
 
-	# top-left: hp bar, house hp, bag/stock counts
-	var hp_bg = ColorRect.new()
-	hp_bg.position = Vector2(8.0, 5.0)
-	hp_bg.size = Vector2(80.0, 9.0)
-	hp_bg.color = Color(0.14, 0.08, 0.12, 0.95)
-	_hud_layer.add_child(hp_bg)
+	_bow_lbl = _bind_lbl("Root/HudLayer/BowLabel", "bold", 8, Color(0.92, 0.94, 1.0))
+	_bounce_lbl = _bind_lbl("Root/HudLayer/BounceLabel", "bold", 8, Color(0.62, 0.94, 1.0))
+	_hint_lbl = _bind_lbl("Root/HudLayer/HintLabel", "body", 8, Color(0.80, 0.84, 0.92))
+	_status_lbl = _bind_lbl("Root/HudLayer/StatusLabel", "bold", 8, Color(1.0, 0.78, 0.42))
 
-	_hp_fill = ColorRect.new()
-	_hp_fill.position = Vector2(9.0, 6.0)
-	_hp_fill.size = Vector2(78.0, 7.0)
-	_hp_fill.color = Color(0.86, 0.24, 0.26, 1.0)
-	_hud_layer.add_child(_hp_fill)
-
-	_hp_lbl = _mk_lbl(Vector2(92.0, 4.0), Vector2(76.0, 12.0), "bold", 8, Color.WHITE)
-	_house_icon = TextureRect.new()
-	_house_icon.position = Vector2(8.0, 16.0)
-	_house_icon.size = Vector2(12.0, 12.0)
-	_house_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_house_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	_house_icon.visible = false
-	_hud_layer.add_child(_house_icon)
-	_house_lbl = _mk_lbl(
-		Vector2(22.0, 17.0), Vector2(182.0, 12.0), "bold", 8, Color(0.86, 0.94, 0.86)
-	)
-	_bag_lbl = _mk_lbl(Vector2(8.0, 29.0), Vector2(270.0, 12.0), "body", 8, Color(0.95, 0.86, 0.62))
-
-	# center: day timer on top, current goal under it
-	_day_lbl = _mk_lbl(
-		Vector2(202.0, 4.0), Vector2(236.0, 12.0), "bold", 8, Color(1.0, 0.90, 0.64)
-	)
-	_day_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_objective_lbl = _mk_lbl(
-		Vector2(208.0, 17.0), Vector2(224.0, 12.0), "body", 8, Color(0.98, 0.92, 0.72)
-	)
-	_objective_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-
-	# top-right: weapon/ammo, recall cooldown, quick key reminders
-	_bow_lbl = _mk_lbl(
-		Vector2(440.0, 4.0), Vector2(192.0, 12.0), "bold", 8, Color(0.92, 0.94, 1.0)
-	)
-	_bow_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_bounce_lbl = _mk_lbl(
-		Vector2(436.0, 17.0), Vector2(196.0, 12.0), "bold", 8, Color(0.62, 0.94, 1.0)
-	)
-	_bounce_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_hint_lbl = _mk_lbl(
-		Vector2(284.0, 29.0), Vector2(348.0, 12.0), "body", 8, Color(0.80, 0.84, 0.92)
-	)
-	_hint_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_hint_lbl.text = "[I] Weap  [C] Craft  [E] Door  [B] Home  [Esc]"
-
-	# indoors / intruder warning right under the top bar
-	_status_lbl = _mk_lbl(
-		Vector2(110.0, 46.0), Vector2(420.0, 12.0), "bold", 8, Color(1.0, 0.78, 0.42)
-	)
-	_status_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_status_lbl.visible = false
-
-	# bottom trap slots (1/2/3)
 	_build_trap_hotbar()
 
-	# big day/night announcement banner
-	_header_panel = PanelContainer.new()
-	_header_panel.position = Vector2(100.0, 72.0)
-	_header_panel.size = Vector2(440.0, 58.0)
-	_header_panel.visible = false
-	_header_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_header_panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_header_panel = get_node("Root/HudLayer/HeaderPanel") as PanelContainer
 	_header_panel.add_theme_stylebox_override(
 		"panel",
 		Art.make_panel_style("res://assets/ui/panel.png", 10.0, 10.0, 6.0)
 	)
-	_hud_layer.add_child(_header_panel)
+	_header_title = _bind_lbl(
+		"Root/HudLayer/HeaderPanel/VBox/HeaderTitle", "display", 16, Color(1.0, 0.88, 0.56)
+	)
+	_header_sub = _bind_lbl(
+		"Root/HudLayer/HeaderPanel/VBox/HeaderSub", "body", 8, Color(0.92, 0.90, 0.94)
+	)
 
-	var hvbox = VBoxContainer.new()
-	hvbox.alignment = BoxContainer.ALIGNMENT_CENTER
-	_header_panel.add_child(hvbox)
-	_header_title = Label.new()
-	_header_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	Art.style_label(_header_title, "display", 16, Color(1.0, 0.88, 0.56))
-	hvbox.add_child(_header_title)
-	_header_sub = Label.new()
-	_header_sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_header_sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	Art.style_label(_header_sub, "body", 8, Color(0.92, 0.90, 0.94))
-	hvbox.add_child(_header_sub)
-
-	# clickable tame button appears when standing beside a tameable wild dog
-	_tame_btn = Button.new()
-	_tame_btn.text = "Tame"
-	_tame_btn.position = Vector2(276.0, Config.VIEW_SIZE.y - 102.0)
-	_tame_btn.size = Vector2(88.0, 20.0)
-	_tame_btn.mouse_filter = Control.MOUSE_FILTER_STOP
-	_tame_btn.focus_mode = Control.FOCUS_NONE
-	_tame_btn.visible = false
+	_tame_btn = get_node("Root/HudLayer/TameButton") as Button
 	_tame_btn.pressed.connect(func() -> void: tame_dog_requested.emit())
-	_hud_layer.add_child(_tame_btn)
 
-	# prompts and search progress bar down near the bottom
-	_toast_lbl = _mk_lbl(
-		Vector2(90.0, Config.VIEW_SIZE.y - 79.0), Vector2(460.0, 12.0), "bold", 8, Color.WHITE
-	)
-	_toast_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_toast_lbl.visible = false
+	_toast_lbl = _bind_lbl("Root/HudLayer/ToastLabel", "bold", 8, Color.WHITE)
+	_search_bar_bg = get_node("Root/HudLayer/SearchBarBg") as ColorRect
+	_search_bar_fill = get_node("Root/HudLayer/SearchBarBg/SearchBarFill") as ColorRect
+	_prompt_lbl = _bind_lbl("Root/HudLayer/PromptLabel", "bold", 8, Color(1.0, 0.92, 0.56))
+	_tooltip_lbl = _bind_lbl("Root/HudLayer/TooltipLabel", "body", 8, Color(0.84, 0.88, 0.94))
 
-	_search_bar_bg = ColorRect.new()
-	_search_bar_bg.position = Vector2(277.0, Config.VIEW_SIZE.y - 65.0)
-	_search_bar_bg.size = Vector2(86.0, 7.0)
-	_search_bar_bg.color = Color(0.08, 0.06, 0.12, 0.92)
-	_search_bar_bg.visible = false
-	_hud_layer.add_child(_search_bar_bg)
-	_search_bar_fill = ColorRect.new()
-	_search_bar_fill.position = Vector2(1.0, 1.0)
-	_search_bar_fill.size = Vector2(0.0, 5.0)
-	_search_bar_fill.color = Color(0.96, 0.78, 0.32, 1.0)
-	_search_bar_bg.add_child(_search_bar_fill)
-
-	_prompt_lbl = _mk_lbl(
-		Vector2(40.0, Config.VIEW_SIZE.y - 55.0),
-		Vector2(560.0, 12.0),
-		"bold",
-		8,
-		Color(1.0, 0.92, 0.56)
-	)
-	_prompt_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_prompt_lbl.visible = false
-
-	_tooltip_lbl = _mk_lbl(
-		Vector2(8.0, Config.VIEW_SIZE.y - 12.0),
-		Vector2(624.0, 10.0),
-		"body",
-		8,
-		Color(0.84, 0.88, 0.94)
-	)
-	_tooltip_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_tooltip_lbl.visible = false
-
-	_home_arrow_holder = Node2D.new()
-	_home_arrow_holder.visible = false
-	_home_arrow_poly = Polygon2D.new()
-	_home_arrow_poly.polygon = PackedVector2Array([
-		Vector2(9.0, 0.0), Vector2(-6.0, -6.0), Vector2(-2.0, 0.0), Vector2(-6.0, 6.0)
-	])
-	_home_arrow_poly.color = Color(1.0, 0.88, 0.34, 1.0)
-	var arrow_outline = Line2D.new()
-	arrow_outline.points = PackedVector2Array([
-		Vector2(9.0, 0.0), Vector2(-6.0, -6.0), Vector2(-2.0, 0.0),
-		Vector2(-6.0, 6.0), Vector2(9.0, 0.0)
-	])
-	arrow_outline.width = 1.5
-	arrow_outline.default_color = Color(0.12, 0.08, 0.14, 0.95)
-	_home_arrow_poly.add_child(arrow_outline)
-	_home_arrow_holder.add_child(_home_arrow_poly)
-	_hud_layer.add_child(_home_arrow_holder)
-
-	_home_arrow = _mk_lbl(Vector2.ZERO, Vector2(58.0, 12.0), "bold", 8, Color(1.0, 0.90, 0.42))
-	_home_arrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_home_arrow.text = "BASE"
-	_home_arrow.visible = false
+	_home_arrow_holder = get_node("Root/HudLayer/HomeArrowHolder") as Node2D
+	_home_arrow_poly = get_node("Root/HudLayer/HomeArrowHolder/ArrowPoly") as Polygon2D
+	_home_arrow = _bind_lbl("Root/HudLayer/HomeArrowLabel", "bold", 8, Color(1.0, 0.90, 0.42))
 
 
 func _build_title_screen() -> void:
-	_title_screen = Control.new()
-	_title_screen.position = Vector2.ZERO
-	_title_screen.size = Config.VIEW_SIZE
-	_root.add_child(_title_screen)
+	_title_screen = get_node("Root/TitleScreen") as Control
 
-	_menu_sky = MoonSky.new()
-	_title_screen.add_child(_menu_sky)
+	_menu_sky = get_node("Root/TitleScreen/MenuSky") as MoonSky
 	_menu_sky.build(Config.VIEW_SIZE)
 
-	var title_lbl = Label.new()
-	title_lbl.position = Vector2(0.0, 26.0)
-	title_lbl.size = Vector2(Config.VIEW_SIZE.x, 40.0)
-	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title_lbl.text = "MOONRISE"
-	Art.style_label(title_lbl, "display", 32, Color(1.0, 0.34, 0.30))
-	_title_screen.add_child(title_lbl)
-
-	var sub_lbl = Label.new()
-	sub_lbl.position = Vector2(0.0, 68.0)
-	sub_lbl.size = Vector2(Config.VIEW_SIZE.x, 14.0)
-	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	sub_lbl.text = "Gather by day. Hold the rings by night."
-	Art.style_label(sub_lbl, "bold", 8, Color(0.95, 0.88, 0.84))
-	_title_screen.add_child(sub_lbl)
-
-	var vbox = VBoxContainer.new()
-	vbox.position = Vector2(232.0, 152.0)
-	vbox.size = Vector2(176.0, 186.0)
-	vbox.add_theme_constant_override("separation", 3)
-	_title_screen.add_child(vbox)
+	_bind_lbl("Root/TitleScreen/TitleLabel", "display", 32, Color(1.0, 0.34, 0.30))
+	_bind_lbl("Root/TitleScreen/SubtitleLabel", "bold", 8, Color(0.95, 0.88, 0.84))
 
 	_menu_buttons.clear()
-	_menu_continue_btn = _mk_menu_btn(vbox, "Continue", func() -> void: play_requested.emit(true))
+	_menu_continue_btn = _wire_menu_btn(
+		"Root/TitleScreen/Buttons/ContinueButton", func() -> void: play_requested.emit(true)
+	)
 	_menu_continue_btn.visible = false
-	_mk_menu_btn(vbox, "Play", func() -> void: play_requested.emit(false))
-	_mk_menu_btn(vbox, "Tutorial", func() -> void: menu_panel_requested.emit("tutorial"))
-	_mk_menu_btn(vbox, "Controls", func() -> void: menu_panel_requested.emit("controls"))
-	_mk_menu_btn(vbox, "Settings", func() -> void: menu_panel_requested.emit("settings"))
-	_mk_menu_btn(vbox, "Achievements", func() -> void: menu_panel_requested.emit("achievements"))
-	_mk_menu_btn(vbox, "Credits", func() -> void: menu_panel_requested.emit("credits"))
-	if not OS.has_feature("web"):
-		_mk_menu_btn(vbox, "Quit", func() -> void: quit_requested.emit())
+	_wire_menu_btn(
+		"Root/TitleScreen/Buttons/PlayButton", func() -> void: play_requested.emit(false)
+	)
+	_wire_menu_btn(
+		"Root/TitleScreen/Buttons/TutorialButton",
+		func() -> void: menu_panel_requested.emit("tutorial")
+	)
+	_wire_menu_btn(
+		"Root/TitleScreen/Buttons/ControlsButton",
+		func() -> void: menu_panel_requested.emit("controls")
+	)
+	_wire_menu_btn(
+		"Root/TitleScreen/Buttons/SettingsButton",
+		func() -> void: menu_panel_requested.emit("settings")
+	)
+	_wire_menu_btn(
+		"Root/TitleScreen/Buttons/AchievementsButton",
+		func() -> void: menu_panel_requested.emit("achievements")
+	)
+	_wire_menu_btn(
+		"Root/TitleScreen/Buttons/CreditsButton",
+		func() -> void: menu_panel_requested.emit("credits")
+	)
+	var b_quit := get_node("Root/TitleScreen/Buttons/QuitButton") as Button
+	if OS.has_feature("web"):
+		b_quit.visible = false
+	else:
+		_wire_menu_btn(
+			"Root/TitleScreen/Buttons/QuitButton", func() -> void: quit_requested.emit()
+		)
 
-	var ver_lbl = Label.new()
-	ver_lbl.position = Vector2(8.0, Config.VIEW_SIZE.y - 14.0)
-	ver_lbl.size = Vector2(300.0, 12.0)
-	ver_lbl.text = "Moonrise v2.2  |  F11 Fullscreen"
-	Art.style_label(ver_lbl, "body", 8, Color(0.72, 0.68, 0.78))
-	_title_screen.add_child(ver_lbl)
+	_bind_lbl("Root/TitleScreen/VersionLabel", "body", 8, Color(0.72, 0.68, 0.78))
 
 
 func _build_end_screen() -> void:
-	_end_screen = Control.new()
-	_end_screen.position = Vector2.ZERO
-	_end_screen.size = Config.VIEW_SIZE
-	_end_screen.visible = false
-	_root.add_child(_end_screen)
+	_end_screen = get_node("Root/EndScreen") as Control
 
-	var bg = ColorRect.new()
-	bg.position = Vector2.ZERO
-	bg.size = Config.VIEW_SIZE
-	bg.color = Color(0.05, 0.04, 0.08, 0.90)
-	_end_screen.add_child(bg)
-
-	var panel = PanelContainer.new()
-	panel.position = Vector2(130.0, 56.0)
-	panel.size = Vector2(380.0, 248.0)
-	panel.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var panel := get_node("Root/EndScreen/Panel") as PanelContainer
 	panel.add_theme_stylebox_override(
 		"panel",
 		Art.make_panel_style("res://assets/ui/panel.png", 10.0, 14.0, 12.0)
 	)
-	_end_screen.add_child(panel)
 
-	var vbox = VBoxContainer.new()
-	vbox.add_theme_constant_override("separation", 8)
-	panel.add_child(vbox)
-
-	_end_title = Label.new()
-	_end_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	Art.style_label(_end_title, "display", 16, Color(1.0, 0.38, 0.34))
-	vbox.add_child(_end_title)
-
-	_end_body = Label.new()
-	_end_body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_end_body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_end_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	Art.style_label(_end_body, "body", 8, Color(0.92, 0.90, 0.94))
-	vbox.add_child(_end_body)
+	_end_title = _bind_lbl(
+		"Root/EndScreen/Panel/VBox/EndTitle", "display", 16, Color(1.0, 0.38, 0.34)
+	)
+	_end_body = _bind_lbl(
+		"Root/EndScreen/Panel/VBox/EndBody", "body", 8, Color(0.92, 0.90, 0.94)
+	)
 
 	_end_buttons.clear()
-	_end_retry_btn = Button.new()
-	_end_retry_btn.text = "Retry Day"
-	_end_retry_btn.custom_minimum_size = Vector2(0.0, 22.0)
+	_end_retry_btn = get_node("Root/EndScreen/Panel/VBox/RetryButton") as Button
 	_end_retry_btn.pressed.connect(func() -> void: retry_day_requested.emit())
-	vbox.add_child(_end_retry_btn)
 	_end_buttons.append(_end_retry_btn)
 
-	var b_new = Button.new()
-	b_new.text = "New Run"
-	b_new.custom_minimum_size = Vector2(0.0, 22.0)
+	var b_new := get_node("Root/EndScreen/Panel/VBox/NewRunButton") as Button
 	b_new.pressed.connect(func() -> void: new_game_requested.emit())
-	vbox.add_child(b_new)
 	_end_buttons.append(b_new)
 
-	var b_menu = Button.new()
-	b_menu.text = "Main Menu"
-	b_menu.custom_minimum_size = Vector2(0.0, 22.0)
+	var b_menu := get_node("Root/EndScreen/Panel/VBox/MainMenuButton") as Button
 	b_menu.pressed.connect(func() -> void: return_to_menu_requested.emit())
-	vbox.add_child(b_menu)
 	_end_buttons.append(b_menu)
 
 
@@ -677,27 +499,20 @@ func _build_trap_hotbar() -> void:
 	_slot_box_normal = _make_slot_box(false)
 	_slot_box_active = _make_slot_box(true)
 	_slot_active_state = [false, false, false]
-	var bar_w = 376.0
-	var start_x = floorf((Config.VIEW_SIZE.x - bar_w) * 0.5)
-	var bar_y = Config.VIEW_SIZE.y - 29.0
 
-	_trap_count_lbl = _mk_lbl(
-		Vector2(start_x - 32.0, bar_y - 12.0),
-		Vector2(bar_w + 64.0, 11.0),
-		"body",
-		8,
-		Color(0.92, 0.88, 0.72)
+	_trap_count_lbl = _bind_lbl(
+		"Root/HudLayer/TrapCountLabel", "body", 8, Color(0.92, 0.88, 0.72)
 	)
-	_trap_count_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 
 	var icons: Array[String] = ["trap_snare", "trap_spike", "trap_lure"]
+	var slot_paths: Array[String] = [
+		"Root/HudLayer/TrapSlot1",
+		"Root/HudLayer/TrapSlot2",
+		"Root/HudLayer/TrapSlot3",
+	]
 	for i in range(3):
-		var slot_idx = i + 1
-		var slot = PanelContainer.new()
-		slot.position = Vector2(start_x + float(i) * 128.0, bar_y)
-		slot.size = Vector2(120.0, 16.0)
-		slot.mouse_filter = Control.MOUSE_FILTER_STOP
-		slot.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		var slot_idx := i + 1
+		var slot := get_node(slot_paths[i]) as PanelContainer
 		slot.add_theme_stylebox_override("panel", _slot_box_normal)
 		slot.gui_input.connect(func(ev: InputEvent) -> void:
 			var is_click := false
@@ -711,24 +526,10 @@ func _build_trap_hotbar() -> void:
 				get_viewport().set_input_as_handled()
 				trap_slot_clicked.emit(slot_idx)
 		)
-		var hbox = HBoxContainer.new()
-		hbox.add_theme_constant_override("separation", 3)
-		hbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var ic = TextureRect.new()
+		var ic := slot.get_node("HBox/Icon") as TextureRect
 		ic.texture = Art.get_icon_texture(icons[i])
-		ic.custom_minimum_size = Vector2(11.0, 11.0)
-		ic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		ic.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		hbox.add_child(ic)
-		var lbl = Label.new()
-		lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var lbl := slot.get_node("HBox/Label") as Label
 		Art.style_label(lbl, "body", 8, Color(0.88, 0.88, 0.94))
-		hbox.add_child(lbl)
-		slot.add_child(hbox)
-		_hud_layer.add_child(slot)
 		_trap_slots.append(slot)
 		_trap_slot_labels.append(lbl)
 
@@ -784,20 +585,14 @@ func _make_slot_box(active: bool) -> StyleBox:
 	)
 
 
-func _mk_menu_btn(parent: VBoxContainer, label: String, cb: Callable) -> Button:
-	var btn = Button.new()
-	btn.text = label
-	btn.custom_minimum_size = Vector2(0.0, 18.0)
+func _wire_menu_btn(node_path: String, cb: Callable) -> Button:
+	var btn := get_node(node_path) as Button
 	btn.pressed.connect(cb)
-	parent.add_child(btn)
 	_menu_buttons.append(btn)
 	return btn
 
 
-func _mk_lbl(pos: Vector2, sz: Vector2, style: String, font_px: int, col: Color) -> Label:
-	var lbl = Label.new()
-	lbl.position = pos
-	lbl.size = sz
+func _bind_lbl(node_path: String, style: String, font_px: int, col: Color) -> Label:
+	var lbl := get_node(node_path) as Label
 	Art.style_label(lbl, style, font_px, col)
-	_hud_layer.add_child(lbl)
 	return lbl
