@@ -216,9 +216,9 @@ const SEARCH_HOLD_TIME := 1.5
 
 const DOG_TAME_TIME := 2.0
 const DOG_MAX := 2
-const DOG_HP := 20
-const DOG_GUARD_RANGE := 60.0
-const DOG_ATTACK_INTERVAL := 0.8
+const DOG_GUARD_RANGE := 84.0
+const DOG_HUNT_RANGE := 240.0
+const DOG_ATTACK_INTERVAL := 0.75
 
 const METEOR_DAYS := []
 const METEOR_COUNT_DAY4 := 22

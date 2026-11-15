@@ -243,7 +243,9 @@ func _step_gameplay(delta: float) -> void:
 			wt.step_tower(delta, enemies)
 	for d in dogs:
 		if is_instance_valid(d):
-			d.step_dog(delta, _player.position, enemies, bounds)
+			d.step_dog(
+				delta, _player.position, enemies, bounds, _player.facing_vec, _player.inside_house
+			)
 	for e in enemies:
 		if is_instance_valid(e):
 			e.step_enemy(
@@ -461,8 +463,6 @@ func _spawn_enemy(etype: String, pos: Vector2, is_wanderer: bool) -> Enemy:
 
 
 func _spawn_dog(pos: Vector2, start_mode: int = Dog.Mode.STRAY) -> Dog:
-	if not Dog.assets_available():
-		return null
 	var d = Dog.new()
 	if not d.setup(pos):
 		return null
@@ -470,9 +470,12 @@ func _spawn_dog(pos: Vector2, start_mode: int = Dog.Mode.STRAY) -> Dog:
 	d.tamed.connect(func(_dog: Dog) -> void:
 		_sfx.play("dog_bark", -6.0)
 		_unlock_achievement("tamed_dog")
-		_hud.show_message(
-			"Dog tamed! Press G to toggle Follow / Guard.", 2.6, Color(0.62, 0.96, 0.68)
-		)
+		_hud.show_message("Dog tamed! Press G for Follow / Guard.", 2.6, Color(0.62, 0.96, 0.68))
+	)
+	d.attacked_enemy.connect(func(en: Node) -> void:
+		_sfx.play("dog_bark", -12.0)
+		if is_instance_valid(en):
+			_fx.spawn_sparks(en.position, Color(1.0, 0.42, 0.34, 1.0), 5)
 	)
 	_entities_layer.add_child(d)
 	dogs.append(d)
