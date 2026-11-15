@@ -48,21 +48,25 @@ func open_inventory(
 	active_panel = "inventory"
 	current_structure = null
 	visible = true
-	_set_panel_size(380.0, 212.0)
-	_title_lbl.text = "INVENTORY"
+	_set_panel_size(426.0, 268.0)
+	_title_lbl.text = "INVENTORY & WEAPONS"
 	_subtitle_lbl.text = (
-		"Bag (%d/%d)   |   Stockpile (Unlimited)" % [bag.used_capacity(), bag.capacity]
+		"Bag (%d/%d)   |   Stockpile (Unlimited)   |   Gear Tier %d/3"
+		% [bag.used_capacity(), bag.capacity, int(upgrades.get("gear_tier", 1))]
 	)
 	_clear_list()
 
 	_add_info_row(
-		"Planks", "Bag: %d   |   Stock: %d" % [bag.count("plank"), stockpile.count("plank")]
+		"Planks / Scrap",
+		"Bag P:%d S:%d   |   Stock P:%d S:%d" % [
+			bag.count("plank"),
+			bag.count("scrap"),
+			stockpile.count("plank"),
+			stockpile.count("scrap"),
+		]
 	)
 	_add_info_row(
-		"Scrap", "Bag: %d   |   Stock: %d" % [bag.count("scrap"), stockpile.count("scrap")]
-	)
-	_add_info_row(
-		"Hunting Bow",
+		"Arrows",
 		"Loaded: %d/%d   |   Reserve: %d/%d"
 		% [player.mag, player.mag_max, bag.count("arrow"), player.reserve_max]
 	)
@@ -71,10 +75,63 @@ func open_inventory(
 		"Bear: %d   Spike: %d   Lure: %d"
 		% [bag.count("trap_snare"), bag.count("trap_spike"), bag.count("trap_lure")]
 	)
-	_add_info_row("Gear Tier", "Tier %d / 3" % int(upgrades.get("gear_tier", 1)))
 
+	_add_info_row("WEAPONS", "Click or Enter to equip for Left-Click", true)
+	for w_id in player.unlocked_weapons:
+		var def: Dictionary = Config.WEAPON_DEFS.get(w_id, {})
+		if def.is_empty():
+			continue
+		var is_eq := (player.active_weapon == w_id)
+		var badge := "[EQUIPPED] " if is_eq else "Equip: "
+		var lbl_txt := "%s%s - %s" % [
+			badge, String(def.get("label", w_id)), String(def.get("desc", ""))
+		]
+		var btn = _add_button(lbl_txt, "equip_weapon", {"weapon_id": w_id}, true)
+		var icon_key := String(def.get("icon", ""))
+		if not icon_key.is_empty():
+			btn.icon = Art.get_icon_texture(icon_key)
+
+	_add_button("Open Trap Crafting [C]", "open_crafting", {}, true)
 	_add_button("Close [I / Esc]", "close", {}, true)
-	_footer_lbl.text = "Tip: Press 1-3 or click trap slots to place; craft more at House [U]!"
+	_footer_lbl.text = "Switch weapons here [I]  |  Craft traps [C]  |  Slots 1-3 place traps"
+	_focus_index(0)
+
+
+func open_crafting_menu(
+	bag: Bag,
+	stockpile: Bag
+) -> void:
+	active_panel = "crafting"
+	current_structure = null
+	visible = true
+	_set_panel_size(432.0, 264.0)
+	var tot_p := bag.count("plank") + stockpile.count("plank")
+	var tot_s := bag.count("scrap") + stockpile.count("scrap")
+	_title_lbl.text = "TRAP CRAFTING"
+	_subtitle_lbl.text = (
+		"Resources: %d Planks, %d Scrap  (Draws from Bag + Stockpile)" % [tot_p, tot_s]
+	)
+	_clear_list()
+
+	for recipe in Config.CRAFT_RECIPES:
+		var action_id := String(recipe["action"])
+		var item_key := String(recipe["item"])
+		var cost: Dictionary = recipe["cost"]
+		var owned_key := "arrow" if item_key == "arrows" else item_key
+		var owned := bag.count(owned_key)
+		var label_txt := "%s  (Owned: %d)" % [String(recipe["label"]), owned]
+		var data := {"cost": cost}
+		if action_id == "craft_trap":
+			data["trap_key"] = item_key
+			data["qty"] = int(recipe["amount"])
+		var btn = _add_cost_button(label_txt, action_id, data, cost, bag, stockpile)
+		var icon_key := "arrow" if item_key == "arrows" else item_key
+		btn.icon = Art.get_icon_texture(icon_key)
+		_add_info_row("   ", String(recipe["desc"]))
+
+	_add_button("Open Weapons / Inventory [I]", "open_inventory", {}, true)
+	_add_button("Close [C / Esc]", "close", {}, true)
+	_footer_lbl.text = "Craft traps anytime [C]  |  Select with keys 1-3 & click ground to place"
 	_focus_index(0)
 
 
@@ -131,15 +188,15 @@ func open_info_panel(kind: String, settings: SaveData) -> void:
 
 	if kind == "tutorial":
 		_title_lbl.text = "HOW TO PLAY"
-		_subtitle_lbl.text = "Survive 7 nights and hold the farmhouse"
+		_subtitle_lbl.text = "Gather by day, fortify your yard, and hold the farmhouse"
 		for step in [
-			["1. Morning Gather", "Exit the open south gate; pick up planks & hold E on wrecks."],
-			["2. Store & Upgrade", "Walk by the house to store loot. Press U to upgrade/craft."],
-			["3. Spear & Bow", "Space swings spear. Click/Tap or F auto-aims bow (1.5s CD)."],
-			["4. Bear Traps", "Press 1-3 or click slot, then click/T. Craft at House [U]."],
-			["5. Bounce Back", "Press B anytime to teleport home and start healing!"],
-			["6. Night Shelter", "Close fence gates [E] at dusk & enter the front door [E]."],
-			["7. Dogs & Arrow", "Follow the BASE arrow home. Hold E on strays (G Follow/Guard)."],
+			["1. Morning Gather", "Exit the south gate, pick up planks, and hold E on wrecks."],
+			["2. Store & Upgrade", "Walk near the house to store loot. Press U to upgrade."],
+			["3. Weapons [I]", "Press I to switch Bow/Spear. Click uses equipped weapon."],
+			["4. Craft Traps [C]", "Press C to craft traps. Pick slots 1-3 & click to place."],
+			["5. Bounce Back", "Press B anytime to recall home and recover health."],
+			["6. Night Shelter", "Watch the Even Moon & Blood Moon. Shut gates/door [E]."],
+			["7. Dogs & Tracker", "Click [Tame] beside wild dogs (G Follow/Guard). BASE <50m."],
 		]:
 			_add_info_row(String(step[0]), String(step[1]))
 	elif kind == "controls":
@@ -147,12 +204,12 @@ func open_info_panel(kind: String, settings: SaveData) -> void:
 		_subtitle_lbl.text = "Keyboard + Mouse"
 		for row in [
 			["Move", "WASD / Arrow Keys"],
-			["Spear / Bow / Reload", "Space Melee  |  Click or F Bow (1.5s)  |  R Reload"],
-			["Door / Fence Gate / Search", "E Open-Close Door or Gate  |  Hold E Search/Tame"],
+			["Weapons & Attack", "Click Equipped  |  Space Spear  |  F Bow  |  R Reload"],
+			["Inventory / Craft", "I Switch Weapons & Bag  |  C Craft Traps & Arrows"],
+			["Door / Gate / Dogs", "E Door or Gate  |  Hold E Wrecks  |  Click Tame / G Dog"],
 			["Place Traps", "1 Bear  2 Spike  3 Lure (or Click Slot)  |  Click/T Place"],
-			["Bounce Back / Shockwave", "B Recall Home & Heal  |  Q Shockwave"],
-			["Upgrade House / Ring", "U or Right-Click House / Fence"],
-			["Bag / Dog / Pause", "I Bag  |  G Dog Mode  |  F11 Fullscreen  |  Esc Pause"],
+			["Bounce / Shockwave", "B Recall Home & Heal  |  Q Shockwave"],
+			["Upgrades & Pause", "U or Right-Click House/Fence  |  F11 Full  |  Esc Pause"],
 		]:
 			_add_info_row(String(row[0]), String(row[1]))
 	elif kind == "settings":
@@ -161,11 +218,13 @@ func open_info_panel(kind: String, settings: SaveData) -> void:
 		var fs_txt = "ON" if settings.fullscreen else "OFF"
 		var vol_pct = roundi(settings.master_volume * 100.0)
 		var shake_txt = "ON" if settings.screen_shake else "OFF"
-		var intro_txt = "ON" if settings.play_intro else "OFF"
+		var dev_intro_txt = (
+			"ON (Every Launch)" if settings.dev_always_play_intro else "OFF (First Launch Only)"
+		)
 		_add_button("Fullscreen: %s" % fs_txt, "toggle_fullscreen", {}, true)
 		_add_button("Master Volume: %d%%" % vol_pct, "cycle_volume", {}, true)
 		_add_button("Screen Shake: %s" % shake_txt, "toggle_shake", {}, true)
-		_add_button("Play Story Intro: %s" % intro_txt, "toggle_intro", {}, true)
+		_add_button("[DEV] Story Intro on Launch: %s" % dev_intro_txt, "toggle_intro", {}, true)
 	elif kind == "achievements":
 		_title_lbl.text = "ACHIEVEMENTS (%d/%d)" % [
 			settings.get_unlocked_count(), SaveData.ACHIEVEMENT_DEFS.size()
@@ -431,13 +490,13 @@ func _add_cost_button(
 	cost: Dictionary,
 	bag: Bag,
 	stockpile: Bag
-) -> void:
+) -> Button:
 	var can_pay = bag.can_afford(cost, stockpile)
 	var suffix = "  [%s]" % Bag.format_cost(cost)
-	_add_button(label_txt + suffix, action_id, data, can_pay)
+	return _add_button(label_txt + suffix, action_id, data, can_pay)
 
 
-func _add_button(label_txt: String, action_id: String, data: Dictionary, enabled: bool) -> void:
+func _add_button(label_txt: String, action_id: String, data: Dictionary, enabled: bool) -> Button:
 	var btn = Button.new()
 	btn.text = label_txt
 	btn.disabled = not enabled
@@ -446,13 +505,18 @@ func _add_button(label_txt: String, action_id: String, data: Dictionary, enabled
 	btn.pressed.connect(_on_btn_pressed.bind(action_id, data))
 	_list_box.add_child(btn)
 	_buttons.append(btn)
+	return btn
 
 
 func _add_info_row(left_txt: String, right_txt: String, highlight: bool = false) -> void:
 	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
 	var l_lbl = Label.new()
 	l_lbl.text = left_txt
 	l_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l_lbl.size_flags_stretch_ratio = 0.36
+	l_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	Art.style_label(
 		l_lbl, "bold", 8, Color(1.0, 0.88, 0.45) if highlight else Color(0.95, 0.92, 0.88)
 	)
@@ -460,7 +524,11 @@ func _add_info_row(left_txt: String, right_txt: String, highlight: bool = false)
 
 	var r_lbl = Label.new()
 	r_lbl.text = right_txt
+	r_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	r_lbl.size_flags_stretch_ratio = 0.64
 	r_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	r_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	r_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	Art.style_label(r_lbl, "body", 8, Color(0.80, 0.84, 0.90))
 	row.add_child(r_lbl)
 	_list_box.add_child(row)
@@ -479,7 +547,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	var ke = event
 	if not ke.pressed or ke.echo:
 		return
-	if ke.keycode == KEY_ESCAPE or (active_panel == "inventory" and ke.keycode == KEY_I):
+	var toggle_close = (
+		ke.keycode == KEY_ESCAPE
+		or (active_panel == "inventory" and ke.keycode == KEY_I)
+		or (active_panel == "crafting" and ke.keycode == KEY_C)
+	)
+	if toggle_close:
 		get_viewport().set_input_as_handled()
 		close_all()
 		return

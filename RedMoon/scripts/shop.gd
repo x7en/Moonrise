@@ -160,12 +160,15 @@ func save_day(main_node: Node) -> Dictionary:
 			tower_saves.append({"pos": wt.position, "hp": wt.hp})
 	var dog_saves: Array[Dictionary] = []
 	for d in dogs:
-		if is_instance_valid(d) and d.mode != Dog.Mode.STRAY:
-			dog_saves.append({"pos": d.position, "mode": int(d.mode)})
+		if is_instance_valid(d) and d.mode != Dog.Mode.STRAY and d.is_alive():
+			dog_saves.append({"pos": d.position, "mode": int(d.mode), "hp": d.hp})
+	var p_ref = main_node.get("_player")
 	return {
 		"act": int(main_node.get("act")),
 		"day": int(main_node.get("day")),
-		"hp": main_node.get("_player").hp,
+		"hp": p_ref.hp,
+		"active_weapon": p_ref.active_weapon,
+		"unlocked_weapons": p_ref.unlocked_weapons.duplicate(),
 		"bag": main_node.get("bag").to_dict(),
 		"stockpile": main_node.get("stockpile").to_dict(),
 		"upgrades": main_node.get("upgrades").duplicate(true),
@@ -188,6 +191,10 @@ func load_day(saved: Dictionary, main_node: Node) -> Dictionary:
 	var up = saved["upgrades"].duplicate(true)
 	player.reset_for_new_game(Config.HOUSE_DOOR)
 	player.hp = int(saved["hp"])
+	var saved_weapons: Array = saved.get("unlocked_weapons", [])
+	for w_id in saved_weapons:
+		player.unlock_weapon(String(w_id))
+	player.equip_weapon(String(saved.get("active_weapon", "bow")))
 	player.apply_upgrade_stats(up)
 	if house != null:
 		house.load_state(saved["house"])
@@ -257,7 +264,7 @@ func can_place_trap_at(
 		var cost = (Config.TRAPS[t_key])["cost"]
 		return {
 			"ok": false,
-			"reason": "No %ss left! Craft at House [U] (%s)." % [lbl, Bag.format_cost(cost)],
+			"reason": "No %ss left! Press [C] to craft (%s)." % [lbl, Bag.format_cost(cost)],
 		}
 	for s in structures:
 		if not is_instance_valid(s) or not (s is Structure):
@@ -427,9 +434,31 @@ func handle_settings_action(
 			settings.save_settings()
 			menus.open_info_panel("settings", settings)
 		"toggle_intro":
-			settings.play_intro = not settings.play_intro
+			settings.dev_always_play_intro = not settings.dev_always_play_intro
 			settings.save_settings()
 			menus.open_info_panel("settings", settings)
 		_:
 			return false
 	return true
+
+
+func handle_inventory_action(action_id: String, data: Dictionary, main_node: Node) -> bool:
+	var menus = main_node.get("_menus")
+	var bag = main_node.get("bag")
+	var stockpile = main_node.get("stockpile")
+	var player = main_node.get("_player")
+	if action_id == "equip_weapon":
+		var w_id := String(data.get("weapon_id", ""))
+		if player.equip_weapon(w_id):
+			main_node.get("_sfx").play("pickup", -8.0)
+			var w_lbl := String((Config.WEAPON_DEFS.get(w_id, {})).get("label", w_id))
+			main_node.get("_hud").show_message("Equipped %s!" % w_lbl, 1.8, Color(0.62, 0.96, 0.68))
+			menus.open_inventory(bag, stockpile, player, main_node.get("upgrades"))
+		return true
+	if action_id == "open_crafting":
+		menus.open_crafting_menu(bag, stockpile)
+		return true
+	if action_id == "open_inventory":
+		menus.open_inventory(bag, stockpile, player, main_node.get("upgrades"))
+		return true
+	return false

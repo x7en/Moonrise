@@ -407,6 +407,10 @@ func _refresh_house_visuals() -> void:
 		_house_sprite.texture = Art.get_shaded_house_texture(level, is_door_open())
 	if _damage_overlay != null:
 		_damage_overlay.visible = standing
+		var lv_key = "house/lv%d" % clampi(level, 1, 3)
+		_damage_overlay.texture = Art.get_tinted_silhouette(
+			lv_key, Color(0.55, 0.0, 0.0, 1.0)
+		)
 		var dmg_ratio = 1.0 - (float(hp) / float(maxi(1, max_hp)))
 		_damage_overlay.modulate.a = clampf(dmg_ratio * 0.36, 0.0, 0.36)
 	if _rubble_node != null:
@@ -660,7 +664,7 @@ func _build_house_nodes(decals_layer: Node2D) -> void:
 	_hp_bar_holder.add_child(_hp_bar_label)
 	add_child(_hp_bar_holder)
 
-	_hover_outline = _make_hover_outline(Rect2(-64.0, -hh + 4.0, 142.0, hh - 4.0))
+	_hover_outline = _make_hover_outline(Rect2(-78.0, -hh + 2.0, 156.0, hh - 4.0))
 	add_child(_hover_outline)
 
 	# rubble pile under the house, stays hidden unless it actually falls

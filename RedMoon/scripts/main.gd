@@ -60,7 +60,6 @@ var _kills_total: int = 0
 var _hovered_struct: Structure
 var _search_prop_id: int = -1
 var _search_timer: float = 0.0
-var _tame_progress: float = 0.0
 var _pending_story_cb: Callable = Callable()
 var _day_save: Dictionary = {}
 var _pre_pause_state: GameState = GameState.DAY
@@ -79,7 +78,15 @@ func _ready() -> void:
 	_build_scene_tree()
 	_connect_ui_signals()
 	_rebuild_world_and_structures(1337)
-	_hud.show_title_screen(false)
+	if settings.should_auto_play_story():
+		state = GameState.STORY
+		_hud.hide_all_screens()
+		_pending_story_cb = func() -> void:
+			settings.mark_intro_completed()
+			_return_to_title()
+		_intro.show_cards(IntroCards.get_opening_cards(), true, false)
+	else:
+		_hud.show_title_screen(false)
 
 
 func _process(delta: float) -> void:
@@ -134,15 +141,14 @@ func _handle_key_press(ke: InputEventKey) -> void:
 			if _trap_mode_active:
 				_set_trap_mode(false)
 				return
-			_pre_pause_state = state
-			state = GameState.PAUSED
-			_info_return_to_title = false
+			_enter_menu_pause()
 			_menus.open_pause_menu()
 		KEY_I:
-			_set_trap_mode(false)
-			_pre_pause_state = state
-			state = GameState.PAUSED
+			_enter_menu_pause()
 			_menus.open_inventory(bag, stockpile, _player, upgrades)
+		KEY_C:
+			_enter_menu_pause()
+			_menus.open_crafting_menu(bag, stockpile)
 		KEY_SPACE:
 			_trigger_melee_or_clear_intruders()
 		KEY_F:
@@ -159,16 +165,19 @@ func _handle_key_press(ke: InputEventKey) -> void:
 		KEY_U:
 			_set_trap_mode(false)
 			_try_open_nearby_structure_menu()
-		KEY_1:
-			_toggle_trap_slot(1)
-		KEY_2:
-			_toggle_trap_slot(2)
-		KEY_3:
-			_toggle_trap_slot(3)
+		KEY_1, KEY_2, KEY_3:
+			_toggle_trap_slot(int(ke.keycode - KEY_1) + 1)
 		KEY_T:
 			_place_selected_trap()
 		KEY_G:
 			_toggle_dogs_mode()
+
+
+func _enter_menu_pause() -> void:
+	_set_trap_mode(false)
+	_pre_pause_state = state
+	state = GameState.PAUSED
+	_info_return_to_title = false
 
 
 func _toggle_trap_slot(idx: int) -> void:
@@ -186,9 +195,7 @@ func _set_trap_mode(active: bool) -> void:
 	if DisplayServer.get_name() != "headless":
 		var icon_id := "cursor_crosshair" if active else "cursor"
 		var hot := Vector2(8.0, 8.0) if active else Vector2(1.0, 1.0)
-		Input.set_custom_mouse_cursor(
-			Art.get_icon_texture(icon_id), Input.CURSOR_ARROW, hot
-		)
+		Input.set_custom_mouse_cursor(Art.get_icon_texture(icon_id), Input.CURSOR_ARROW, hot)
 
 
 func _place_selected_trap() -> void:
@@ -204,15 +211,19 @@ func _handle_left_click() -> void:
 	if _trap_mode_active:
 		_place_selected_trap()
 		return
-	_player.try_fire_bow(enemies, bag)
+	if _player.active_weapon == "spear":
+		_trigger_melee_or_clear_intruders()
+	else:
+		_player.use_active_weapon(enemies, bag)
 
 
 func _try_right_click_structure() -> void:
 	if _menus.is_open() or (state != GameState.DAY and state != GameState.NIGHT):
 		return
-	if _hovered_struct != null and _hovered_struct.is_built:
-		if _hovered_struct.distance_from_point(_player.position) <= Config.STRUCTURE_MENU_REACH:
-			_open_structure_menu(_hovered_struct)
+	var st := _hovered_struct
+	if st != null and st.is_built:
+		if st.distance_from_point(_player.position) <= Config.STRUCTURE_MENU_REACH:
+			_open_structure_menu(st)
 
 
 func _step_gameplay(delta: float) -> void:
@@ -250,7 +261,7 @@ func _step_gameplay(delta: float) -> void:
 		if is_instance_valid(e):
 			e.step_enemy(
 				delta, structures, watchtowers, traps, _player.position,
-				_player.inside_house, house, enemies, bounds
+				_player.inside_house, house, enemies, bounds, dogs
 			)
 	_step_intruders(delta)
 
@@ -311,16 +322,7 @@ func _begin_new_run() -> void:
 	_map.set_act1_fog_visible(true)
 	_apply_camera_limits()
 	_hud.show_gameplay_hud()
-
-	var play_story = (not settings.intro_seen) or settings.play_intro
-	if play_story:
-		state = GameState.STORY
-		_pending_story_cb = func() -> void:
-			settings.mark_intro_completed()
-			_start_day(1)
-		_intro.show_cards(IntroCards.get_opening_cards(), true, false)
-	else:
-		_start_day(1)
+	_start_day(1)
 
 
 func _start_day(day_num: int, is_retry: bool = false) -> void:
@@ -345,6 +347,9 @@ func _start_day(day_num: int, is_retry: bool = false) -> void:
 		for f in fences:
 			if f.is_standing():
 				f.heal(Config.DAWN_FREE_REPAIR)
+		for d in dogs:
+			if is_instance_valid(d):
+				d.heal_for_new_day()
 
 	_clear_dynamic_world()
 	_waves.spawn_day_pickups(_map, _entities_layer, act, day)
@@ -390,13 +395,13 @@ func _start_night_combat() -> void:
 	_waves.clear_group_or_list(enemies)
 	_wave_queue = _waves.build_night_wave_queue(day, act)
 	_spawn_timer = 0.8
-	var title = "NIGHT %d - BLOOD MOON!" % day if is_blood_moon else "NIGHT %d" % day
+	var title = "NIGHT %d - BLOOD MOON!" % day if is_blood_moon else "NIGHT %d - EVEN MOON" % day
 	var sub = (
 		"Hold every ring! They are swarming from all sides!"
-		if is_blood_moon else "Defend the rings and house until dawn."
+		if is_blood_moon else "The crimson Even Moon watches. Defend until dawn."
 	)
 	_hud.show_header_banner(
-		title, sub, Color(1.0, 0.34, 0.30) if is_blood_moon else Color(0.84, 0.88, 1.0), 2.5
+		title, sub, Color(1.0, 0.34, 0.24) if is_blood_moon else Config.EVEN_MOON_BANNER, 2.5
 	)
 
 
@@ -462,11 +467,15 @@ func _spawn_enemy(etype: String, pos: Vector2, is_wanderer: bool) -> Enemy:
 	return e
 
 
-func _spawn_dog(pos: Vector2, start_mode: int = Dog.Mode.STRAY) -> Dog:
+func _spawn_dog(
+	pos: Vector2, start_mode: int = Dog.Mode.STRAY, start_hp: int = -1
+) -> Dog:
 	var d = Dog.new()
 	if not d.setup(pos):
 		return null
 	d.mode = start_mode as Dog.Mode
+	if start_hp > 0:
+		d.hp = mini(start_hp, d.max_hp)
 	d.tamed.connect(func(_dog: Dog) -> void:
 		_sfx.play("dog_bark", -6.0)
 		_unlock_achievement("tamed_dog")
@@ -476,6 +485,11 @@ func _spawn_dog(pos: Vector2, start_mode: int = Dog.Mode.STRAY) -> Dog:
 		_sfx.play("dog_bark", -12.0)
 		if is_instance_valid(en):
 			_fx.spawn_sparks(en.position, Color(1.0, 0.42, 0.34, 1.0), 5)
+	)
+	d.died.connect(func(fallen: Dog) -> void:
+		_sfx.play("player_hit", -8.0)
+		_fx.spawn_sparks(fallen.position, Color(1.0, 0.32, 0.28, 1.0), 8)
+		_hud.show_message("Your companion dog fell in battle!", 2.4, Color(1.0, 0.42, 0.38))
 	)
 	_entities_layer.add_child(d)
 	dogs.append(d)
@@ -585,16 +599,13 @@ func _handle_interact_press() -> void:
 
 
 func _try_open_nearby_structure_menu() -> void:
-	var best = _waves.find_nearest_structure(
-		structures, _player.position, Config.STRUCTURE_MENU_REACH
-	)
+	var best = _waves.find_nearest_structure(structures, _player.position, Config.STRUCTURE_MENU_REACH)
 	if best != null:
 		_open_structure_menu(best)
 
 
 func _open_structure_menu(st: Structure) -> void:
-	_pre_pause_state = state
-	state = GameState.PAUSED
+	_enter_menu_pause()
 	_menus.open_structure_menu(
 		st, bag, stockpile, act, upgrades, _shop.compute_ring_stats(fences), watchtowers.size()
 	)
@@ -609,33 +620,23 @@ func _toggle_dogs_mode() -> void:
 				_sfx.play("dog_bark", -10.0)
 
 
+func _on_tame_dog_clicked() -> void:
+	if _menus.is_open() or _player.inside_house or _player.dead:
+		return
+	var stray = _waves.find_nearest_stray_dog(dogs, _player.position, Config.DOG_TAME_RANGE)
+	if stray != null and stray.tame_now():
+		_fx.spawn_sparks(stray.position, Color(0.55, 0.96, 0.62, 1.0), 8)
+
+
 func _step_hold_search_and_tame(delta: float) -> void:
 	var holding_e = (not _player.inside_house) and Input.is_key_pressed(KEY_E)
-	var taming_dog = null
-	_tame_progress = 0.0
-
-	for d in dogs:
-		if not is_instance_valid(d) or d.mode != Dog.Mode.STRAY:
-			continue
-		if holding_e and taming_dog == null and d.position.distance_to(_player.position) <= 24.0:
-			taming_dog = d
-			d.advance_tame(delta, true)
-			_tame_progress = clampf(d.tame_progress / Config.DOG_TAME_TIME, 0.0, 1.0)
-		else:
-			d.advance_tame(delta, false)
-
-	if not holding_e or taming_dog != null:
-		_search_prop_id = -1
-		_search_timer = 0.0
-		return
-	var prop = _map.find_nearest_searchable(_player.position, 32.0)
+	var prop = _map.find_nearest_searchable(_player.position, 32.0) if holding_e else {}
 	if prop.is_empty():
 		_search_prop_id = -1
 		_search_timer = 0.0
 		return
-	var pid = int(prop["id"])
-	if _search_prop_id != pid:
-		_search_prop_id = pid
+	if _search_prop_id != int(prop["id"]):
+		_search_prop_id = int(prop["id"])
 		_search_timer = 0.0
 	_search_timer += delta
 	if _search_timer >= Config.SEARCH_HOLD_TIME:
@@ -648,10 +649,9 @@ func _step_hover_target() -> void:
 	var mouse_world = get_global_mouse_position()
 	var found = null
 	for s in structures:
-		if is_instance_valid(s) and s.is_built:
-			if s.visual_rect.has_point(mouse_world):
-				found = s
-				break
+		if is_instance_valid(s) and s.is_built and s.visual_rect.has_point(mouse_world):
+			found = s
+			break
 	if found != _hovered_struct:
 		if is_instance_valid(_hovered_struct):
 			_hovered_struct.set_hovered(false)
@@ -770,6 +770,8 @@ func _on_player_died() -> void:
 func _on_upgrade_action(action_id: String, data: Dictionary) -> void:
 	if _shop.handle_settings_action(action_id, settings, _menus):
 		return
+	if _shop.handle_inventory_action(action_id, data, self):
+		return
 	if action_id == "restart_day":
 		_menus.close_all()
 		_retry_day()
@@ -795,6 +797,8 @@ func _on_upgrade_action(action_id: String, data: Dictionary) -> void:
 	if is_instance_valid(cur) and _menus.active_panel == "structure":
 		var rs = _shop.compute_ring_stats(fences)
 		_menus.open_structure_menu(cur, bag, stockpile, act, upgrades, rs, watchtowers.size())
+	elif _menus.active_panel == "crafting":
+		_menus.open_crafting_menu(bag, stockpile)
 
 
 func _spawn_watchtower(world_pos: Vector2, start_hp: int = -1) -> Watchtower:
@@ -818,17 +822,12 @@ func _update_lighting_and_tint() -> void:
 		target_tint = Config.TINT_HOPELESS
 	_tint.color = _tint.color.lerp(target_tint, 0.08)
 	if house != null:
-		house.update_lighting(
-			state == GameState.NIGHT,
-			state == GameState.DAY and is_dusk_warned,
-			is_blood_moon,
-			_intruders_inside
-		)
+		var dusk = state == GameState.DAY and is_dusk_warned
+		house.update_lighting(state == GameState.NIGHT, dusk, is_blood_moon, _intruders_inside)
 
 
 func _update_hud() -> void:
-	var search_prog = _search_timer / Config.SEARCH_HOLD_TIME if _search_prop_id >= 0 else 0.0
-	var s_prog = maxf(search_prog, _tame_progress)
+	var s_prog = _search_timer / Config.SEARCH_HOLD_TIME if _search_prop_id >= 0 else 0.0
 	var near_st = _waves.find_nearest_structure(structures, _player.position, 28.0)
 	_hud.update_hud(_waves.make_hud_data(
 		self, state == GameState.NIGHT, near_st, _hovered_struct,
@@ -881,7 +880,7 @@ func _retry_day() -> void:
 	for wd in _day_save.get("watchtowers", []):
 		_spawn_watchtower(wd["pos"], int(wd.get("hp", Config.WATCHTOWER_HP)))
 	for dd in _day_save.get("dogs", []):
-		_spawn_dog(dd["pos"], int(dd.get("mode", Dog.Mode.FOLLOW)))
+		_spawn_dog(dd["pos"], int(dd.get("mode", Dog.Mode.FOLLOW)), int(dd.get("hp", Config.DOG_HP)))
 	_map.set_act1_fog_visible(act == 1)
 	_apply_camera_limits()
 	_hud.show_gameplay_hud()
@@ -900,10 +899,8 @@ func _rebuild_world_and_structures(seed_val: int) -> void:
 	_map.build_world(_ground_layer, _decals_layer, _entities_layer, seed_val)
 	var built = _map.spawn_base_buildings(_decals_layer, _entities_layer, _on_house_crumbled)
 	house = built["house"]
-	for s in built["fences"]:
-		fences.append(s)
-	for s in built["structures"]:
-		structures.append(s)
+	fences.assign(built["fences"])
+	structures.assign(built["structures"])
 	if _player.get_parent() != _entities_layer:
 		_entities_layer.add_child(_player)
 	_fx.set_debug_refs(structures, _player, enemies)
@@ -926,11 +923,11 @@ func _build_scene_tree() -> void:
 	_night_intro = NightIntro.new()
 	_menus = Menus.new()
 	_popups = Popups.new()
-	for child_n in [
-		_ground_layer, _decals_layer, _entities_layer, _fx, _tint,
-		_camera, _sfx, _hud, _intro, _night_intro, _menus, _popups
+	for c in [
+		_ground_layer, _decals_layer, _entities_layer, _fx, _tint, _camera,
+		_sfx, _hud, _intro, _night_intro, _menus, _popups
 	]:
-		add_child(child_n)
+		add_child(c)
 	_player = Player.new()
 	_player.spear_swung.connect(_on_player_spear_swung)
 	_player.bow_fired.connect(_on_player_bow_fired)
@@ -952,14 +949,15 @@ func _connect_ui_signals() -> void:
 		_menus.open_info_panel(kind, settings)
 	)
 	_hud.trap_slot_clicked.connect(_toggle_trap_slot)
+	_hud.tame_dog_requested.connect(_on_tame_dog_clicked)
 	_hud.quit_requested.connect(func() -> void: get_tree().quit(0))
 	_hud.retry_day_requested.connect(_retry_day)
-	_hud.new_game_requested.connect(func() -> void: _begin_new_run())
+	_hud.new_game_requested.connect(_begin_new_run)
 	_hud.return_to_menu_requested.connect(_return_to_title)
 	_intro.sequence_finished.connect(func(_s: bool) -> void:
-		if _pending_story_cb.is_valid():
-			var cb: Callable = _pending_story_cb
-			_pending_story_cb = Callable()
+		var cb: Callable = _pending_story_cb
+		_pending_story_cb = Callable()
+		if cb.is_valid():
 			cb.call()
 	)
 	_night_intro.finished.connect(_start_night_combat)

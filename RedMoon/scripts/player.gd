@@ -9,20 +9,21 @@ signal bow_empty_clicked()
 signal bow_reloaded()
 signal died()
 
-var hp: int = 50
-var max_hp: int = 50
+var hp: int = Config.PLAYER_HP
+var max_hp: int = Config.PLAYER_HP
 var facing: String = "down"
 var facing_vec: Vector2 = Vector2.DOWN
 var dead: bool = false
 var inside_house: bool = false
-var active_weapon: String = "spear"
+var active_weapon: String = "bow"
+var unlocked_weapons: Array[String] = ["bow", "spear"]
 
 # bow stats
-var mag: int = 6
-var mag_max: int = 6
-var reserve_max: int = 30
-var bow_reload_time: float = 2.2
-var bow_damage: int = 1
+var mag: int = Config.BOW_MAG
+var mag_max: int = Config.BOW_MAG
+var reserve_max: int = Config.BOW_RESERVE_MAX
+var bow_reload_time: float = Config.BOW_RELOAD
+var bow_damage: int = Config.BOW_DAMAGE
 var bow_pierce: int = 0
 var reload_timer: float = 0.0
 var bow_cd: float = 0.0
@@ -100,7 +101,8 @@ func reset_for_new_game(spawn_pos: Vector2) -> void:
 	facing_vec = Vector2.DOWN
 	dead = false
 	inside_house = false
-	active_weapon = "spear"
+	unlocked_weapons = Config.DEFAULT_WEAPONS.duplicate()
+	active_weapon = "bow"
 	melee_damage = 1
 	speed_mult = 1.0
 	bounce_cd_mult = 1.0
@@ -235,10 +237,35 @@ func step_player(
 			_play_anim("idle_" + facing)
 
 
+func equip_weapon(weapon_id: String) -> bool:
+	if not unlocked_weapons.has(weapon_id) or not Config.WEAPON_DEFS.has(weapon_id):
+		return false
+	active_weapon = weapon_id
+	return true
+
+
+func unlock_weapon(weapon_id: String) -> bool:
+	if not Config.WEAPON_DEFS.has(weapon_id):
+		return false
+	if not unlocked_weapons.has(weapon_id):
+		unlocked_weapons.append(weapon_id)
+	return true
+
+
+# extensible dispatch so phase-2 thrown weapons plug into one branch here
+func use_active_weapon(enemies: Array, inventory: Bag) -> bool:
+	match active_weapon:
+		"spear":
+			return try_swing()
+		"bow":
+			return try_fire_bow(enemies, inventory)
+		_:
+			return try_swing()
+
+
 func try_swing() -> bool:
 	if dead or inside_house or _swing_cd > 0.0 or _swing_timer > 0.0:
 		return false
-	active_weapon = "spear"
 	_swing_timer = Config.SWING_TIME
 	_swing_cd = Config.SWING_COOLDOWN
 	_play_anim("punch_" + facing)
@@ -253,7 +280,6 @@ func try_swing() -> bool:
 func try_fire_bow(enemies: Array, inventory: Bag) -> bool:
 	if dead or bow_cd > 0.0 or reload_timer > 0.0:
 		return false
-	active_weapon = "bow"
 	if mag <= 0:
 		if inventory.count("arrow") > 0:
 			start_reload(inventory)
@@ -310,19 +336,19 @@ func apply_upgrade_stats(upgrades: Dictionary) -> void:
 	if tier >= 3:
 		melee_damage = 2
 		speed_mult = 1.18
-		bounce_cd_mult = 0.65
-		mag_max = 12
-		reserve_max = 60
-		bow_reload_time = 1.3
+		bounce_cd_mult = 0.75
+		mag_max = 9
+		reserve_max = 50
+		bow_reload_time = 1.6
 		bow_damage = 2
 		bow_pierce = 1
 	elif tier == 2:
 		melee_damage = 2
 		speed_mult = 1.12
-		bounce_cd_mult = 0.85
-		mag_max = 10
-		reserve_max = 45
-		bow_reload_time = 1.6
+		bounce_cd_mult = 0.90
+		mag_max = 7
+		reserve_max = 40
+		bow_reload_time = 2.0
 		bow_damage = 1
 		bow_pierce = 1
 	else:

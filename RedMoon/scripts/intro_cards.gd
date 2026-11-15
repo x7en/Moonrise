@@ -139,6 +139,7 @@ func _render_card_art(art_kind: String) -> void:
 			tex_rect.texture = Art.tex("props/rubble")
 		_:
 			tex_rect.texture = Art.tex("sky/moon")
+			tex_rect.modulate = Config.EVEN_MOON_COLOR
 
 	_art_holder.add_child(tex_rect)
 
@@ -208,10 +209,10 @@ static func get_opening_cards() -> Array[Dictionary]:
 	return [
 		{
 			"title": "THE NIGHT THE SKY CHANGED",
-			"body": "Three weeks after the outbreak, the valley fell silent.\n"
+			"body": "Three weeks after the outbreak, the crimson Even Moon rose over the valley.\n"
 			+ "Only the old hilltop farmhouse still has walls worth holding.",
 			"art": "moon",
-			"accent": Color(0.92, 0.94, 1.0),
+			"accent": Config.EVEN_MOON_BANNER,
 		},
 		{
 			"title": "HOLD THE YARD",

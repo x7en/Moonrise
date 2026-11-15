@@ -84,6 +84,7 @@ const ACHIEVEMENT_DEFS := {
 
 var intro_seen: bool = false
 var play_intro: bool = true
+var dev_always_play_intro: bool = false
 var fullscreen: bool = false
 var master_volume: float = 1.0
 var screen_shake: bool = true
@@ -99,10 +100,15 @@ func save_settings() -> void:
 	var cfg = ConfigFile.new()
 	cfg.set_value("story", "intro_seen", intro_seen)
 	cfg.set_value("story", "play_intro", play_intro)
+	cfg.set_value("dev", "always_play_intro", dev_always_play_intro)
 	cfg.set_value("display", "fullscreen", fullscreen)
 	cfg.set_value("audio", "master_volume", master_volume)
 	cfg.set_value("gameplay", "screen_shake", screen_shake)
 	cfg.save(SETTINGS_PATH)
+
+
+func should_auto_play_story() -> bool:
+	return dev_always_play_intro or (not intro_seen)
 
 
 func mark_intro_completed() -> void:
@@ -150,6 +156,7 @@ func _load_settings() -> void:
 		return
 	intro_seen = bool(cfg.get_value("story", "intro_seen", false))
 	play_intro = bool(cfg.get_value("story", "play_intro", not intro_seen))
+	dev_always_play_intro = bool(cfg.get_value("dev", "always_play_intro", false))
 	fullscreen = bool(cfg.get_value("display", "fullscreen", false))
 	master_volume = clampf(float(cfg.get_value("audio", "master_volume", 1.0)), 0.0, 1.0)
 	screen_shake = bool(cfg.get_value("gameplay", "screen_shake", true))

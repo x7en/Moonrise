@@ -3,14 +3,19 @@ extends CharacterBody2D
 
 signal tamed(dog: Dog)
 signal attacked_enemy(enemy: Node)
+signal died(dog: Dog)
 
 enum Mode { STRAY, FOLLOW, GUARD }
 
 var mode: Mode = Mode.STRAY
 var guard_anchor: Vector2 = Vector2.ZERO
-var tame_progress: float = 0.0
+var hp: int = Config.DOG_HP
+var max_hp: int = Config.DOG_HP
 
 var _sprite: AnimatedSprite2D
+var _hp_bar_bg: ColorRect
+var _hp_bar_fill: ColorRect
+var _flash_timer: float = 0.0
 var _attack_cd: float = 0.0
 var _facing: String = "right"  # side-view sheets only have left/right silhouettes
 var _flip_cd: float = 0.0
@@ -45,7 +50,9 @@ func setup(spawn_pos: Vector2) -> bool:
 	_last_pos = position
 	_flank_sign = 1.0 if (randi() % 2 == 0) else -1.0
 	mode = Mode.STRAY
-	# immortal companion with no health - doesn't block player or enemies
+	max_hp = Config.DOG_HP
+	hp = max_hp
+	# doesn't physically block player movement; enemies check distance to damage tamed dogs
 	collision_layer = 0
 	collision_mask = 1
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
@@ -73,7 +80,74 @@ func setup(spawn_pos: Vector2) -> bool:
 	_sprite.offset = Vector2(-24.0, -40.0)
 	_sprite.play(&"idle_right")
 	add_child(_sprite)
+
+	_hp_bar_bg = ColorRect.new()
+	_hp_bar_bg.position = Vector2(-7.0, -21.0)
+	_hp_bar_bg.size = Vector2(14.0, 3.0)
+	_hp_bar_bg.color = Color(0.08, 0.06, 0.10, 0.85)
+	_hp_bar_bg.visible = false
+	add_child(_hp_bar_bg)
+
+	_hp_bar_fill = ColorRect.new()
+	_hp_bar_fill.position = Vector2(1.0, 1.0)
+	_hp_bar_fill.size = Vector2(12.0, 1.0)
+	_hp_bar_fill.color = Color(0.42, 0.90, 0.45, 1.0)
+	_hp_bar_bg.add_child(_hp_bar_fill)
 	return true
+
+
+func is_tamed() -> bool:
+	return mode != Mode.STRAY
+
+
+func is_alive() -> bool:
+	return hp > 0
+
+
+func tame_now() -> bool:
+	if mode != Mode.STRAY:
+		return false
+	mode = Mode.FOLLOW
+	hp = max_hp
+	_refresh_hp_bar()
+	tamed.emit(self)
+	return true
+
+
+func take_damage(dmg: int) -> bool:
+	if mode == Mode.STRAY or hp <= 0:
+		return false
+	hp = maxi(0, hp - dmg)
+	_flash_timer = 0.16
+	if _sprite != null:
+		_sprite.modulate = Color(1.0, 0.42, 0.42, 1.0)
+	_refresh_hp_bar()
+	if hp <= 0:
+		died.emit(self)
+		queue_free()
+		return true
+	return false
+
+
+func heal_for_new_day() -> void:
+	if mode == Mode.STRAY or hp <= 0:
+		return
+	hp = mini(max_hp, hp + 5)
+	_refresh_hp_bar()
+
+
+func _refresh_hp_bar() -> void:
+	if _hp_bar_bg == null or _hp_bar_fill == null:
+		return
+	var show_bar := (mode != Mode.STRAY and hp > 0 and hp < max_hp)
+	_hp_bar_bg.visible = show_bar
+	if show_bar:
+		var frac := clampf(float(hp) / float(maxi(1, max_hp)), 0.0, 1.0)
+		_hp_bar_fill.size.x = maxf(1.0, floorf(12.0 * frac))
+		_hp_bar_fill.color = (
+			Color(0.42, 0.90, 0.45) if frac > 0.5
+			else (Color(0.95, 0.78, 0.25) if frac > 0.25 else Color(0.95, 0.30, 0.26))
+		)
 
 
 func toggle_guard_mode(anchor_pos: Vector2) -> String:
@@ -89,22 +163,6 @@ func toggle_guard_mode(anchor_pos: Vector2) -> String:
 	return "Dog following you"
 
 
-func advance_tame(delta: float, is_holding: bool) -> bool:
-	if mode != Mode.STRAY:
-		return false
-
-	if is_holding:
-		tame_progress += delta
-		if tame_progress >= Config.DOG_TAME_TIME:
-			mode = Mode.FOLLOW
-			tamed.emit(self)
-			return true
-	else:
-		tame_progress = maxf(0.0, tame_progress - delta * 2.0)
-
-	return false
-
-
 func step_dog(
 	delta: float,
 	player_pos: Vector2,
@@ -113,9 +171,15 @@ func step_dog(
 	player_facing: Vector2 = Vector2.RIGHT,
 	player_inside: bool = false
 ) -> void:
+	if hp <= 0:
+		return
 	_attack_cd = maxf(0.0, _attack_cd - delta)
 	_avoid_timer = maxf(0.0, _avoid_timer - delta)
 	_flip_cd = maxf(0.0, _flip_cd - delta)
+	if _flash_timer > 0.0:
+		_flash_timer = maxf(0.0, _flash_timer - delta)
+		if _flash_timer <= 0.0 and _sprite != null:
+			_sprite.modulate = Color.WHITE
 	_update_hop_and_lunge(delta)
 
 	if mode == Mode.STRAY:
@@ -150,10 +214,10 @@ func step_dog(
 			if _attack_cd <= 0.0:
 				_attack_cd = Config.DOG_ATTACK_INTERVAL
 				_lunge_timer = 0.16
-				target_enemy.take_hit(1, to_e.normalized(), false)
+				target_enemy.take_hit(Config.DOG_DAMAGE, to_e.normalized(), false)
 				attacked_enemy.emit(target_enemy)
 		else:
-			desired_vel = _steer_toward(to_e / dist_e, 108.0)
+			desired_vel = _steer_toward(to_e / dist_e, Config.DOG_SPEED_CHASE)
 	elif mode == Mode.GUARD:
 		desired_vel = _compute_guard_patrol_vel(delta)
 	else:
@@ -163,7 +227,11 @@ func step_dog(
 		# hysteresis prevents jittering between run and idle at the edge of stop radius
 		var stop_r = 10.0 if _is_moving else 22.0
 		if dist_h > stop_r:
-			var speed = 82.0 if dist_h < 68.0 else minf(126.0, 82.0 + (dist_h - 68.0) * 0.6)
+			var base_spd = Config.DOG_SPEED_FOLLOW
+			var speed = (
+				base_spd if dist_h < 68.0
+				else minf(Config.DOG_SPEED_CATCHUP_MAX, base_spd + (dist_h - 68.0) * 0.4)
+			)
 			desired_vel = _steer_toward(to_heel / dist_h, speed)
 		elif absf(player_facing.x) > 0.25:
 			# align nicely with the player's facing direction when stopped at heel
@@ -237,7 +305,7 @@ func _step_stray_wander(delta: float, player_pos: Vector2, world_bounds: Rect2) 
 func _compute_guard_patrol_vel(delta: float) -> Vector2:
 	var to_anchor = guard_anchor - position
 	if to_anchor.length() > 36.0:
-		return _steer_toward(to_anchor.normalized(), 74.0)
+		return _steer_toward(to_anchor.normalized(), Config.DOG_SPEED_FOLLOW)
 	if _wander_wait > 0.0:
 		_wander_wait -= delta
 		return Vector2.ZERO
@@ -247,7 +315,7 @@ func _compute_guard_patrol_vel(delta: float) -> Vector2:
 		var ang = randf_range(0.0, TAU)
 		_wander_target = guard_anchor + Vector2(cos(ang), sin(ang)) * randf_range(12.0, 26.0)
 		return Vector2.ZERO
-	return _steer_toward(to_patrol.normalized(), 44.0)
+	return _steer_toward(to_patrol.normalized(), 34.0)
 
 
 func _steer_toward(dir_n: Vector2, speed: float) -> Vector2:
