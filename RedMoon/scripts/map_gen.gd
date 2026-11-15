@@ -121,7 +121,6 @@ func build_world(
 	search_props.clear()
 
 	_build_ground(ground_layer)
-	_make_yard_paths(decals_layer)
 	_build_world_border_walls(entities_layer)
 	_build_act1_boundary_overlay(decals_layer)
 	_build_nature_and_pois(decals_layer, entities_layer)
@@ -293,8 +292,13 @@ func _build_ground(ground_layer: Node2D) -> void:
 			var on_driveway = (
 				wx >= road_x_left and wx <= road_x_right and wy >= hc.y + 160.0 and wy <= road_y_bot
 			)
+			var on_yard_path = (
+				absf(wx - hc.x) <= 14.0 and wy >= hc.y + 42.0 and wy < hc.y + 160.0
+			)
 			if on_main_road or on_driveway:
 				src_img = road_img
+			elif on_yard_path:
+				src_img = waste_imgs[rng.randi() % waste_imgs.size()]
 			elif not yard_rect.has_point(pt) and rng.randf() < 0.16:
 				src_img = waste_imgs[rng.randi() % waste_imgs.size()]
 
@@ -316,39 +320,6 @@ func _make_asphalt_tile(base_img: Image) -> Image:
 			var gray = (c.r * 0.3 + c.g * 0.5 + c.b * 0.2) * 0.58
 			out.set_pixel(x, y, Color(gray * 0.98, gray * 0.96, gray * 1.04, 1.0))
 	return out
-
-
-func _make_yard_paths(decals_layer: Node2D) -> void:
-	# stepping stones from the porch down through the gates to the road
-	var hc = Config.HOUSE_CENTER
-	var stones: Array = [
-		[Vector2(-5.0, 49.0), Vector2(6.0, 4.0)],
-		[Vector2(2.0, 53.0), Vector2(5.0, 4.0)],
-		[Vector2(-3.0, 58.0), Vector2(6.0, 4.0)],
-		[Vector2(2.0, 64.0), Vector2(5.0, 4.0)],
-		[Vector2(-4.0, 74.0), Vector2(6.0, 4.0)],
-		[Vector2(2.0, 81.0), Vector2(5.0, 4.0)],
-		[Vector2(-3.0, 90.0), Vector2(6.0, 4.0)],
-		[Vector2(2.0, 98.0), Vector2(5.0, 4.0)],
-		[Vector2(-4.0, 118.0), Vector2(6.0, 4.0)],
-		[Vector2(2.0, 128.0), Vector2(6.0, 4.0)],
-		[Vector2(-3.0, 140.0), Vector2(6.0, 4.0)],
-		[Vector2(2.0, 162.0), Vector2(6.0, 4.0)],
-		[Vector2(-3.0, 174.0), Vector2(6.0, 4.0)],
-	]
-	for st in stones:
-		var off = st[0]
-		var sz = st[1]
-		var border = ColorRect.new()
-		border.position = (hc + off - Vector2(1.0, 1.0)).round()
-		border.size = sz + Vector2(2.0, 2.0)
-		border.color = Color(0.16, 0.14, 0.18, 0.78)
-		decals_layer.add_child(border)
-		var fill = ColorRect.new()
-		fill.position = (hc + off).round()
-		fill.size = sz
-		fill.color = Color(0.60, 0.63, 0.70, 0.92)
-		decals_layer.add_child(fill)
 
 
 func _build_world_border_walls(entities_layer: Node2D) -> void:
@@ -461,27 +432,49 @@ func _build_nature_and_pois(decals_layer: Node2D, entities_layer: Node2D) -> voi
 		"nature/tuft",
 		"nature/rock",
 	]
-	for _t in range(72):
-		var tp = Vector2(
-			rng.randf_range(44.0, Config.WORLD_SIZE.x - 44.0),
-			rng.randf_range(44.0, Config.WORLD_SIZE.y - 44.0)
+	var act1_zone = Config.ACT1_RECT.grow(-24.0)
+	var driveway_clear = Rect2(hc.x - 36.0, hc.y + 40.0, 72.0, 230.0)
+
+	# dense starter forest ringing the yard inside Act 1 so day 1 doesn't feel bare
+	for _t1 in range(110):
+		var tp1 = Vector2(
+			rng.randf_range(act1_zone.position.x, act1_zone.end.x),
+			rng.randf_range(act1_zone.position.y, act1_zone.end.y)
 		).round()
-		if safe_yard.has_point(tp):
+		if safe_yard.has_point(tp1) or driveway_clear.has_point(tp1):
 			continue
-		if absf(tp.y - (hc.y + 212.0)) < 36.0:
+		if absf(tp1.y - (hc.y + 230.0)) < 34.0:
 			continue
-		if _too_close(tp, used_spots, 42.0):
+		if _too_close(tp1, used_spots, 26.0):
+			continue
+		used_spots.append(tp1)
+		var key_t1 = tree_keys[rng.randi() % tree_keys.size()]
+		_spawn_prop_node(entities_layer, key_t1, tp1, Vector2(10.0, 8.0))
+
+	# lush valley forest across the full map
+	for _t in range(360):
+		var tp = Vector2(
+			rng.randf_range(36.0, Config.WORLD_SIZE.x - 36.0),
+			rng.randf_range(36.0, Config.WORLD_SIZE.y - 36.0)
+		).round()
+		if safe_yard.has_point(tp) or driveway_clear.has_point(tp):
+			continue
+		if absf(tp.y - (hc.y + 230.0)) < 36.0:
+			continue
+		if _too_close(tp, used_spots, 26.0):
 			continue
 		used_spots.append(tp)
 		var key_t = tree_keys[rng.randi() % tree_keys.size()]
-		_spawn_prop_node(entities_layer, key_t, tp, Vector2(14.0, 10.0))
+		_spawn_prop_node(entities_layer, key_t, tp, Vector2(10.0, 8.0))
 
-	for _b in range(60):
+	for _b in range(90):
 		var bp = Vector2(
 			rng.randf_range(32.0, Config.WORLD_SIZE.x - 32.0),
 			rng.randf_range(32.0, Config.WORLD_SIZE.y - 32.0)
 		).round()
-		if safe_yard.has_point(bp):
+		if safe_yard.has_point(bp) or driveway_clear.has_point(bp):
+			continue
+		if absf(bp.y - (hc.y + 230.0)) < 32.0:
 			continue
 		var bush_spr = Art.make_static_sprite(
 			bush_keys[rng.randi() % bush_keys.size()], true

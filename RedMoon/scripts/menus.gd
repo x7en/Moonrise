@@ -68,13 +68,13 @@ func open_inventory(
 	)
 	_add_info_row(
 		"Traps Owned",
-		"Spike: %d   Snare: %d   Lure: %d"
-		% [bag.count("trap_spike"), bag.count("trap_snare"), bag.count("trap_lure")]
+		"Bear: %d   Spike: %d   Lure: %d"
+		% [bag.count("trap_snare"), bag.count("trap_spike"), bag.count("trap_lure")]
 	)
 	_add_info_row("Gear Tier", "Tier %d / 3" % int(upgrades.get("gear_tier", 1)))
 
 	_add_button("Close [I / Esc]", "close", {}, true)
-	_footer_lbl.text = "Tip: Press 1, 2, or 3 anytime to place zombie traps!"
+	_footer_lbl.text = "Tip: Press 1-3 or click trap slots to place; craft more at House [U]!"
 	_focus_index(0)
 
 
@@ -90,7 +90,7 @@ func open_structure_menu(
 	active_panel = "structure"
 	current_structure = st
 	visible = true
-	_set_panel_size(388.0, 224.0)
+	_set_panel_size(396.0, 268.0)
 	_clear_list()
 
 	if st.kind == Structure.Kind.HOUSE:
@@ -107,11 +107,12 @@ func open_pause_menu() -> void:
 	active_panel = "pause"
 	current_structure = null
 	visible = true
-	_set_panel_size(300.0, 224.0)
+	_set_panel_size(300.0, 248.0)
 	_title_lbl.text = "PAUSED"
 	_subtitle_lbl.text = "Paused."
 	_clear_list()
 	_add_button("Resume", "resume", {}, true)
+	_add_button("Tutorial", "show_tutorial", {}, true)
 	_add_button("Controls", "show_controls", {}, true)
 	_add_button("Settings", "show_settings", {}, true)
 	_add_button("Achievements", "show_achievements", {}, true)
@@ -125,20 +126,33 @@ func open_info_panel(kind: String, settings: SaveData) -> void:
 	active_panel = "info"
 	current_structure = null
 	visible = true
-	_set_panel_size(430.0, 256.0)
+	_set_panel_size(456.0, 278.0)
 	_clear_list()
 
-	if kind == "controls":
+	if kind == "tutorial":
+		_title_lbl.text = "HOW TO PLAY"
+		_subtitle_lbl.text = "Survive 7 nights and hold the farmhouse"
+		for step in [
+			["1. Morning Gather", "Exit the open south gate; pick up planks & hold E on wrecks."],
+			["2. Store & Upgrade", "Walk by the house to store loot. Press U to upgrade/craft."],
+			["3. Spear & Bow", "Space swings spear. Click/Tap or F auto-aims bow (1.5s CD)."],
+			["4. Bear Traps", "Press 1-3 or click slot, then click/T. Craft at House [U]."],
+			["5. Bounce Back", "Press B anytime to teleport home and start healing!"],
+			["6. Night Shelter", "Close fence gates [E] at dusk & enter the front door [E]."],
+			["7. Dogs & Arrow", "Follow the BASE arrow home. Hold E on strays (G Follow/Guard)."],
+		]:
+			_add_info_row(String(step[0]), String(step[1]))
+	elif kind == "controls":
 		_title_lbl.text = "CONTROLS"
 		_subtitle_lbl.text = "Keyboard + Mouse"
 		for row in [
 			["Move", "WASD / Arrow Keys"],
-			["Spear / Bow / Reload", "Space Melee  |  F or Click Bow  |  R Reload"],
-			["Door / Fence Gate / Search", "E Open-Close Door or Gate  |  Hold E Search"],
-			["Place Zombie Traps", "1 Spike  2 Snare  3 Lure  |  Click or T Place"],
-			["Upgrade House / Whole Ring", "U or Click House / Fence"],
-			["Bag / Shockwave", "I Bag  |  Q Shockwave"],
-			["Fullscreen / Mute / Pause", "F11 Fullscreen  |  M Mute  |  Esc Pause"],
+			["Spear / Bow / Reload", "Space Melee  |  Click or F Bow (1.5s)  |  R Reload"],
+			["Door / Fence Gate / Search", "E Open-Close Door or Gate  |  Hold E Search/Tame"],
+			["Place Traps", "1 Bear  2 Spike  3 Lure (or Click Slot)  |  Click/T Place"],
+			["Bounce Back / Shockwave", "B Recall Home & Heal  |  Q Shockwave"],
+			["Upgrade House / Ring", "U or Right-Click House / Fence"],
+			["Bag / Dog / Pause", "I Bag  |  G Dog Mode  |  F11 Fullscreen  |  Esc Pause"],
 		]:
 			_add_info_row(String(row[0]), String(row[1]))
 	elif kind == "settings":
@@ -164,8 +178,10 @@ func open_info_panel(kind: String, settings: SaveData) -> void:
 	elif kind == "credits":
 		_title_lbl.text = "CREDITS"
 		_subtitle_lbl.text = "Moonrise (Godot 4.7)"
+		_add_info_row("Game Designer & Lead Developer", "Abdul Haseeb", true)
+		_add_info_row("Secondary Designer", "Waseem Qadir", true)
+		_add_info_row("Helper", "Bilal", true)
 		_add_info_row("World & Sprites", "TheLazyStone + Custom 3/4 Cottage")
-		_add_info_row("Moon Art", "Owner-supplied moon sprites")
 		_add_info_row("Fonts", "Pixel Operator (CC0) & KiwiSoda")
 		_add_info_row("Audio", "Procedural 8-bit Web-safe SFX")
 
@@ -288,6 +304,34 @@ func _build_house_menu(
 		"buy_arrows",
 		{"cost": Config.COST_BUY_ARROWS},
 		Config.COST_BUY_ARROWS,
+		bag,
+		stockpile
+	)
+
+	var bear_cost = (Config.TRAPS["trap_snare"])["cost"]
+	_add_cost_button(
+		"Craft +2 Bear Traps (Owned: %d)" % bag.count("trap_snare"),
+		"craft_trap",
+		{"trap_key": "trap_snare", "qty": 2, "cost": bear_cost},
+		bear_cost,
+		bag,
+		stockpile
+	)
+	var spike_cost = (Config.TRAPS["trap_spike"])["cost"]
+	_add_cost_button(
+		"Craft +2 Spike Traps (Owned: %d)" % bag.count("trap_spike"),
+		"craft_trap",
+		{"trap_key": "trap_spike", "qty": 2, "cost": spike_cost},
+		spike_cost,
+		bag,
+		stockpile
+	)
+	var lure_cost = (Config.TRAPS["trap_lure"])["cost"]
+	_add_cost_button(
+		"Craft +1 Decoy Lure (Owned: %d)" % bag.count("trap_lure"),
+		"craft_trap",
+		{"trap_key": "trap_lure", "qty": 1, "cost": lure_cost},
+		lure_cost,
 		bag,
 		stockpile
 	)

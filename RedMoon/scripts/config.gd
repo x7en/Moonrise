@@ -33,11 +33,14 @@ const BOUNCE_CD_ACT2 := 40.0
 const SWING_GROWTH_PER_BOUNCE := 0.15
 const MAX_BOUNCE_BONUSES := 3
 const INSIDE_HEAL_INTERVAL := 2.0
+const RECALL_HEAL_DURATION := 6.0
+const RECALL_HEAL_INTERVAL := 0.5
+const RECALL_HEAL_TICK := 2
 
 
 # bow
-const BOW_RANGE := 150.0
-const BOW_FIRE_INTERVAL := 0.50
+const BOW_RANGE := 220.0
+const BOW_FIRE_INTERVAL := 1.5
 const BOW_MAG := 6
 const BOW_RELOAD := 2.2
 const BOW_RESERVE_MAX := 30
@@ -109,6 +112,7 @@ const FENCE_RINGS := [
 const BAG_CAPACITY := 16
 const ACT1_START_STOCKPILE := 4
 const ACT2_START_STOCKPILE := 8
+const START_BEAR_TRAPS := 3
 const START_SPIKE_TRAPS := 2
 const LOSE_BAG_AT_DUSK_ACT2 := true
 
@@ -149,7 +153,7 @@ const WATCHTOWER_FIRE_INTERVAL := 1.2
 # traps
 const MAX_TRAPS := 16
 const TRAP_MIN_SPACING := 14.0
-const TRAP_PLACE_RANGE := 72.0
+const TRAP_PLACE_RANGE := 96.0
 
 const TRAPS := {
 	"trap_spike": {
@@ -161,10 +165,10 @@ const TRAPS := {
 		"radius": 13.0,
 	},
 	"trap_snare": {
-		"label": "Bear Snare",
-		"cost": {"plank": 2, "scrap": 1},
+		"label": "Bear Trap",
+		"cost": {"plank": 2},
 		"damage": 1,
-		"root_time": 3.5,
+		"root_time": 3.0,
 		"max_triggers": 1,
 		"radius": 14.0,
 	},
@@ -212,11 +216,11 @@ const SEARCH_HOLD_TIME := 1.5
 
 const DOG_TAME_TIME := 2.0
 const DOG_MAX := 2
-const DOG_HP := 20
-const DOG_GUARD_RANGE := 60.0
-const DOG_ATTACK_INTERVAL := 0.8
+const DOG_GUARD_RANGE := 84.0
+const DOG_HUNT_RANGE := 240.0
+const DOG_ATTACK_INTERVAL := 0.75
 
-const METEOR_DAYS := [4, 6]
+const METEOR_DAYS := []
 const METEOR_COUNT_DAY4 := 22
 const METEOR_COUNT_DAY6 := 12
 const METEOR_TELEGRAPH_TIME := 1.4
@@ -229,7 +233,7 @@ const METEOR_STRUCT_DMG := 20
 const TINT_DAY := Color(1.0, 1.0, 1.0)
 const TINT_DUSK := Color(0.86, 0.67, 0.59)
 const TINT_NIGHT := Color(0.24, 0.28, 0.52)
-const TINT_BLOOD := Color(0.76, 0.22, 0.22)
+const TINT_BLOOD := Color(0.84, 0.16, 0.18)
 const TINT_HOPELESS := Color(0.58, 0.64, 0.74)
 
 

@@ -45,6 +45,7 @@ var _waves: Waves = Waves.new()
 var _wave_queue: Array[Dictionary] = []
 var _spawn_timer: float = 0.0
 var _bounce_cd: float = 0.0
+var _shockwave_cd: float = 0.0
 var _hit_stop: float = 0.0
 var _shake_timer: float = 0.0
 var _shake_amp: float = 0.0
@@ -60,10 +61,6 @@ var _hovered_struct: Structure
 var _search_prop_id: int = -1
 var _search_timer: float = 0.0
 var _tame_progress: float = 0.0
-var _meteor_pending: int = 0
-var _meteor_cd: float = 0.0
-var _meteor_day_active: bool = false
-var _meteor_hit_player: bool = false
 var _pending_story_cb: Callable = Callable()
 var _day_save: Dictionary = {}
 var _pre_pause_state: GameState = GameState.DAY
@@ -107,8 +104,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		var mb = event
 		if mb.pressed and mb.button_index == MOUSE_BUTTON_LEFT:
 			_handle_left_click()
-		elif mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT and _trap_mode_active:
-			_set_trap_mode(false)
+		elif mb.pressed and mb.button_index == MOUSE_BUTTON_RIGHT:
+			if _trap_mode_active:
+				_set_trap_mode(false)
+			else:
+				_try_right_click_structure()
+	elif event is InputEventScreenTouch:
+		var st = event
+		if st.pressed:
+			_handle_left_click()
 
 
 func _handle_key_press(ke: InputEventKey) -> void:
@@ -146,6 +150,8 @@ func _handle_key_press(ke: InputEventKey) -> void:
 		KEY_R:
 			if _player.start_reload(bag):
 				_sfx.play("bow_reload", -10.0)
+		KEY_B:
+			_try_bounce_back()
 		KEY_Q:
 			_try_shockwave()
 		KEY_E:
@@ -186,7 +192,7 @@ func _set_trap_mode(active: bool) -> void:
 
 
 func _place_selected_trap() -> void:
-	var keys: Array[String] = ["trap_spike", "trap_snare", "trap_lure"]
+	var keys: Array[String] = ["trap_snare", "trap_spike", "trap_lure"]
 	var t_key := keys[clampi(_selected_trap_idx - 1, 0, 2)]
 	var pos := _shop.compute_trap_place_pos(_trap_mode_active, self)
 	_shop.try_place_trap_at(t_key, pos, self)
@@ -195,22 +201,18 @@ func _place_selected_trap() -> void:
 func _handle_left_click() -> void:
 	if _menus.is_open() or (state != GameState.DAY and state != GameState.NIGHT):
 		return
-
 	if _trap_mode_active:
 		_place_selected_trap()
 		return
-
-	# clicking a nearby house or fence opens its upgrade panel instead of firing an arrow
-	var in_reach := (
-		_hovered_struct != null
-		and _hovered_struct.is_built
-		and _hovered_struct.distance_from_point(_player.position) <= Config.STRUCTURE_MENU_REACH
-	)
-	if in_reach:
-		_open_structure_menu(_hovered_struct)
-		return
-
 	_player.try_fire_bow(enemies, bag)
+
+
+func _try_right_click_structure() -> void:
+	if _menus.is_open() or (state != GameState.DAY and state != GameState.NIGHT):
+		return
+	if _hovered_struct != null and _hovered_struct.is_built:
+		if _hovered_struct.distance_from_point(_player.position) <= Config.STRUCTURE_MENU_REACH:
+			_open_structure_menu(_hovered_struct)
 
 
 func _step_gameplay(delta: float) -> void:
@@ -220,6 +222,8 @@ func _step_gameplay(delta: float) -> void:
 
 	if _bounce_cd > 0.0:
 		_bounce_cd = maxf(0.0, _bounce_cd - delta)
+	if _shockwave_cd > 0.0:
+		_shockwave_cd = maxf(0.0, _shockwave_cd - delta)
 
 	_waves.prune_invalid_arrays([enemies, arrows, traps, watchtowers, dogs])
 	_step_hover_target()
@@ -239,7 +243,9 @@ func _step_gameplay(delta: float) -> void:
 			wt.step_tower(delta, enemies)
 	for d in dogs:
 		if is_instance_valid(d):
-			d.step_dog(delta, _player.position, enemies, bounds)
+			d.step_dog(
+				delta, _player.position, enemies, bounds, _player.facing_vec, _player.inside_house
+			)
 	for e in enemies:
 		if is_instance_valid(e):
 			e.step_enemy(
@@ -276,15 +282,6 @@ func _step_day_phase(delta: float) -> void:
 			else ("Dusk: get inside and close the door!" if act == 1 else "Dusk. Head home.")
 		)
 		_hud.show_message(msg, 3.0, Color(1.0, 0.72, 0.40))
-	if _meteor_day_active and _meteor_pending > 0:
-		_meteor_cd -= delta
-		if _meteor_cd <= 0.0:
-			_meteor_cd = randf_range(2.2, 4.2)
-			_meteor_pending -= 1
-			var mp = (_player.position + Vector2(
-				randf_range(-190.0, 190.0), randf_range(-120.0, 120.0)
-			)).clamp(Vector2(64.0, 64.0), Config.WORLD_SIZE - Vector2(64.0, 64.0))
-			_fx.schedule_meteor(mp)
 	if phase_timer <= 0.0:
 		_begin_night_sequence()
 
@@ -295,6 +292,8 @@ func _begin_new_run() -> void:
 	is_blood_moon = false
 	_kills_total = 0
 	_intruders_inside = 0
+	_bounce_cd = 0.0
+	_shockwave_cd = 0.0
 	_set_trap_mode(false)
 	_day_save.clear()
 	upgrades = {"gear_tier": 1}
@@ -302,6 +301,7 @@ func _begin_new_run() -> void:
 	stockpile.clear()
 	stockpile.add("plank", Config.ACT1_START_STOCKPILE)
 	bag.add("arrow", 18)
+	bag.add("trap_snare", Config.START_BEAR_TRAPS)
 	bag.add("trap_spike", Config.START_SPIKE_TRAPS)
 
 	_clear_dynamic_world()
@@ -329,15 +329,16 @@ func _start_day(day_num: int, is_retry: bool = false) -> void:
 	is_blood_moon = false
 	is_dusk_warned = false
 	_intruders_inside = 0
-	_meteor_day_active = false
-	_meteor_pending = 0
-	_meteor_hit_player = false
 	phase_timer = Config.day_length()
 
 	if _player.inside_house:
 		_player.set_inside_house(false, Config.HOUSE_DOOR)
 	if house != null and house.is_standing():
 		house.toggle_door(true)
+	# open built fence gates each morning from Day 1 so the player is never trapped inside
+	for f in fences:
+		if f.is_gate and f.is_standing() and not f.gate_open:
+			f.toggle_door(false)
 	if day > 1 and not is_retry:
 		if house != null and house.is_standing():
 			house.heal(Config.DAWN_FREE_REPAIR)
@@ -350,8 +351,6 @@ func _start_day(day_num: int, is_retry: bool = false) -> void:
 	if act == 2:
 		for wp in _waves.pick_wanderer_positions():
 			_spawn_enemy("zombie", wp, true)
-		if day in Config.METEOR_DAYS:
-			_trigger_meteor_shower(Config.METEOR_COUNT_DAY4 if day == 4 else Config.METEOR_COUNT_DAY6)
 		_maybe_spawn_stray_dogs()
 
 	_day_save = _shop.save_day(self)
@@ -375,8 +374,6 @@ func _begin_night_sequence() -> void:
 			_hud.show_message(
 				"Night fell outside! Unbanked bag resources lost.", 2.6, Color(1.0, 0.45, 0.40)
 			)
-	if _meteor_day_active and not _meteor_hit_player:
-		_unlock_achievement("meteor_survivor")
 
 	is_blood_moon = (day == Config.WORLD_EXPAND_NIGHT or day == 7)
 	state = GameState.MOONRISE
@@ -466,8 +463,6 @@ func _spawn_enemy(etype: String, pos: Vector2, is_wanderer: bool) -> Enemy:
 
 
 func _spawn_dog(pos: Vector2, start_mode: int = Dog.Mode.STRAY) -> Dog:
-	if not Dog.assets_available():
-		return null
 	var d = Dog.new()
 	if not d.setup(pos):
 		return null
@@ -475,9 +470,12 @@ func _spawn_dog(pos: Vector2, start_mode: int = Dog.Mode.STRAY) -> Dog:
 	d.tamed.connect(func(_dog: Dog) -> void:
 		_sfx.play("dog_bark", -6.0)
 		_unlock_achievement("tamed_dog")
-		_hud.show_message(
-			"Dog tamed! Press G to toggle Follow / Guard.", 2.6, Color(0.62, 0.96, 0.68)
-		)
+		_hud.show_message("Dog tamed! Press G for Follow / Guard.", 2.6, Color(0.62, 0.96, 0.68))
+	)
+	d.attacked_enemy.connect(func(en: Node) -> void:
+		_sfx.play("dog_bark", -12.0)
+		if is_instance_valid(en):
+			_fx.spawn_sparks(en.position, Color(1.0, 0.42, 0.34, 1.0), 5)
 	)
 	_entities_layer.add_child(d)
 	dogs.append(d)
@@ -487,30 +485,6 @@ func _spawn_dog(pos: Vector2, start_mode: int = Dog.Mode.STRAY) -> Dog:
 func _maybe_spawn_stray_dogs() -> void:
 	if dogs.size() < Config.DOG_MAX:
 		_spawn_dog(Config.HOUSE_CENTER + Vector2(randf_range(-420.0, 420.0), 220.0))
-
-
-func _trigger_meteor_shower(count: int) -> void:
-	_meteor_day_active = true
-	_meteor_pending += count
-	_meteor_cd = 0.8
-	_hud.show_message("METEOR SHOWER! Watch the sky shadows!", 3.0, Color(1.0, 0.54, 0.28))
-
-
-func _on_meteor_impacted(pos: Vector2) -> void:
-	_sfx.play("meteor_impact", -7.0)
-	_add_shake(0.24, 3.5)
-	_map.spawn_crater_decal(pos)
-	_waves.spawn_pile(
-		_entities_layer, pos + Vector2(8.0, 4.0), randi_range(2, 3), "meteor", "scrap"
-	)
-	if not _player.inside_house and _player.position.distance_to(pos) <= Config.METEOR_RADIUS:
-		_meteor_hit_player = true
-		_player.take_damage(Config.METEOR_PLAYER_DMG)
-		_sfx.play("player_hit", -6.0)
-	for s in structures:
-		if is_instance_valid(s) and s.is_standing():
-			if s.distance_from_point(pos) <= Config.METEOR_RADIUS:
-				s.take_damage(Config.METEOR_STRUCT_DMG)
 
 
 func _trigger_melee_or_clear_intruders() -> void:
@@ -527,11 +501,38 @@ func _trigger_melee_or_clear_intruders() -> void:
 		_sfx.play("swing", -9.0)
 
 
-func _try_shockwave() -> void:
-	if _bounce_cd > 0.0 or _player.dead or _player.inside_house:
+func _try_bounce_back() -> void:
+	if _player.dead:
 		return
+	if _bounce_cd > 0.0:
+		_hud.show_message("Bounce Back in %.0fs" % ceilf(_bounce_cd), 1.4, Color(1.0, 0.72, 0.42))
+		return
+	var from_pos = _player.position
 	var base_cd = Config.BOUNCE_CD_ACT1 if act == 1 else Config.BOUNCE_CD_ACT2
 	_bounce_cd = base_cd * _player.bounce_cd_mult
+	_set_trap_mode(false)
+	if _player.inside_house:
+		_player.set_inside_house(false, Config.HOUSE_DOOR)
+	else:
+		_player.position = Config.HOUSE_DOOR
+		_player.velocity = Vector2.ZERO
+	_player.start_recall_heal()
+	_sfx.play("bounce", -6.0)
+	_fx.spawn_ring(from_pos, 56.0, Color(0.52, 0.94, 1.0, 0.90))
+	_fx.spawn_ring(Config.HOUSE_DOOR, 68.0, Color(0.48, 0.98, 0.68, 0.95))
+	_fx.spawn_sparks(Config.HOUSE_DOOR, Color(0.48, 0.98, 0.68, 1.0), 10)
+	_fx.spawn_floating_text(Config.HOUSE_DOOR, "Home! Healing...", Color(0.55, 0.98, 0.68))
+	# briefly push/stun any enemy camping the doorstep so recalling is safe
+	for e in enemies:
+		if is_instance_valid(e) and e.is_alive() and e.position.distance_to(Config.HOUSE_DOOR) <= 44.0:
+			e.apply_stun(2.0)
+
+
+func _try_shockwave() -> void:
+	if _shockwave_cd > 0.0 or _player.dead or _player.inside_house:
+		return
+	var base_cd = Config.BOUNCE_CD_ACT1 if act == 1 else Config.BOUNCE_CD_ACT2
+	_shockwave_cd = base_cd * _player.bounce_cd_mult
 	_player.bounce_bonus_count = mini(Config.MAX_BOUNCE_BONUSES, _player.bounce_bonus_count + 1)
 	_sfx.play("bounce", -6.0)
 	_fx.spawn_ring(_player.position, 92.0, Color(0.55, 0.92, 1.0, 0.95))
@@ -547,36 +548,37 @@ func _handle_interact_press() -> void:
 		_sfx.play("door_creak", -8.0)
 		return
 
-	# try house door first, then fence gates, otherwise open the upgrade menu
+	# interact with whichever of fence gate or house door is closer so gates never get blocked
+	var d_door = 9999.0
 	if house != null and house.is_standing():
-		var d_door := minf(
+		d_door = minf(
 			_player.position.distance_to(Config.HOUSE_DOOR_STEP),
 			_player.position.distance_to(Config.HOUSE_DOOR)
 		)
-		if d_door <= Config.DOOR_INTERACT_REACH:
-			if house.is_door_open() and _player.position.distance_to(Config.HOUSE_DOOR_STEP) <= 18.0:
-				_player.set_inside_house(true)
-				house.toggle_door(true)
-				_sfx.play("door_creak", -8.0)
-				_hud.show_message("Safe inside. Door shut.", 1.8, Color(0.60, 0.95, 0.65))
-			else:
-				house.toggle_door(false)
-				_sfx.play("door_creak", -8.0)
-				if house.is_door_open():
-					_hud.show_message("Door open! Press E at step to enter, or E to close.", 1.8)
-			return
-
-	var near_gate := _waves.find_nearest_gate(fences, _player.position, 28.0)
-	if near_gate != null and near_gate.is_standing():
+	var near_gate := _waves.find_nearest_gate(fences, _player.position, 34.0)
+	var d_gate = near_gate.distance_from_point(_player.position) if near_gate != null else 9999.0
+	if near_gate != null and d_gate <= 34.0 and d_gate <= d_door:
 		near_gate.toggle_door(false)
 		_sfx.play("door_creak", -8.0)
 		var g_msg := (
-			"Ring %d gate OPEN - don't forget to shut it!" % near_gate.ring
+			"Ring %d gate OPEN!" % near_gate.ring
 			if near_gate.gate_open else "Ring %d gate shut." % near_gate.ring
 		)
-		_hud.show_message(
-			g_msg, 2.0, Color(1.0, 0.78, 0.40) if near_gate.gate_open else Color(0.60, 0.95, 0.65)
-		)
+		var g_col := Color(1.0, 0.78, 0.40) if near_gate.gate_open else Color(0.60, 0.95, 0.65)
+		_hud.show_message(g_msg, 2.0, g_col)
+		return
+
+	if house != null and house.is_standing() and d_door <= Config.DOOR_INTERACT_REACH:
+		if house.is_door_open() and _player.position.distance_to(Config.HOUSE_DOOR_STEP) <= 18.0:
+			_player.set_inside_house(true)
+			house.toggle_door(true)
+			_sfx.play("door_creak", -8.0)
+			_hud.show_message("Safe inside. Door shut.", 1.8, Color(0.60, 0.95, 0.65))
+		else:
+			house.toggle_door(false)
+			_sfx.play("door_creak", -8.0)
+			if house.is_door_open():
+				_hud.show_message("Door open! Press E at step to enter, or E to close.", 1.8)
 		return
 
 	_try_open_nearby_structure_menu()
@@ -914,7 +916,6 @@ func _build_scene_tree() -> void:
 	_entities_layer.y_sort_enabled = true
 	_fx = Fx.new()
 	_fx.z_index = 15
-	_fx.meteor_impacted.connect(_on_meteor_impacted)
 	_tint = CanvasModulate.new()
 	_tint.color = Config.TINT_DAY
 	_camera = Camera2D.new()
@@ -950,6 +951,7 @@ func _connect_ui_signals() -> void:
 		_info_return_to_title = true
 		_menus.open_info_panel(kind, settings)
 	)
+	_hud.trap_slot_clicked.connect(_toggle_trap_slot)
 	_hud.quit_requested.connect(func() -> void: get_tree().quit(0))
 	_hud.retry_day_requested.connect(_retry_day)
 	_hud.new_game_requested.connect(func() -> void: _begin_new_run())

@@ -165,20 +165,30 @@ func _draw() -> void:
 		draw_circle(rock_pos, 3.0, Color(1.0, 0.88, 0.56, 1.0))
 
 	if bool(_trap_preview.get("active", false)):
-		var tp = _trap_preview["pos"]
+		var tp = _trap_preview["pos"].round()
 		var ok := bool(_trap_preview["valid"])
-		var tint := Color(0.35, 0.96, 0.50, 0.72) if ok else Color(1.0, 0.28, 0.28, 0.72)
-		var extra_r := float(_trap_preview["extra_r"])
-
-		if extra_r > 0.0:
-			draw_arc(tp, extra_r, 0.0, TAU, 36, Color(tint.r, tint.g, tint.b, 0.28), 1.0)
-		draw_circle(tp, float(_trap_preview["trigger_r"]), Color(tint.r, tint.g, tint.b, 0.18))
-		draw_arc(tp, float(_trap_preview["trigger_r"]), 0.0, TAU, 20, tint, 1.0)
+		var tint := Color(0.45, 0.96, 0.52, 0.90) if ok else Color(1.0, 0.30, 0.28, 0.90)
+		var fill := Color(tint.r, tint.g, tint.b, 0.16)
+		var half_box := 9.0
+		var box_rect := Rect2(tp - Vector2(half_box, half_box), Vector2(half_box * 2.0, half_box * 2.0))
+		# crisp pixel-art placement tile and corner brackets
+		draw_rect(box_rect, fill, true)
+		var x0 := box_rect.position.x
+		var y0 := box_rect.position.y
+		var x1 := box_rect.end.x
+		var y1 := box_rect.end.y
+		for seg in [
+			Rect2(x0, y0, 5.0, 1.0), Rect2(x0, y0, 1.0, 5.0),
+			Rect2(x1 - 5.0, y0, 5.0, 1.0), Rect2(x1 - 1.0, y0, 1.0, 5.0),
+			Rect2(x0, y1 - 1.0, 5.0, 1.0), Rect2(x0, y1 - 5.0, 1.0, 5.0),
+			Rect2(x1 - 5.0, y1 - 1.0, 5.0, 1.0), Rect2(x1 - 1.0, y1 - 5.0, 1.0, 5.0),
+		]:
+			draw_rect(seg, tint, true)
 
 		var icon_tex := Art.get_icon_texture(String(_trap_preview["icon_key"]))
 		if icon_tex != null:
 			var sz := icon_tex.get_size()
-			draw_texture(icon_tex, tp - sz * 0.5, Color(tint.r, tint.g, tint.b, 0.85))
+			draw_texture(icon_tex, (tp - sz * 0.5).round(), Color(tint.r, tint.g, tint.b, 0.92))
 
 	if show_debug_colliders:
 		_draw_debug_colliders()

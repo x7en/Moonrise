@@ -41,6 +41,8 @@ var _swing_timer: float = 0.0
 var _swing_cd: float = 0.0
 var _invuln_timer: float = 0.0
 var _heal_timer: float = 0.0
+var _recall_heal_left: float = 0.0
+var _recall_tick_timer: float = 0.0
 var _last_safe_pos: Vector2 = Vector2.ZERO
 
 
@@ -115,6 +117,8 @@ func reset_for_new_game(spawn_pos: Vector2) -> void:
 	_swing_cd = 0.0
 	_invuln_timer = 0.0
 	_heal_timer = 0.0
+	_recall_heal_left = 0.0
+	_recall_tick_timer = 0.0
 	_apply_visibility_and_collision()
 	if _sprite != null:
 		_sprite.modulate = Color.WHITE
@@ -138,6 +142,13 @@ func set_inside_house(
 		position = exit_pos.round()
 		_last_safe_pos = position
 	_apply_visibility_and_collision()
+
+
+func start_recall_heal() -> void:
+	_recall_heal_left = Config.RECALL_HEAL_DURATION
+	_recall_tick_timer = 0.0
+	if hp < max_hp:
+		hp = mini(max_hp, hp + Config.RECALL_HEAL_TICK)
 
 
 func set_night_lantern(is_night: bool) -> void:
@@ -176,6 +187,17 @@ func step_player(
 	if dead:
 		velocity = Vector2.ZERO
 		return
+
+	# bounce-back recall healing ticks even while standing outside on the porch
+	if _recall_heal_left > 0.0:
+		_recall_heal_left = maxf(0.0, _recall_heal_left - delta)
+		if hp < max_hp:
+			_recall_tick_timer += delta
+			if _recall_tick_timer >= Config.RECALL_HEAL_INTERVAL:
+				_recall_tick_timer = 0.0
+				hp = mini(max_hp, hp + Config.RECALL_HEAL_TICK)
+		else:
+			_recall_heal_left = 0.0
 
 	# trickle heal while hiding inside the house
 	if inside_house:

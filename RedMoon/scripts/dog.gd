@@ -7,14 +7,25 @@ signal attacked_enemy(enemy: Node)
 enum Mode { STRAY, FOLLOW, GUARD }
 
 var mode: Mode = Mode.STRAY
-var hp: int = 20
-var max_hp: int = 20
 var guard_anchor: Vector2 = Vector2.ZERO
 var tame_progress: float = 0.0
 
 var _sprite: AnimatedSprite2D
 var _attack_cd: float = 0.0
-var _facing: String = "down"
+var _facing: String = "right"  # side-view sheets only have left/right silhouettes
+var _flip_cd: float = 0.0
+var _home_spot: Vector2 = Vector2.ZERO
+var _wander_target: Vector2 = Vector2.ZERO
+var _wander_wait: float = 0.0
+var _is_moving: bool = false
+var _avoid_timer: float = 0.0
+var _avoid_sign: float = 1.0
+var _stuck_timer: float = 0.0
+var _hop_timer: float = 0.0
+var _lunge_timer: float = 0.0
+var _last_pos: Vector2 = Vector2.ZERO
+var _flank_sign: float = 1.0
+var _current_target: Enemy = null
 
 
 static func assets_available() -> bool:
@@ -29,10 +40,13 @@ func setup(spawn_pos: Vector2) -> bool:
 		return false
 
 	position = spawn_pos.round()
-	max_hp = Config.DOG_HP
-	hp = max_hp
+	_home_spot = position
+	_wander_target = position
+	_last_pos = position
+	_flank_sign = 1.0 if (randi() % 2 == 0) else -1.0
 	mode = Mode.STRAY
-	collision_layer = 2
+	# immortal companion with no health - doesn't block player or enemies
+	collision_layer = 0
 	collision_mask = 1
 	motion_mode = CharacterBody2D.MOTION_MODE_FLOATING
 	add_to_group("dogs")
@@ -57,7 +71,7 @@ func setup(spawn_pos: Vector2) -> bool:
 	_sprite.sprite_frames = _load_dog_frames()
 	_sprite.scale = Vector2(0.5, 0.5)
 	_sprite.offset = Vector2(-24.0, -40.0)
-	_sprite.play(&"idle_down")
+	_sprite.play(&"idle_right")
 	add_child(_sprite)
 	return true
 
@@ -95,50 +109,231 @@ func step_dog(
 	delta: float,
 	player_pos: Vector2,
 	enemies: Array,
-	world_bounds: Rect2
+	world_bounds: Rect2,
+	player_facing: Vector2 = Vector2.RIGHT,
+	player_inside: bool = false
 ) -> void:
 	_attack_cd = maxf(0.0, _attack_cd - delta)
+	_avoid_timer = maxf(0.0, _avoid_timer - delta)
+	_flip_cd = maxf(0.0, _flip_cd - delta)
+	_update_hop_and_lunge(delta)
 
 	if mode == Mode.STRAY:
+		_step_stray_wander(delta, player_pos, world_bounds)
+		return
+
+	var follow_anchor = Config.HOUSE_DOOR if player_inside else player_pos
+	var hunt_origin = guard_anchor if mode == Mode.GUARD else follow_anchor
+	var target_enemy = _pick_target_enemy(enemies, hunt_origin)
+
+	# catch up immediately if player recalled far away and we aren't actively fighting nearby
+	if mode == Mode.FOLLOW and target_enemy == null and position.distance_to(follow_anchor) > 290.0:
+		var warp_spot = _compute_heel_spot(follow_anchor, player_facing)
+		position = warp_spot.clamp(
+			world_bounds.position + Vector2(8.0, 8.0),
+			world_bounds.end - Vector2(8.0, 8.0)
+		)
 		velocity = Vector2.ZERO
+		_avoid_timer = 0.0
+		_stuck_timer = 0.0
+		_last_pos = position
+		_face_horizontal(player_facing.x, true)
 		_play_anim("idle")
 		return
 
-	var target_enemy = null
-	var origin := guard_anchor if mode == Mode.GUARD else player_pos
-	var best_d := Config.DOG_GUARD_RANGE
-
-	for enemy in enemies:
-		if not is_instance_valid(enemy) or not enemy.is_alive():
-			continue
-		var d = enemy.position.distance_to(origin)
-		if d < best_d:
-			best_d = d
-			target_enemy = enemy
-
+	var desired_vel = Vector2.ZERO
 	if target_enemy != null:
 		var to_e = target_enemy.position - position
-		if to_e.length() <= 14.0:
-			velocity = Vector2.ZERO
+		var dist_e = to_e.length()
+		if dist_e <= 15.0:
+			_face_horizontal(to_e.x, true)
 			if _attack_cd <= 0.0:
 				_attack_cd = Config.DOG_ATTACK_INTERVAL
+				_lunge_timer = 0.16
 				target_enemy.take_hit(1, to_e.normalized(), false)
 				attacked_enemy.emit(target_enemy)
 		else:
-			velocity = to_e.normalized() * 78.0
+			desired_vel = _steer_toward(to_e / dist_e, 108.0)
+	elif mode == Mode.GUARD:
+		desired_vel = _compute_guard_patrol_vel(delta)
 	else:
-		var follow_target := guard_anchor if mode == Mode.GUARD else player_pos
-		var to_t := follow_target - position
-		velocity = to_t.normalized() * 72.0 if to_t.length() > 22.0 else Vector2.ZERO
+		var heel_pos = _compute_heel_spot(follow_anchor, player_facing)
+		var to_heel = heel_pos - position
+		var dist_h = to_heel.length()
+		# hysteresis prevents jittering between run and idle at the edge of stop radius
+		var stop_r = 10.0 if _is_moving else 22.0
+		if dist_h > stop_r:
+			var speed = 82.0 if dist_h < 68.0 else minf(126.0, 82.0 + (dist_h - 68.0) * 0.6)
+			desired_vel = _steer_toward(to_heel / dist_h, speed)
+		elif absf(player_facing.x) > 0.25:
+			# align nicely with the player's facing direction when stopped at heel
+			_face_horizontal(player_facing.x, false)
 
-	if velocity.length_squared() > 1.0:
-		_facing = _vec_to_dir(velocity)
+	_apply_smooth_movement(delta, desired_vel, world_bounds, true)
+
+
+func _pick_target_enemy(enemies: Array, origin: Vector2) -> Enemy:
+	var max_range = Config.DOG_HUNT_RANGE
+	var leash_max = max_range + 50.0
+	if (
+		is_instance_valid(_current_target)
+		and _current_target.is_alive()
+		and (
+			_current_target.position.distance_to(position) <= leash_max
+			or _current_target.position.distance_to(origin) <= leash_max
+		)
+	):
+		return _current_target
+
+	_current_target = null
+	var best = null
+	var best_score = max_range
+	for enemy in enemies:
+		if not is_instance_valid(enemy) or not enemy.is_alive():
+			continue
+		var d_self = enemy.position.distance_to(position)
+		var d_origin = enemy.position.distance_to(origin)
+		var score = minf(d_self, d_origin)
+		if score < best_score:
+			best_score = score
+			best = enemy
+	_current_target = best
+	return best
+
+
+func _compute_heel_spot(anchor: Vector2, player_facing: Vector2) -> Vector2:
+	var f_dir = player_facing.normalized() if player_facing.length_squared() > 0.01 else Vector2.RIGHT
+	var side = Vector2(-f_dir.y, f_dir.x) * _flank_sign
+	return anchor - f_dir * 16.0 + side * 12.0
+
+
+func _step_stray_wander(delta: float, player_pos: Vector2, world_bounds: Rect2) -> void:
+	# pause and face the player when they walk up to tame
+	if position.distance_to(player_pos) <= 34.0:
+		_face_horizontal(player_pos.x - position.x, true)
+		_apply_smooth_movement(delta, Vector2.ZERO, world_bounds, false)
+		return
+
+	if _wander_wait > 0.0:
+		_wander_wait -= delta
+		_apply_smooth_movement(delta, Vector2.ZERO, world_bounds, false)
+		return
+
+	var to_w = _wander_target - position
+	if to_w.length() <= 6.0:
+		_wander_wait = randf_range(1.4, 3.2)
+		var ang = randf_range(0.0, TAU)
+		var rad = randf_range(16.0, 54.0)
+		_wander_target = (_home_spot + Vector2(cos(ang), sin(ang)) * rad).clamp(
+			world_bounds.position + Vector2(24.0, 24.0),
+			world_bounds.end - Vector2(24.0, 24.0)
+		)
+		_apply_smooth_movement(delta, Vector2.ZERO, world_bounds, false)
+		return
+
+	_apply_smooth_movement(delta, _steer_toward(to_w.normalized(), 34.0), world_bounds, false)
+
+
+func _compute_guard_patrol_vel(delta: float) -> Vector2:
+	var to_anchor = guard_anchor - position
+	if to_anchor.length() > 36.0:
+		return _steer_toward(to_anchor.normalized(), 74.0)
+	if _wander_wait > 0.0:
+		_wander_wait -= delta
+		return Vector2.ZERO
+	var to_patrol = _wander_target - position
+	if to_patrol.length() <= 5.0 or _wander_target.distance_to(guard_anchor) > 30.0:
+		_wander_wait = randf_range(1.0, 2.4)
+		var ang = randf_range(0.0, TAU)
+		_wander_target = guard_anchor + Vector2(cos(ang), sin(ang)) * randf_range(12.0, 26.0)
+		return Vector2.ZERO
+	return _steer_toward(to_patrol.normalized(), 44.0)
+
+
+func _steer_toward(dir_n: Vector2, speed: float) -> Vector2:
+	if _avoid_timer > 0.0 and _hop_timer <= 0.0:
+		var side = Vector2(-dir_n.y, dir_n.x) * _avoid_sign
+		return (dir_n * 0.45 + side * 0.89).normalized() * speed
+	return dir_n * speed
+
+
+func _apply_smooth_movement(
+	delta: float,
+	desired_vel: Vector2,
+	world_bounds: Rect2,
+	allow_fence_hop: bool
+) -> void:
+	var accel = 13.0 if desired_vel.length_squared() > 1.0 else 18.0
+	velocity = velocity.lerp(desired_vel, minf(1.0, delta * accel))
+	if velocity.length_squared() > 16.0:
+		_is_moving = true
+		_face_horizontal(velocity.x, false)
 		move_and_slide()
 		position.x = clampf(position.x, world_bounds.position.x + 8.0, world_bounds.end.x - 8.0)
 		position.y = clampf(position.y, world_bounds.position.y + 8.0, world_bounds.end.y - 8.0)
+		var blocked = is_on_wall() or (
+			desired_vel.length() > 25.0 and position.distance_to(_last_pos) < 0.35
+		)
+		if blocked:
+			_stuck_timer += delta
+			if _stuck_timer >= 0.14 and _avoid_timer <= 0.0:
+				_avoid_timer = 0.48
+				_avoid_sign = -_avoid_sign if randf() < 0.35 else _avoid_sign
+			if allow_fence_hop and _stuck_timer >= 0.34 and _hop_timer <= 0.0:
+				# bound cleanly over a closed fence or obstacle to chase zombies freely
+				_hop_timer = 0.34
+				_stuck_timer = 0.0
+				collision_mask = 0
+		else:
+			_stuck_timer = maxf(0.0, _stuck_timer - delta)
+		_last_pos = position
 		_play_anim("run")
+		if _sprite != null:
+			_sprite.speed_scale = clampf(velocity.length() / 76.0, 0.75, 1.55)
 	else:
+		_is_moving = false
+		velocity = Vector2.ZERO
+		_stuck_timer = 0.0
+		_last_pos = position
 		_play_anim("idle")
+		if _sprite != null:
+			_sprite.speed_scale = 1.0
+
+	# subtle slope lean when moving vertically/diagonally so side-view sprites feel directional
+	if _sprite != null:
+		var target_tilt = 0.0
+		if _is_moving and velocity.length() > 12.0:
+			var slope = clampf(velocity.y / maxf(24.0, velocity.length()), -1.0, 1.0)
+			var sign_x = 1.0 if _facing == "right" else -1.0
+			target_tilt = slope * 0.16 * sign_x
+		_sprite.rotation = lerpf(_sprite.rotation, target_tilt, minf(1.0, delta * 12.0))
+
+
+func _update_hop_and_lunge(delta: float) -> void:
+	if _hop_timer > 0.0:
+		_hop_timer = maxf(0.0, _hop_timer - delta)
+		if _hop_timer <= 0.0:
+			collision_mask = 1
+	if _lunge_timer > 0.0:
+		_lunge_timer = maxf(0.0, _lunge_timer - delta)
+	if _sprite == null:
+		return
+	var hop_y = -sin((_hop_timer / 0.34) * PI) * 8.0 if _hop_timer > 0.0 else 0.0
+	var lunge_x = 0.0
+	if _lunge_timer > 0.0:
+		var p = sin((_lunge_timer / 0.16) * PI)
+		lunge_x = (4.5 if _facing == "right" else -4.5) * p
+		hop_y -= 2.5 * p
+	_sprite.position = Vector2(lunge_x, hop_y)
+
+
+func _face_horizontal(dx: float, force: bool) -> void:
+	if absf(dx) < (1.0 if force else 6.0):
+		return
+	var want = "right" if dx >= 0.0 else "left"
+	if want != _facing and (force or _flip_cd <= 0.0):
+		_facing = want
+		_flip_cd = 0.14
 
 
 func _play_anim(prefix: String) -> void:
@@ -147,16 +342,10 @@ func _play_anim(prefix: String) -> void:
 
 	var anim := StringName("%s_%s" % [prefix, _facing])
 	if not _sprite.sprite_frames.has_animation(anim):
-		anim = StringName("%s_down" % prefix)
+		anim = StringName("%s_right" % prefix)
 
 	if _sprite.sprite_frames.has_animation(anim) and _sprite.animation != anim:
 		_sprite.play(anim)
-
-
-func _vec_to_dir(v: Vector2) -> String:
-	if absf(v.x) > absf(v.y):
-		return "right" if v.x >= 0.0 else "left"
-	return "down" if v.y >= 0.0 else "up"
 
 
 func _load_dog_frames() -> SpriteFrames:
@@ -165,7 +354,7 @@ func _load_dog_frames() -> SpriteFrames:
 		sf.remove_animation(&"default")
 
 	for anim_name in ["idle", "run"]:
-		for dir_name in ["down", "up", "left", "right"]:
+		for dir_name in ["left", "right"]:
 			var full_path := "res://assets/dog/%s_%s.png" % [anim_name, dir_name]
 			if not ResourceLoader.exists(full_path):
 				continue

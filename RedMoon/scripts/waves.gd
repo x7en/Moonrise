@@ -87,41 +87,50 @@ func build_context_prompt(
 ) -> String:
 	var out = ""
 	if trap_mode_active:
-		var keys: Array[String] = ["trap_spike", "trap_snare", "trap_lure"]
+		var keys: Array[String] = ["trap_snare", "trap_spike", "trap_lure"]
 		var tk = keys[clampi(selected_trap_idx - 1, 0, 2)]
 		var lbl = String((Config.TRAPS[tk])["label"])
 		out = "PLACING %s: [Click / T] Set Trap   |   [Right-Click / Esc] Cancel" % lbl.to_upper()
 	elif player.inside_house:
-		out = "[E] Step Outside   |   [F] Shoot Bow   |   [U] House Menu"
-	elif house != null and house.is_standing() and minf(
-		player.position.distance_to(Config.HOUSE_DOOR_STEP),
-		player.position.distance_to(Config.HOUSE_DOOR)
-	) <= Config.DOOR_INTERACT_REACH:
-		out = (
-			"[E] Enter House / Close Door   |   [U] House Menu"
-			if house.is_door_open()
-			else "[E] Open House Door   |   [U] House Menu"
-		)
-	elif nearest_gate != null and nearest_gate.is_standing():
-		var act_verb = "Close" if nearest_gate.gate_open else "Open"
-		out = "[E] %s Layer %d Gate   |   [U] Upgrade Layer %d" % [
-			act_verb, nearest_gate.ring, nearest_gate.ring
-		]
+		out = "[E] Step Outside   |   [Click / F] Shoot Bow   |   [U] House Menu"
 	else:
-		var near_stray = false
-		for d in dogs:
-			if is_instance_valid(d) and d.mode == Dog.Mode.STRAY:
-				if d.position.distance_to(player.position) <= 24.0:
-					near_stray = true
-					break
-		if near_stray:
-			out = "[Hold E] Tame Stray Dog"
+		var d_door = 9999.0
+		if house != null and house.is_standing():
+			d_door = minf(
+				player.position.distance_to(Config.HOUSE_DOOR_STEP),
+				player.position.distance_to(Config.HOUSE_DOOR)
+			)
+		var d_gate = (
+			nearest_gate.distance_from_point(player.position)
+			if nearest_gate != null and nearest_gate.is_standing()
+			else 9999.0
+		)
+		if d_gate <= 34.0 and d_gate <= d_door:
+			var act_verb = "Close" if nearest_gate.gate_open else "Open"
+			out = "[E] %s Layer %d Gate   |   [U] Upgrade Layer %d" % [
+				act_verb, nearest_gate.ring, nearest_gate.ring
+			]
+		elif d_door <= Config.DOOR_INTERACT_REACH:
+			out = (
+				"[E] Enter House / Close Door   |   [U] House Menu"
+				if house.is_door_open()
+				else "[E] Open House Door   |   [U] House Menu"
+			)
 		else:
-			var prop = map.find_nearest_searchable(player.position, 32.0)
-			if not prop.is_empty():
-				out = "[Hold E] Search %s" % String(prop["name"])
-			elif nearest_struct != null and nearest_struct.is_built:
-				out = "[U] %s" % nearest_struct.get_tooltip_text()
+			var near_stray = false
+			for d in dogs:
+				if is_instance_valid(d) and d.mode == Dog.Mode.STRAY:
+					if d.position.distance_to(player.position) <= 24.0:
+						near_stray = true
+						break
+			if near_stray:
+				out = "[Hold E] Tame Stray Dog"
+			else:
+				var prop = map.find_nearest_searchable(player.position, 32.0)
+				if not prop.is_empty():
+					out = "[Hold E] Search %s" % String(prop["name"])
+				elif nearest_struct != null and nearest_struct.is_built:
+					out = "[U] %s" % nearest_struct.get_tooltip_text()
 	return out
 
 
@@ -271,7 +280,8 @@ func make_hud_data(
 	var stockpile = main_node.get("stockpile")
 	var map = main_node.get("_map")
 	var dogs: Array = main_node.get("dogs")
-	var near_gate = find_nearest_gate(fences, player.position, 28.0)
+	var traps: Array = main_node.get("traps")
+	var near_gate = find_nearest_gate(fences, player.position, 34.0)
 	var obj = build_objective_text(
 		is_night, is_blood, act, day, bag.count("plank") + stockpile.count("plank")
 	)
@@ -284,10 +294,13 @@ func make_hud_data(
 		else ""
 	)
 	var home_arrow = Vector2.ZERO
-	if act == 2 and not player.inside_house:
+	var home_dist = 0
+	if not player.inside_house:
 		var to_home = Config.HOUSE_CENTER - player.position
-		if to_home.length() > 260.0:
-			home_arrow = to_home.normalized()
+		var dist = to_home.length()
+		if dist > 165.0:
+			home_arrow = to_home / dist
+			home_dist = int(roundf(dist / 16.0))
 	return {
 		"hp": player.hp,
 		"max_hp": player.max_hp,
@@ -306,6 +319,7 @@ func make_hud_data(
 		"mag": player.mag,
 		"mag_max": player.mag_max,
 		"arrows": bag.count("arrow"),
+		"bow_cd": player.bow_cd,
 		"reloading": player.is_reloading(),
 		"phase_label": "%s %d (ACT %d)" % ["NIGHT" if is_night else "DAY", day, act],
 		"time_left": phase_timer,
@@ -313,12 +327,15 @@ func make_hud_data(
 		"bounce_cd": bounce_cd,
 		"selected_trap": selected_trap_idx,
 		"trap_mode_active": trap_mode_active,
-		"trap_spike": bag.count("trap_spike"),
 		"trap_snare": bag.count("trap_snare"),
+		"trap_spike": bag.count("trap_spike"),
 		"trap_lure": bag.count("trap_lure"),
+		"traps_placed": traps.size(),
+		"traps_max": Config.MAX_TRAPS,
 		"muted": muted,
 		"prompt": prompt,
 		"tooltip": tooltip,
 		"search_progress": search_progress,
 		"home_arrow_dir": home_arrow,
+		"home_dist": home_dist,
 	}
