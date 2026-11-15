@@ -64,44 +64,10 @@ func _pop_next() -> void:
 
 
 func _build_panel() -> void:
-	_active_panel = PanelContainer.new()
-	_active_panel.custom_minimum_size = Vector2(TOAST_WIDTH, TOAST_HEIGHT)
-	_active_panel.size = Vector2(TOAST_WIDTH, TOAST_HEIGHT)
-	_active_panel.position = Vector2(Config.VIEW_SIZE.x + 12.0, 48.0)
-	_active_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_active_panel = get_node("ToastPanel") as PanelContainer
 	_active_panel.visible = false
-
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.10, 0.08, 0.14, 0.94)
-	style.border_color = Color(0.94, 0.72, 0.30, 1.0)
-	style.set_border_width_all(1)
-	style.content_margin_left = 6.0
-	style.content_margin_right = 6.0
-	style.content_margin_top = 4.0
-	style.content_margin_bottom = 4.0
-	_active_panel.add_theme_stylebox_override("panel", style)
-	add_child(_active_panel)
-
-	var hbox := HBoxContainer.new()
-	hbox.add_theme_constant_override("separation", 6)
-	_active_panel.add_child(hbox)
-
-	_icon_rect = TextureRect.new()
-	_icon_rect.custom_minimum_size = Vector2(20.0, 20.0)
-	_icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	hbox.add_child(_icon_rect)
-
-	var vbox := VBoxContainer.new()
-	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	vbox.add_theme_constant_override("separation", 2)
-	hbox.add_child(vbox)
-
-	_title_lbl = Label.new()
+	_icon_rect = get_node("ToastPanel/HBox/IconRect") as TextureRect
+	_title_lbl = get_node("ToastPanel/HBox/VBox/TitleLabel") as Label
 	Art.style_label(_title_lbl, "bold", 8, Color(1.0, 0.88, 0.45))
-	vbox.add_child(_title_lbl)
-
-	_desc_lbl = Label.new()
-	_desc_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_desc_lbl = get_node("ToastPanel/HBox/VBox/DescLabel") as Label
 	Art.style_label(_desc_lbl, "body", 8, Color(0.90, 0.90, 0.94))
-	vbox.add_child(_desc_lbl)

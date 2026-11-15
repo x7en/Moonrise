@@ -8,7 +8,7 @@
 [ext_resource type="Script" path="res://scripts/menus.gd" id="6_menus"]
 [ext_resource type="Script" path="res://scripts/night_intro.gd" id="7_night_intro"]
 [ext_resource type="Script" path="res://scripts/intro_cards.gd" id="8_intro_cards"]
-[ext_resource type="Script" path="res://scripts/popups.gd" id="9_popups"]
+[ext_resource type="PackedScene" path="res://scenes/popups.tscn" id="9_popups"]
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_main")
@@ -80,6 +80,4 @@ layer = 50
 visible = false
 script = ExtResource("8_intro_cards")
 
-[node name="Popups" type="CanvasLayer" parent="."]
-layer = 50
-script = ExtResource("9_popups")
+[node name="Popups" parent="." instance=ExtResource("9_popups")]
