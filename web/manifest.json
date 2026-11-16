@@ -3,6 +3,7 @@
   "short_name": "Moonrise",
   "description": "Top-down pixel survival game. Gather by day, fortify the farmhouse rings, and survive the Blood Moon.",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "fullscreen",
   "orientation": "landscape",
   "background_color": "#0b0914",
